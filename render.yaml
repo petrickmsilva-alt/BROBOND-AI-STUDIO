@@ -1,0 +1,66 @@
+# BROBOND AI STUDIO — Render Blueprint (CI/CD)
+#
+# One-time deploy (with the Render CLI):
+#   render login
+#   render blueprint deploy --path render.yaml
+#
+# After that, every push to the default branch (main) triggers an automatic
+# deploy of the web service and the API — no extra CI step required.
+
+services:
+  # ---------------------------------------------------------------- Next.js UI
+  - type: web
+    name: brobond-studio-web
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      # NEXT_PUBLIC_* values are baked in at build time. Keep it in sync with
+      # the public URL of the API service below ({service-name}.onrender.com).
+      - key: NEXT_PUBLIC_API_URL
+        value: https://brobond-ai-api.onrender.com
+
+  # --------------------------------------------------------------- FastAPI API
+  - type: web
+    name: brobond-ai-api
+    runtime: docker
+    dockerfilePath: Dockerfile.api
+    plan: free
+    region: oregon
+    healthCheckPath: /api/v1/health
+    autoDeploy: true
+    envVars:
+      # Render injects `postgres://...`; backend/app/core/config.py normalizes
+      # it to a SQLAlchemy-compatible `postgresql+psycopg://` URL.
+      - key: BROBOND_DATABASE_URL
+        fromDatabase:
+          name: brobond-studio-db
+          property: connectionString
+      - key: BROBOND_JWT_SECRET
+        generateValue: true
+      - key: BROBOND_CORS_ORIGINS
+        value: "https://brobond-studio-web.onrender.com,http://localhost:3000"
+      # Orchestration-only mode: no GPU inference, no external queue/storage.
+      # Flip these on once real providers are wired (see ROADMAP.md).
+      - key: BROBOND_QUEUE_ENABLED
+        value: "false"
+      - key: BROBOND_STORAGE_ENABLED
+        value: "false"
+      - key: BROBOND_INFERENCE_ENABLED
+        value: "false"
+      - key: BROBOND_TRAINING_ENABLED
+        value: "false"
+
+databases:
+  # Render-managed PostgreSQL. Redis is not available in blueprints; while
+  # BROBOND_QUEUE_ENABLED=false the API runs jobs in-process and needs no
+  # Redis. When you add a Celery worker, create a Render Redis (dashboard)
+  # and set BROBOND_REDIS_URL on the API service manually.
+  - name: brobond-studio-db
+    type: postgres
+    plan: free
+    region: oregon
