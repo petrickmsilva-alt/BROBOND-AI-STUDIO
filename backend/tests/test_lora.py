@@ -17,4 +17,8 @@ def test_lora_training_queues_valid_dataset() -> None:
     persona = client.post("/api/v1/personas", json={"name": "Trained Persona", "age": 30, "appearance": "Athletic", "eye_color": "Brown", "height_m": 1.8, "style": "Realism"}).json()
     response = client.post(f"/api/v1/personas/{persona['id']}/train", json={"reference_asset_ids": [str(uuid4()) for _ in range(20)]})
     assert response.status_code == 202
-    assert response.json()["status"] == "queued"
+    body = response.json()
+    assert body["status"] == "queued"
+    status = client.get(f"/api/v1/personas/{persona['id']}/training/{body['run_id']}")
+    assert status.status_code == 200
+    assert status.json()["progress"] == 0

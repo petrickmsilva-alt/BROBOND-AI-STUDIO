@@ -1,4 +1,5 @@
 """FastAPI entrypoint for BROBOND AI STUDIO's local service boundary."""
+import asyncio
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
@@ -13,7 +14,7 @@ from .db import Base, engine, get_db
 from .events import hub
 from .lora import lora_trainer
 from .media import MediaError, media
-from .models import Asset, User, Workspace
+from .models import Asset, TrainingRun, User, Workspace
 from .prompt_engine import prompt_engine
 from .queue import enqueue, enqueue_lora_training
 from .storage import storage
@@ -21,7 +22,7 @@ from .system import gpu_info
 from .schemas import (
     ImageGenerationRequest, Job, JobStatus, Persona, PersonaCreateRequest,
     StoryboardRequest, StoryboardResponse, StoryboardScene, VideoGenerationRequest,
-    AssetResponse, ExportRequest, ExportResponse, GenerationType, PersonaTrainRequest, PersonaTrainResponse, PromptEnhanceRequest, PromptEnhanceResponse,
+    AssetResponse, ExportRequest, ExportResponse, GenerationType, PersonaTrainRequest, PersonaTrainResponse, PromptEnhanceRequest, PromptEnhanceResponse, TrainingStatusResponse,
 )
 from .store import store
 
@@ -231,7 +232,7 @@ def create_persona(request: PersonaCreateRequest) -> Persona:
 
 
 @app.post("/api/v1/personas/{persona_id}/train", response_model=PersonaTrainResponse, status_code=202, tags=["personas"])
-def train_persona(persona_id: UUID, request: PersonaTrainRequest) -> PersonaTrainResponse:
+def train_persona(persona_id: UUID, request: PersonaTrainRequest, db: Session = Depends(get_db)) -> PersonaTrainResponse:
     persona = store.personas.get(persona_id)
     if not persona:
         raise HTTPException(status_code=404, detail="Persona not found")
@@ -241,9 +242,39 @@ def train_persona(persona_id: UUID, request: PersonaTrainRequest) -> PersonaTrai
         raise HTTPException(status_code=422, detail=str(error)) from error
     persona.status = "training"
     persona.details.reference_asset_ids = request.reference_asset_ids
-    queued = enqueue_lora_training(str(persona_id), [str(asset_id) for asset_id in request.reference_asset_ids], persona.details.name, request.style)
-    message = "LoRA training job queued for a GPU worker" if queued else "LoRA training plan created; enable Redis and the GPU worker to execute it"
-    return PersonaTrainResponse(persona_id=persona_id, status="queued", image_count=plan.image_count, message=message)
+    run = TrainingRun(persona_id=str(persona_id), status="queued", progress=0, log="Training plan created")
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+    queued = enqueue_lora_training(run.id, str(persona_id), [str(asset_id) for asset_id in request.reference_asset_ids], persona.details.name, request.style)
+    message = "LoRA training job queued for a GPU worker" if queued else "Training run created; enable Redis and the GPU worker to execute it"
+    return PersonaTrainResponse(persona_id=persona_id, run_id=UUID(run.id), status=run.status, progress=run.progress, image_count=plan.image_count, message=message)
+
+
+@app.get("/api/v1/personas/{persona_id}/training/{run_id}", response_model=TrainingStatusResponse, tags=["personas"])
+def training_status(persona_id: UUID, run_id: UUID, db: Session = Depends(get_db)) -> TrainingStatusResponse:
+    run = db.get(TrainingRun, str(run_id))
+    if not run or run.persona_id != str(persona_id):
+        raise HTTPException(status_code=404, detail="Training run not found")
+    return TrainingStatusResponse(run_id=run_id, persona_id=persona_id, status=run.status, progress=run.progress, log=run.log, output_asset_id=run.output_asset_id)
+
+
+@app.websocket("/api/v1/personas/{persona_id}/training/events/{run_id}")
+async def training_events(websocket: WebSocket, persona_id: UUID, run_id: UUID) -> None:
+    await websocket.accept()
+    try:
+        while True:
+            with SessionLocal() as db:
+                run = db.get(TrainingRun, str(run_id))
+            if not run or run.persona_id != str(persona_id):
+                await websocket.send_json({"status": "failed", "progress": 100, "log": "Training run not found"})
+                break
+            await websocket.send_json({"run_id": run.id, "status": run.status, "progress": run.progress, "log": run.log})
+            if run.status in {"complete", "failed", "cancelled"}:
+                break
+            await asyncio.sleep(2)
+    except WebSocketDisconnect:
+        return
 
 
 @app.post("/api/v1/storyboards/expand", response_model=StoryboardResponse, tags=["storyboards"])

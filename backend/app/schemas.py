@@ -76,9 +76,20 @@ class PersonaTrainRequest(BaseModel):
 
 class PersonaTrainResponse(BaseModel):
     persona_id: UUID
+    run_id: UUID | None = None
     status: str
+    progress: int = 0
     image_count: int
     message: str
+
+
+class TrainingStatusResponse(BaseModel):
+    run_id: UUID
+    persona_id: UUID
+    status: str
+    progress: int
+    log: str
+    output_asset_id: str | None = None
 
 
 class Persona(BaseModel):

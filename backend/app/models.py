@@ -44,3 +44,14 @@ class Asset(Base):
     kind: Mapped[str] = mapped_column(String(32))
     object_key: Mapped[str] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class TrainingRun(Base):
+    __tablename__ = "training_runs"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    persona_id: Mapped[str] = mapped_column(String(36), index=True)
+    status: Mapped[str] = mapped_column(String(32), default="queued")
+    progress: Mapped[int] = mapped_column(default=0)
+    log: Mapped[str] = mapped_column(Text, default="Training queued")
+    output_asset_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

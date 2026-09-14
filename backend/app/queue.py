@@ -7,7 +7,7 @@ from celery import Celery
 
 from .core.config import settings
 from .db import SessionLocal
-from .models import Asset
+from .models import Asset, TrainingRun
 from .schemas import GenerationType, JobStatus
 from .storage import storage
 from .store import store
@@ -59,21 +59,31 @@ def process_generation(self, job_id: str) -> dict[str, str]:
 
 
 @celery_app.task(bind=True, name="brobond.train_lora")
-def train_lora(self, persona_id: str, asset_ids: list[str], identity: str, style: str) -> dict[str, str]:
+def train_lora(self, run_id: str, persona_id: str, asset_ids: list[str], identity: str, style: str) -> dict[str, str]:
+    def update(status: str, progress: int, log: str) -> None:
+        with SessionLocal() as db:
+            run = db.get(TrainingRun, run_id)
+            if run:
+                run.status, run.progress, run.log = status, progress, log
+                db.commit()
     try:
         from uuid import UUID
+        update("running", 10, "Preparing reference dataset")
         dataset = prepare_dataset(UUID(persona_id), [UUID(asset_id) for asset_id in asset_ids], identity, style)
+        update("running", 35, "Dataset and captions prepared")
         output = execute_training(dataset, dataset.parent / "loras")
+        update("complete", 100, f"LoRA adapter created: {output.name}")
         return {"persona_id": persona_id, "status": "complete", "output": str(output)}
     except Exception as error:
+        update("failed", 100, str(error))
         return {"persona_id": persona_id, "status": "failed", "error": str(error)}
 
 
-def enqueue_lora_training(persona_id: str, asset_ids: list[str], identity: str, style: str) -> bool:
+def enqueue_lora_training(run_id: str, persona_id: str, asset_ids: list[str], identity: str, style: str) -> bool:
     if not settings.queue_enabled:
         return False
     try:
-        train_lora.delay(persona_id, asset_ids, identity, style)
+        train_lora.delay(run_id, persona_id, asset_ids, identity, style)
         return True
     except Exception:
         return False
