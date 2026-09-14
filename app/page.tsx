@@ -158,6 +158,15 @@ function PersonaStudio() {
   const [referenceIds, setReferenceIds] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState('Add 20–50 reference images');
+  const [runId, setRunId] = useState<string | null>(null);
+  const [trainingProgress, setTrainingProgress] = useState(0);
+  useEffect(() => {
+    if (!personaId || !runId) return;
+    const socket = new WebSocket(`${API_URL.replace(/^http/, 'ws')}/api/v1/personas/${personaId}/training/events/${runId}`);
+    socket.onmessage = event => { const update = JSON.parse(event.data) as { status: string; progress: number; log: string }; setTrainingProgress(update.progress); setStatus(`${update.log} · ${update.progress}%`); };
+    socket.onerror = () => setStatus('Training queued · WebSocket unavailable');
+    return () => socket.close();
+  }, [personaId, runId]);
   const handleReferences = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
     if (files.length < 20 || files.length > 50) { setStatus('Select between 20 and 50 images'); return; }
@@ -178,9 +187,10 @@ function PersonaStudio() {
     if (!created.remote) { setStatus('API offline · start FastAPI to train'); return; }
     const id = String(created.data.id); setPersonaId(id); setStatus('Queuing LoRA training...');
     const trained = await trainPersona(id, { reference_asset_ids: referenceIds, style: 'cinematic realism' });
+    if (trained.remote) { setRunId(String(trained.data.run_id)); setTrainingProgress(0); }
     setStatus(trained.remote ? 'Training queued · GPU worker pending' : 'API offline · training not queued');
   };
-  return <><PageHeader eyebrow="PERSONA LAB" title="Make identity consistent" description="Train a private visual persona for stories that feel unmistakably yours."><label className="primary-button upload-label"><Plus size={17} /> {uploading ? 'Uploading...' : 'Add references'}<input type="file" accept="image/*" multiple onChange={handleReferences} /></label></PageHeader><div className="persona-layout"><div className="persona-card"><div className="persona-cover"><div className="persona-portrait"><UserRound size={42} /></div><span className="trained-badge"><span className="status-dot" /> {referenceIds.length >= 20 ? 'Ready' : 'Draft'}</span></div><div className="persona-body"><div><h2>Petrick Martins</h2><p>BROBOND · Athletic portrait</p></div><MoreHorizontal size={18} /><div className="persona-tags"><span>50 years</span><span>1.85m</span><span>Short beard</span><span>Tied hair</span></div><div className="persona-footer"><span><ImageIcon size={14} /> {referenceIds.length} / 20–50 references</span><span>LoRA v1.2</span></div></div></div><div className="training-panel"><div className="panel-heading"><span>Persona details</span><button className="text-button">Edit</button></div>{[['Appearance','Athletic, defined features'],['Eye color','Dark brown'],['Hair','Long, tied back'],['Style','Cinematic realism']].map(([a,b]) => <div className="detail-row" key={a}><span>{a}</span><strong>{b}</strong></div>)}<div className="lora-progress"><div><span>LoRA training</span><b>{status}</b></div><div className="progress"><i style={{ width: `${Math.min(referenceIds.length / 20 * 100, 100)}%` }} /></div></div><button className="secondary-button full" disabled={uploading || referenceIds.length < 20} onClick={startTraining}><Sparkles size={15} /> Start LoRA training</button></div></div></>;
+  return <><PageHeader eyebrow="PERSONA LAB" title="Make identity consistent" description="Train a private visual persona for stories that feel unmistakably yours."><label className="primary-button upload-label"><Plus size={17} /> {uploading ? 'Uploading...' : 'Add references'}<input type="file" accept="image/*" multiple onChange={handleReferences} /></label></PageHeader><div className="persona-layout"><div className="persona-card"><div className="persona-cover"><div className="persona-portrait"><UserRound size={42} /></div><span className="trained-badge"><span className="status-dot" /> {referenceIds.length >= 20 ? 'Ready' : 'Draft'}</span></div><div className="persona-body"><div><h2>Petrick Martins</h2><p>BROBOND · Athletic portrait</p></div><MoreHorizontal size={18} /><div className="persona-tags"><span>50 years</span><span>1.85m</span><span>Short beard</span><span>Tied hair</span></div><div className="persona-footer"><span><ImageIcon size={14} /> {referenceIds.length} / 20–50 references</span><span>LoRA v1.2</span></div></div></div><div className="training-panel"><div className="panel-heading"><span>Persona details</span><button className="text-button">Edit</button></div>{[['Appearance','Athletic, defined features'],['Eye color','Dark brown'],['Hair','Long, tied back'],['Style','Cinematic realism']].map(([a,b]) => <div className="detail-row" key={a}><span>{a}</span><strong>{b}</strong></div>)}<div className="lora-progress"><div><span>LoRA training</span><b>{status}</b></div><div className="progress"><i style={{ width: `${runId ? trainingProgress : Math.min(referenceIds.length / 20 * 100, 100)}%` }} /></div></div><button className="secondary-button full" disabled={uploading || referenceIds.length < 20} onClick={startTraining}><Sparkles size={15} /> Start LoRA training</button></div></div></>;
 }
 
 function Storyboard() {
