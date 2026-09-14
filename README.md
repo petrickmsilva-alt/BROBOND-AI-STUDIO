@@ -65,7 +65,7 @@ Pré-requisito: repositório público no GitHub conectado ao seu plano Render
    ```
 
    O comando cria/atualiza:
-   - `brobond-studio-web` — Web Service Node (`npm ci` + `npm start`), URL `https://brobond-studio-web.onrender.com`
+   - `brobond-studio-web` — Web Service Node (`npm ci && npm run build` + `npm start`), URL `https://brobond-studio-web.onrender.com`
    - `brobond-ai-api` — Web Service Docker (`Dockerfile.api`), URL `https://brobond-ai-api.onrender.com`, health check em `/api/v1/health`
    - `brobond-studio-db` — PostgreSQL free, com a connection string injetada como `BROBOND_DATABASE_URL`
 
@@ -101,7 +101,7 @@ Pré-requisito: repositório público no GitHub conectado ao seu plano Render
 
 ### Alternativa: pelo dashboard (sem CLI)
 
-1. Render → *New → Web Service* → selecione o repositório → runtime **Node**, build `npm ci`, start `npm start`, health check `/`, env var `NEXT_PUBLIC_API_URL=https://brobond-ai-api.onrender.com`.
+1. Render → *New → Web Service* → selecione o repositório → runtime **Node**, build `npm ci && npm run build`, start `npm start`, health check `/`, env var `NEXT_PUBLIC_API_URL=https://brobond-ai-api.onrender.com`. O `npm run build` é obrigatório: `.next/` está no `.gitignore`, então sem ele o `next start` falha com *Could not find a production build in the '.next' directory*.
 2. *New → Web Service* → runtime **Docker**, Dockerfile `Dockerfile.api`, health check `/api/v1/health`, env vars: `BROBOND_DATABASE_URL` (connection string do Postgres), `BROBOND_JWT_SECRET` (qualquer string longa), `BROBOND_CORS_ORIGINS=https://brobond-studio-web.onrender.com`.
 3. *New → PostgreSQL* (free) e copie a connection string para `BROBOND_DATABASE_URL` do serviço da API.
 4. Em cada serviço, mantenha **Auto-Deploy** habilitado.
