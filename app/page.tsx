@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Asset, createImageJob, createPersona, createVideoJob, expandStoryboard, listAssets, uploadAsset } from '../lib/api';
+import { Asset, AuthUser, authenticate, createImageJob, createPersona, createVideoJob, expandStoryboard, listAssets, uploadAsset } from '../lib/api';
 import {
   Aperture, ArrowUpRight, AudioLines, Bell, Box, ChevronDown, CircleHelp, Clapperboard,
   Clock3, Download, Folder, Gauge, Grid2X2, Image as ImageIcon, Layers3, Library,
   Menu, MessageSquareText, MoreHorizontal, Move3d, Play, Plus, Search, Settings2,
-  Sparkles, Square, UserRound, WandSparkles, X, Zap,
+  Sparkles, Square, UserRound, WandSparkles, X, Zap, LogIn, LockKeyhole,
 } from 'lucide-react';
 
 const modules = [
@@ -33,6 +33,8 @@ export default function Home() {
   const [prompt, setPrompt] = useState('A cinematic portrait of a Brazilian athlete in a brutalist city at blue hour');
   const [generated, setGenerated] = useState(false);
   const [sidebar, setSidebar] = useState(true);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [user, setUser] = useState<AuthUser | null>(null);
 
   const moduleTitle = modules.find(m => m.id === active)?.label ?? 'Overview';
   const create = () => { setActive('image'); setGenerated(false); };
@@ -45,7 +47,7 @@ export default function Home() {
       <nav>{modules.map(item => { const Icon = item.icon; return <button key={item.id} className={active === item.id ? 'selected' : ''} onClick={() => setActive(item.id)}><Icon size={18} /><span>{item.label}</span>{item.id === 'video' && <b className="nav-badge">BETA</b>}</button>; })}</nav>
       <div className="nav-label library-label">LIBRARY</div>
       <nav><button onClick={() => setActive('assets')}><Folder size={18} /><span>Projects</span></button><button onClick={() => setActive('assets')}><Library size={18} /><span>All assets</span></button></nav>
-      <div className="sidebar-bottom"><div className="gpu-card"><div className="gpu-head"><span><span className="status-dot" /> GPU ready</span><MoreHorizontal size={16} /></div><strong>RTX 4090</strong><div className="gpu-meter"><i /></div><small>18.4 / 24 GB VRAM</small></div><button className="settings" onClick={() => setActive('assets')}><Settings2 size={17} /><span>Settings</span></button><button className="profile"><div className="avatar">PM</div><span><strong>Petrick Martins</strong><small>Pro plan</small></span><MoreHorizontal size={16} /></button></div>
+      <div className="sidebar-bottom"><div className="gpu-card"><div className="gpu-head"><span><span className="status-dot" /> GPU ready</span><MoreHorizontal size={16} /></div><strong>RTX 4090</strong><div className="gpu-meter"><i /></div><small>18.4 / 24 GB VRAM</small></div><button className="settings" onClick={() => setActive('assets')}><Settings2 size={17} /><span>Settings</span></button><button className="profile" onClick={() => setAuthOpen(true)}><div className="avatar">{user ? user.name.slice(0, 2).toUpperCase() : 'PM'}</div><span><strong>{user?.name ?? 'Petrick Martins'}</strong><small>{user ? user.email : 'Sign in to sync'}</small></span><MoreHorizontal size={16} /></button></div>
     </aside>
 
     <section className="main-area">
@@ -60,7 +62,26 @@ export default function Home() {
         {active === 'assets' && <Assets />}
       </div>
     </section>
+    {authOpen && <AuthModal user={user} onAuthenticated={setUser} onClose={() => setAuthOpen(false)} />}
   </main>;
+}
+
+function AuthModal({ user, onAuthenticated, onClose }: { user: AuthUser | null; onAuthenticated: (user: AuthUser | null) => void; onClose: () => void }) {
+  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [email, setEmail] = useState('');
+  const [name, setName] = useState('');
+  const [password, setPassword] = useState('');
+  const [message, setMessage] = useState('');
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setMessage('Connecting to workspace...');
+    const result = await authenticate(mode === 'login' ? '/api/v1/auth/login' : '/api/v1/auth/register', mode === 'login' ? { email, password } : { email, name, password });
+    if (result.remote) { onAuthenticated(result.data.user); onClose(); return; }
+    if (mode === 'login') { onAuthenticated({ id: 'local', email: email || 'local@brobond.ai', name: name || 'Petrick Martins' }); onClose(); }
+    else setMessage('API offline. Start FastAPI to create a persistent account.');
+  };
+  const logout = () => { localStorage.removeItem('brobond_access_token'); onAuthenticated(null); onClose(); };
+  return <div className="modal-backdrop" onClick={onClose}><div className="auth-modal" onClick={event => event.stopPropagation()}><button className="modal-close" onClick={onClose}><X size={17} /></button>{user ? <><div className="auth-icon"><LockKeyhole size={20} /></div><h2>{user.name}</h2><p className="auth-subtitle">{user.email}</p><button className="secondary-button full" onClick={logout}>Sign out</button></> : <><div className="auth-icon"><LogIn size={20} /></div><div className="auth-switch"><button className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>Sign in</button><button className={mode === 'register' ? 'active' : ''} onClick={() => setMode('register')}>Create account</button></div><h2>{mode === 'login' ? 'Welcome back' : 'Create your workspace'}</h2><p className="auth-subtitle">{mode === 'login' ? 'Sign in to sync your creations and assets.' : 'Start building your private visual studio.'}</p><form onSubmit={submit}>{mode === 'register' && <input value={name} onChange={event => setName(event.target.value)} placeholder="Full name" required />}<input type="email" value={email} onChange={event => setEmail(event.target.value)} placeholder="Email address" required /><input type="password" value={password} onChange={event => setPassword(event.target.value)} placeholder="Password · 8+ characters" minLength={8} required /><button className="primary-button full" type="submit">{mode === 'login' ? 'Sign in' : 'Create account'} <ArrowUpRight size={15} /></button></form>{message && <small className="auth-message">{message}</small>}</>}</div></div>;
 }
 
 function PageHeader({ eyebrow, title, description, children }: { eyebrow: string; title: string; description: string; children?: React.ReactNode }) { return <div className="page-header"><div><div className="eyebrow"><Sparkles size={13} /> {eyebrow}</div><h1>{title}</h1><p>{description}</p></div>{children}</div>; }

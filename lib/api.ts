@@ -27,6 +27,14 @@ async function request<T>(path: string, init: RequestInit): Promise<ApiResult<T>
   }
 }
 
+export type AuthUser = { id: string; email: string; name: string };
+
+export async function authenticate(path: '/api/v1/auth/login' | '/api/v1/auth/register', payload: Record<string, unknown>): Promise<ApiResult<{ access_token: string; user: AuthUser }>> {
+  const result = await request<{ access_token: string; user: AuthUser }>(path, { method: 'POST', body: JSON.stringify(payload) });
+  if (result.remote && typeof window !== 'undefined') window.localStorage.setItem('brobond_access_token', result.data.access_token);
+  return result;
+}
+
 export function createImageJob(payload: Record<string, unknown>) {
   return request<Job>('/api/v1/generations/images', { method: 'POST', body: JSON.stringify(payload) });
 }
