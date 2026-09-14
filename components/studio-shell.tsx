@@ -55,6 +55,7 @@ import {
   Zap,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { motion } from "framer-motion";
 import { useMemo, useState, type ChangeEvent } from "react";
 
 type View =
@@ -270,7 +271,12 @@ export default function StudioShell() {
   const navigateToCreate = () => openView("image");
 
   return (
-    <div className="studio-app">
+    <motion.div
+      className="studio-app"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.45, ease: "easeOut" }}
+    >
       <aside className={`sidebar ${sidebarCollapsed ? "sidebar-collapsed" : ""} ${mobileMenuOpen ? "mobile-open" : ""}`}>
         <div className="brand-row">
           <button type="button" className="brand" onClick={() => openView("overview")} aria-label="Go to overview">
@@ -399,7 +405,7 @@ export default function StudioShell() {
           <button type="button" onClick={() => setToast(null)} aria-label="Close notification"><X size={15} /></button>
         </div>
       )}
-    </div>
+    </motion.div>
   );
 }
 
