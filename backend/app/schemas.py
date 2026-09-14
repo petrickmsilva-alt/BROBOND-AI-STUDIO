@@ -42,6 +42,9 @@ class ImageGenerationRequest(BaseModel):
     steps: int = Field(default=28, ge=1, le=100)
     lora_id: UUID | None = None
     reference_asset_id: UUID | None = None
+    controlnet: Literal["none", "pose", "depth", "canny", "tile"] = "none"
+    controlnet_scale: float = Field(default=0.8, ge=0, le=2)
+    ip_adapter_scale: float = Field(default=0.7, ge=0, le=1)
 
 
 class VideoGenerationRequest(BaseModel):

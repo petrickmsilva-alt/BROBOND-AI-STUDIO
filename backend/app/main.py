@@ -9,6 +9,7 @@ from sqlalchemy import inspect, select, text
 from sqlalchemy.orm import Session
 
 from .auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse, current_user, login, optional_user, register
+from .conditioning import catalog
 from .core.config import settings
 from .db import Base, engine, get_db
 from .events import hub
@@ -68,6 +69,11 @@ def system_media() -> dict[str, object]:
 def enhance_prompt(request: PromptEnhanceRequest) -> PromptEnhanceResponse:
     enhanced = prompt_engine.enhance(request.prompt, request.style, request.persona, request.camera, request.lighting)
     return PromptEnhanceResponse(original=request.prompt, enhanced=enhanced, tokens=enhanced.split(", "))
+
+
+@app.get("/api/v1/models/conditioning", tags=["models"])
+def conditioning_models() -> list[dict[str, str]]:
+    return catalog()
 
 
 @app.get("/api/v1/models/image", tags=["models"])
