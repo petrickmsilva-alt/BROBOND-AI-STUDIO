@@ -13,13 +13,14 @@ from .db import Base, engine, get_db
 from .events import hub
 from .media import MediaError, media
 from .models import Asset, User, Workspace
+from .prompt_engine import prompt_engine
 from .queue import enqueue
 from .storage import storage
 from .system import gpu_info
 from .schemas import (
     ImageGenerationRequest, Job, JobStatus, Persona, PersonaCreateRequest,
     StoryboardRequest, StoryboardResponse, StoryboardScene, VideoGenerationRequest,
-    AssetResponse, ExportRequest, ExportResponse, GenerationType,
+    AssetResponse, ExportRequest, ExportResponse, GenerationType, PromptEnhanceRequest, PromptEnhanceResponse,
 )
 from .store import store
 
@@ -53,6 +54,12 @@ def system_gpu() -> dict:
 @app.get("/api/v1/system/media", tags=["system"])
 def system_media() -> dict[str, object]:
     return media.capabilities()
+
+
+@app.post("/api/v1/prompts/enhance", response_model=PromptEnhanceResponse, tags=["prompt-engine"])
+def enhance_prompt(request: PromptEnhanceRequest) -> PromptEnhanceResponse:
+    enhanced = prompt_engine.enhance(request.prompt, request.style, request.persona, request.camera, request.lighting)
+    return PromptEnhanceResponse(original=request.prompt, enhanced=enhanced, tokens=enhanced.split(", "))
 
 
 @app.get("/api/v1/models/image", tags=["models"])

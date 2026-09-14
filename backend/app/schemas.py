@@ -99,6 +99,20 @@ class ExportResponse(BaseModel):
     message: str
 
 
+class PromptEnhanceRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=2000)
+    style: str | None = Field(default=None, max_length=120)
+    persona: str | None = Field(default=None, max_length=200)
+    camera: str | None = Field(default=None, max_length=160)
+    lighting: str | None = Field(default=None, max_length=160)
+
+
+class PromptEnhanceResponse(BaseModel):
+    original: str
+    enhanced: str
+    tokens: list[str]
+
+
 class StoryboardRequest(BaseModel):
     brief: str = Field(min_length=1, max_length=4000)
     scene_count: int = Field(default=4, ge=2, le=12)

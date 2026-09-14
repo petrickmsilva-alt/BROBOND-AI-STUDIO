@@ -35,6 +35,10 @@ export async function authenticate(path: '/api/v1/auth/login' | '/api/v1/auth/re
   return result;
 }
 
+export function enhancePrompt(payload: Record<string, unknown>) {
+  return request<{ original: string; enhanced: string; tokens: string[] }>('/api/v1/prompts/enhance', { method: 'POST', body: JSON.stringify(payload) });
+}
+
 export function createImageJob(payload: Record<string, unknown>) {
   return request<Job>('/api/v1/generations/images', { method: 'POST', body: JSON.stringify(payload) });
 }
