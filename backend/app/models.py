@@ -50,6 +50,7 @@ class TrainingRun(Base):
     __tablename__ = "training_runs"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     persona_id: Mapped[str] = mapped_column(String(36), index=True)
+    workspace_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(32), default="queued")
     progress: Mapped[int] = mapped_column(default=0)
     log: Mapped[str] = mapped_column(Text, default="Training queued")

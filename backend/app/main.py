@@ -5,7 +5,7 @@ from uuid import UUID
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from sqlalchemy import select
+from sqlalchemy import inspect, select, text
 from sqlalchemy.orm import Session
 
 from .auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse, current_user, login, optional_user, register
@@ -22,7 +22,7 @@ from .system import gpu_info
 from .schemas import (
     ImageGenerationRequest, Job, JobStatus, Persona, PersonaCreateRequest,
     StoryboardRequest, StoryboardResponse, StoryboardScene, VideoGenerationRequest,
-    AssetResponse, ExportRequest, ExportResponse, GenerationType, PersonaTrainRequest, PersonaTrainResponse, PromptEnhanceRequest, PromptEnhanceResponse, TrainingStatusResponse,
+    AssetResponse, ExportRequest, ExportResponse, GenerationType, LoraVersionResponse, PersonaTrainRequest, PersonaTrainResponse, PromptEnhanceRequest, PromptEnhanceResponse, TrainingStatusResponse,
 )
 from .store import store
 
@@ -33,6 +33,12 @@ app = FastAPI(
 )
 # Development bootstrap. Production deployments should run Alembic migrations instead.
 Base.metadata.create_all(bind=engine)
+# Lightweight local migration for existing SQLite development databases.
+if "training_runs" in inspect(engine).get_table_names():
+    columns = {column["name"] for column in inspect(engine).get_columns("training_runs")}
+    if "workspace_id" not in columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE training_runs ADD COLUMN workspace_id VARCHAR(36)"))
 
 app.add_middleware(
     CORSMiddleware,
@@ -232,7 +238,7 @@ def create_persona(request: PersonaCreateRequest) -> Persona:
 
 
 @app.post("/api/v1/personas/{persona_id}/train", response_model=PersonaTrainResponse, status_code=202, tags=["personas"])
-def train_persona(persona_id: UUID, request: PersonaTrainRequest, db: Session = Depends(get_db)) -> PersonaTrainResponse:
+def train_persona(persona_id: UUID, request: PersonaTrainRequest, user: User | None = Depends(optional_user), db: Session = Depends(get_db)) -> PersonaTrainResponse:
     persona = store.personas.get(persona_id)
     if not persona:
         raise HTTPException(status_code=404, detail="Persona not found")
@@ -242,11 +248,12 @@ def train_persona(persona_id: UUID, request: PersonaTrainRequest, db: Session = 
         raise HTTPException(status_code=422, detail=str(error)) from error
     persona.status = "training"
     persona.details.reference_asset_ids = request.reference_asset_ids
-    run = TrainingRun(persona_id=str(persona_id), status="queued", progress=0, log="Training plan created")
+    workspace = db.scalar(select(Workspace).where(Workspace.owner_id == user.id)) if user else None
+    run = TrainingRun(persona_id=str(persona_id), workspace_id=workspace.id if workspace else None, status="queued", progress=0, log="Training plan created")
     db.add(run)
     db.commit()
     db.refresh(run)
-    queued = enqueue_lora_training(run.id, str(persona_id), [str(asset_id) for asset_id in request.reference_asset_ids], persona.details.name, request.style)
+    queued = enqueue_lora_training(run.id, str(persona_id), run.workspace_id, [str(asset_id) for asset_id in request.reference_asset_ids], persona.details.name, request.style)
     message = "LoRA training job queued for a GPU worker" if queued else "Training run created; enable Redis and the GPU worker to execute it"
     return PersonaTrainResponse(persona_id=persona_id, run_id=UUID(run.id), status=run.status, progress=run.progress, image_count=plan.image_count, message=message)
 
@@ -257,6 +264,22 @@ def training_status(persona_id: UUID, run_id: UUID, db: Session = Depends(get_db
     if not run or run.persona_id != str(persona_id):
         raise HTTPException(status_code=404, detail="Training run not found")
     return TrainingStatusResponse(run_id=run_id, persona_id=persona_id, status=run.status, progress=run.progress, log=run.log, output_asset_id=run.output_asset_id)
+
+
+@app.get("/api/v1/personas/{persona_id}/loras", response_model=list[LoraVersionResponse], tags=["personas"])
+def list_persona_loras(persona_id: UUID, user: User = Depends(current_user), db: Session = Depends(get_db)) -> list[LoraVersionResponse]:
+    workspace = db.scalar(select(Workspace).where(Workspace.owner_id == user.id))
+    if not workspace:
+        return []
+    runs = db.scalars(select(TrainingRun).where(TrainingRun.persona_id == str(persona_id), TrainingRun.workspace_id == workspace.id, TrainingRun.status == "complete")).all()
+    versions: list[LoraVersionResponse] = []
+    for index, run in enumerate(runs, start=1):
+        if not run.output_asset_id:
+            continue
+        asset = db.get(Asset, run.output_asset_id)
+        if asset:
+            versions.append(LoraVersionResponse(asset_id=asset.id, persona_id=persona_id, name=asset.name, version=f"v{index}", url=storage.signed_url(asset.object_key), created_at=asset.created_at))
+    return versions
 
 
 @app.websocket("/api/v1/personas/{persona_id}/training/events/{run_id}")

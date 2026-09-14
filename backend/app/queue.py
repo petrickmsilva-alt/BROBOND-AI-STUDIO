@@ -59,7 +59,7 @@ def process_generation(self, job_id: str) -> dict[str, str]:
 
 
 @celery_app.task(bind=True, name="brobond.train_lora")
-def train_lora(self, run_id: str, persona_id: str, asset_ids: list[str], identity: str, style: str) -> dict[str, str]:
+def train_lora(self, run_id: str, persona_id: str, workspace_id: str | None, asset_ids: list[str], identity: str, style: str) -> dict[str, str]:
     def update(status: str, progress: int, log: str) -> None:
         with SessionLocal() as db:
             run = db.get(TrainingRun, run_id)
@@ -72,18 +72,30 @@ def train_lora(self, run_id: str, persona_id: str, asset_ids: list[str], identit
         dataset = prepare_dataset(UUID(persona_id), [UUID(asset_id) for asset_id in asset_ids], identity, style)
         update("running", 35, "Dataset and captions prepared")
         output = execute_training(dataset, dataset.parent / "loras")
+        output_asset_id = None
+        if workspace_id:
+            object_key, _ = storage.save_path(str(output), workspace_id, "application/octet-stream")
+            with SessionLocal() as db:
+                asset = Asset(workspace_id=workspace_id, name=output.name, kind="lora", object_key=object_key)
+                db.add(asset)
+                db.flush()
+                run = db.get(TrainingRun, run_id)
+                if run:
+                    run.output_asset_id = asset.id
+                db.commit()
+                output_asset_id = asset.id
         update("complete", 100, f"LoRA adapter created: {output.name}")
-        return {"persona_id": persona_id, "status": "complete", "output": str(output)}
+        return {"persona_id": persona_id, "status": "complete", "output": str(output), "asset_id": output_asset_id or ""}
     except Exception as error:
         update("failed", 100, str(error))
         return {"persona_id": persona_id, "status": "failed", "error": str(error)}
 
 
-def enqueue_lora_training(run_id: str, persona_id: str, asset_ids: list[str], identity: str, style: str) -> bool:
+def enqueue_lora_training(run_id: str, persona_id: str, workspace_id: str | None, asset_ids: list[str], identity: str, style: str) -> bool:
     if not settings.queue_enabled:
         return False
     try:
-        train_lora.delay(run_id, persona_id, asset_ids, identity, style)
+        train_lora.delay(run_id, persona_id, workspace_id, asset_ids, identity, style)
         return True
     except Exception:
         return False

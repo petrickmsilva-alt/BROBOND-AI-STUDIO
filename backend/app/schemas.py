@@ -92,6 +92,15 @@ class TrainingStatusResponse(BaseModel):
     output_asset_id: str | None = None
 
 
+class LoraVersionResponse(BaseModel):
+    asset_id: str
+    persona_id: UUID
+    name: str
+    version: str
+    url: str
+    created_at: datetime
+
+
 class Persona(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     status: Literal["training", "trained", "failed"] = "training"
