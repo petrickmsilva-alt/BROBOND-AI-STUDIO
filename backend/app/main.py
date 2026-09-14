@@ -64,6 +64,7 @@ app.add_middleware(
 
 
 @app.get("/health", tags=["system"])
+@app.get("/api/v1/health", tags=["system"])
 def health() -> dict[str, str]:
     return {"status": "ok", "service": "brobond-api", "mode": "local"}
 
