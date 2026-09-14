@@ -5,6 +5,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_name: str = "BROBOND AI STUDIO API"
     database_url: str = "sqlite:///./brobond.db"
+    redis_url: str = "redis://localhost:6379/0"
+    queue_enabled: bool = False
     jwt_secret: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = 60

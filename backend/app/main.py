@@ -1,13 +1,15 @@
 """FastAPI entrypoint for BROBOND AI STUDIO's local service boundary."""
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
 from .auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse, current_user, login, register
 from .db import Base, engine, get_db
+from .events import hub
 from .models import User
+from .queue import enqueue
 from .schemas import (
     ImageGenerationRequest, Job, JobStatus, Persona, PersonaCreateRequest,
     StoryboardRequest, StoryboardResponse, StoryboardScene, VideoGenerationRequest,
@@ -53,7 +55,10 @@ def get_current_user(user: User = Depends(current_user)) -> UserResponse:
 
 
 def _queue_job(kind: GenerationType, prompt: str) -> Job:
-    return store.add_job(Job(type=kind, prompt=prompt))
+    job = store.add_job(Job(type=kind, prompt=prompt))
+    # Redis/Celery is optional in local development; the job remains inspectable.
+    enqueue(str(job.id))
+    return job
 
 
 @app.post("/api/v1/generations/images", response_model=Job, status_code=202, tags=["generations"])
@@ -74,6 +79,31 @@ def get_job(job_id: UUID) -> Job:
     if not job:
         raise HTTPException(status_code=404, detail="Generation job not found")
     return job
+
+
+@app.post("/api/v1/jobs/{job_id}/cancel", response_model=Job, tags=["queue"])
+def cancel_job(job_id: UUID) -> Job:
+    job = store.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Generation job not found")
+    if job.status in {JobStatus.QUEUED, JobStatus.RUNNING}:
+        job.status = JobStatus.CANCELLED
+    return job
+
+
+@app.websocket("/api/v1/queue/events/{job_id}")
+async def queue_events(websocket: WebSocket, job_id: UUID) -> None:
+    job = store.get_job(job_id)
+    if not job:
+        await websocket.close(code=1008, reason="Generation job not found")
+        return
+    await hub.connect(job_id, websocket)
+    try:
+        await websocket.send_json(job.model_dump(mode="json"))
+        while True:
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        await hub.disconnect(job_id, websocket)
 
 
 @app.post("/api/v1/personas", response_model=Persona, status_code=202, tags=["personas"])
