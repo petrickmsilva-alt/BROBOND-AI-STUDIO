@@ -2,6 +2,18 @@
 
 A local-first generative visual workspace for images, cinematic video, motion control, personas and storyboards.
 
+## Product constitution and Knowledge Base
+
+The product constitution lives in `SYSTEM_PROMPT.md`, `ARCHITECTURE.md`, `STYLE_GUIDE.md` and `ROADMAP.md`. The initial persistent knowledge source is organized under `knowledge_base/`:
+
+- `CINEMATIC_BIBLE.md`
+- `BROBOND_STYLE_GUIDE.md`
+- `CHARACTER_LIBRARY.md`
+- `SHOT_LIBRARY.md`
+- `PROMPT_LIBRARY.md`
+
+These files are versioned design knowledge today. The next Core milestone is migrating them into PostgreSQL-backed, workspace-scoped records while preserving these documents as seed and governance sources.
+
 ## Current slice
 
 The first vertical slice is a polished Next.js dashboard with independent module views:
