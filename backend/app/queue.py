@@ -10,6 +10,7 @@ from celery import Celery
 from .core.config import settings
 from .db import SessionLocal
 from .models import Asset, TrainingRun
+from .preprocessing import preprocessor
 from .schemas import GenerationType, JobStatus
 from .storage import storage
 from .store import store
@@ -85,6 +86,15 @@ def process_generation(self, job_id: str) -> dict[str, str]:
         job.status = JobStatus.FAILED
         return {"job_id": job_id, "status": job.status.value, "error": str(error)}
     return {"job_id": job_id, "status": job.status.value}
+
+
+@celery_app.task(bind=True, name="brobond.preprocess_reference")
+def preprocess_reference(self, source: str, mode: str, destination: str) -> dict[str, str]:
+    try:
+        output = preprocessor.preprocess(source, mode, destination)
+        return {"status": "complete", "mode": mode, "output": output}
+    except Exception as error:
+        return {"status": "failed", "mode": mode, "error": str(error)}
 
 
 @celery_app.task(bind=True, name="brobond.train_lora")
