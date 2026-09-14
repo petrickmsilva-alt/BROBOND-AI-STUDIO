@@ -122,6 +122,10 @@ class AssetResponse(BaseModel):
     created_at: datetime
 
 
+class ConditioningRequest(BaseModel):
+    mode: Literal["edges", "depth", "pose", "tile"]
+
+
 class ExportRequest(BaseModel):
     quality: Literal["720p", "1080p", "2k", "4k"] = "1080p"
     fps: Literal[24, 30] = 24

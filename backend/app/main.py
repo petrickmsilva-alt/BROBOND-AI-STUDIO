@@ -23,7 +23,7 @@ from .system import gpu_info
 from .schemas import (
     ImageGenerationRequest, Job, JobStatus, Persona, PersonaCreateRequest,
     StoryboardRequest, StoryboardResponse, StoryboardScene, VideoGenerationRequest,
-    AssetResponse, ExportRequest, ExportResponse, GenerationType, LoraVersionResponse, PersonaTrainRequest, PersonaTrainResponse, PromptEnhanceRequest, PromptEnhanceResponse, TrainingStatusResponse,
+    AssetResponse, ConditioningRequest, ExportRequest, ExportResponse, GenerationType, LoraVersionResponse, PersonaTrainRequest, PersonaTrainResponse, PromptEnhanceRequest, PromptEnhanceResponse, TrainingStatusResponse,
 )
 from .store import store
 
@@ -210,6 +210,33 @@ def download_local_asset(object_key: str):
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Asset not found")
     return FileResponse(path)
+
+
+@app.post("/api/v1/assets/{asset_id}/conditioning", response_model=AssetResponse, status_code=201, tags=["assets"])
+def create_conditioning_asset(asset_id: str, request: ConditioningRequest, user: User = Depends(current_user), db: Session = Depends(get_db)) -> AssetResponse:
+    workspace = db.scalar(select(Workspace).where(Workspace.owner_id == user.id))
+    asset = db.get(Asset, asset_id)
+    if not workspace or not asset or asset.workspace_id != workspace.id or asset.kind != "image":
+        raise HTTPException(status_code=404, detail="Reference image not found")
+    if settings.storage_enabled:
+        raise HTTPException(status_code=501, detail="MinIO preprocessing adapter is not enabled")
+    if request.mode == "pose":
+        raise HTTPException(status_code=501, detail="OpenPose preprocessing requires the GPU worker")
+    try:
+        from PIL import Image, ImageFilter
+        source = storage.local_path(asset.object_key)
+        image = Image.open(source).convert("RGB")
+        processed = image.convert("L") if request.mode == "depth" else image.filter(ImageFilter.FIND_EDGES) if request.mode == "edges" else image
+        output = source.with_name(f"{source.stem}-{request.mode}.png")
+        processed.save(output, format="PNG")
+        key, url = storage.save_path(str(output), workspace.id, "image/png")
+        derived = Asset(workspace_id=workspace.id, name=f"{asset.name}-{request.mode}.png", kind="image", object_key=key)
+        db.add(derived)
+        db.commit()
+        db.refresh(derived)
+        return AssetResponse(id=derived.id, name=derived.name, kind=derived.kind, object_key=key, url=url, created_at=derived.created_at)
+    except ImportError as error:
+        raise HTTPException(status_code=503, detail="Pillow is required for preprocessing") from error
 
 
 @app.post("/api/v1/assets/{asset_id}/export", response_model=ExportResponse, tags=["exports"])
