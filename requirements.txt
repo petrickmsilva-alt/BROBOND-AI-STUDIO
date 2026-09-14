@@ -3,6 +3,7 @@ uvicorn[standard]==0.30.6
 pydantic-settings==2.5.2
 sqlalchemy==2.0.35
 asyncpg==0.29.0
+psycopg[binary]==3.2.1
 alembic==1.13.3
 redis==5.0.8
 celery==5.4.0

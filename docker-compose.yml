@@ -18,6 +18,36 @@ services:
       MINIO_ROOT_PASSWORD: brobond_local_storage
     ports: ["9000:9000", "9001:9001"]
     volumes: ["minio_data:/data"]
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    environment:
+      BROBOND_DATABASE_URL: postgresql+psycopg://brobond:brobond_local@postgres:5432/brobond
+      BROBOND_REDIS_URL: redis://redis:6379/0
+      BROBOND_QUEUE_ENABLED: "true"
+      BROBOND_STORAGE_ENABLED: "true"
+      BROBOND_MINIO_ENDPOINT: http://minio:9000
+      BROBOND_MINIO_ACCESS_KEY: brobond
+      BROBOND_MINIO_SECRET_KEY: brobond_local_storage
+      BROBOND_JWT_SECRET: change-me-in-compose
+    ports: ["8000:8000"]
+    depends_on: [postgres, redis, minio]
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    command: ["celery", "-A", "app.queue.celery_app", "worker", "--loglevel=info", "--workdir=backend"]
+    environment:
+      BROBOND_DATABASE_URL: postgresql+psycopg://brobond:brobond_local@postgres:5432/brobond
+      BROBOND_REDIS_URL: redis://redis:6379/0
+      BROBOND_QUEUE_ENABLED: "true"
+      BROBOND_STORAGE_ENABLED: "true"
+      BROBOND_MINIO_ENDPOINT: http://minio:9000
+      BROBOND_MINIO_ACCESS_KEY: brobond
+      BROBOND_MINIO_SECRET_KEY: brobond_local_storage
+      BROBOND_JWT_SECRET: change-me-in-compose
+    depends_on: [api]
 volumes:
   postgres_data:
   minio_data:
