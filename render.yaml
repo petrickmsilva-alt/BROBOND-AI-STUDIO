@@ -6,6 +6,13 @@
 #
 # After that, every push to the default branch (main) triggers an automatic
 # deploy of the web service and the API — no extra CI step required.
+#
+# Schema notes (current Blueprint spec, https://render.com/docs/blueprint-spec):
+#   - `autoDeployTrigger: commit` replaces the deprecated `autoDeploy: true`.
+#   - Blueprint `databases` entries have no `type` key: every entry is a managed
+#     PostgreSQL instance by definition.
+#   - `region` is left off the database on purpose: it defaults to `oregon`,
+#     i.e. the same region the two services pin.
 
 services:
   # ---------------------------------------------------------------- Next.js UI
@@ -17,7 +24,7 @@ services:
     buildCommand: npm ci
     startCommand: npm start
     healthCheckPath: /
-    autoDeploy: true
+    autoDeployTrigger: commit
     envVars:
       # NEXT_PUBLIC_* values are baked in at build time. Keep it in sync with
       # the public URL of the API service below ({service-name}.onrender.com).
@@ -32,7 +39,7 @@ services:
     plan: free
     region: oregon
     healthCheckPath: /api/v1/health
-    autoDeploy: true
+    autoDeployTrigger: commit
     envVars:
       # Render injects `postgres://...`; backend/app/core/config.py normalizes
       # it to a SQLAlchemy-compatible `postgresql+psycopg://` URL.
@@ -61,6 +68,8 @@ databases:
   # Redis. When you add a Celery worker, create a Render Redis (dashboard)
   # and set BROBOND_REDIS_URL on the API service manually.
   - name: brobond-studio-db
-    type: postgres
     plan: free
-    region: oregon
+    # Pinned explicitly: omitting it makes Render provision the newest major
+    # version, and the value is immutable after creation (changing it on an
+    # existing database requires recreating the instance).
+    postgresMajorVersion: "16"
