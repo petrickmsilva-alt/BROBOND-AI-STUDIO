@@ -9,7 +9,7 @@ export type Job = {
 
 export type ApiResult<T> = { data: T; remote: boolean };
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
+export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 
 async function request<T>(path: string, init: RequestInit): Promise<ApiResult<T>> {
   try {
@@ -41,6 +41,10 @@ export function createImageJob(payload: Record<string, unknown>) {
 
 export function createVideoJob(payload: Record<string, unknown>) {
   return request<Job>('/api/v1/generations/videos', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export function cancelJob(jobId: string) {
+  return request<Job>(`/api/v1/jobs/${jobId}/cancel`, { method: 'POST', body: JSON.stringify({}) });
 }
 
 export function createPersona(payload: Record<string, unknown>) {

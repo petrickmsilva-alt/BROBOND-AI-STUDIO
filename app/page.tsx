@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Asset, AuthUser, authenticate, createImageJob, createPersona, createVideoJob, expandStoryboard, listAssets, uploadAsset } from '../lib/api';
+import { API_URL, Asset, AuthUser, Job, authenticate, cancelJob, createImageJob, createPersona, createVideoJob, expandStoryboard, listAssets, uploadAsset } from '../lib/api';
 import {
   Aperture, ArrowUpRight, AudioLines, Bell, Box, ChevronDown, CircleHelp, Clapperboard,
   Clock3, Download, Folder, Gauge, Grid2X2, Image as ImageIcon, Layers3, Library,
@@ -96,14 +96,31 @@ function StudioLayout({ type, children, onGenerate }: { type: string; children: 
 function ImageStudio({ prompt, setPrompt, generated, setGenerated }: { prompt: string; setPrompt: (s: string) => void; generated: boolean; setGenerated: (b: boolean) => void }) {
   const [loading, setLoading] = useState(false);
   const [connection, setConnection] = useState('Local preview');
+  const [job, setJob] = useState<Job | null>(null);
+  const [progress, setProgress] = useState(0);
+  useEffect(() => {
+    if (!job?.id) return;
+    const socketUrl = `${API_URL.replace(/^http/, 'ws')}/api/v1/queue/events/${job.id}`;
+    const socket = new WebSocket(socketUrl);
+    socket.onmessage = event => {
+      const next = JSON.parse(event.data) as Job;
+      setJob(next); setProgress(next.progress);
+      setConnection(`Job ${next.status} · ${next.progress}%`);
+      if (next.status === 'complete' || next.status === 'failed' || next.status === 'cancelled') setLoading(false);
+    };
+    socket.onerror = () => setConnection('Job queued · WebSocket unavailable');
+    return () => socket.close();
+  }, [job?.id]);
   const generate = async () => {
     setLoading(true);
     const result = await createImageJob({ prompt, model: 'flux-1.1-pro-ultra', aspect_ratio: '16:9', resolution: '2048', guidance_scale: 7.5, steps: 28 });
     setConnection(result.remote ? `Job ${result.data.id.slice(0, 8)} queued` : 'Local preview');
+    if (result.remote) { setJob(result.data); setProgress(result.data.progress); }
+    else setProgress(100);
     setGenerated(true);
     setLoading(false);
   };
-  return <StudioLayout type="Image" onGenerate={generate}><div className="studio-grid"><div className="control-panel"><div className="panel-heading"><span>Prompt</span><button className="magic-button"><WandSparkles size={14} /> Enhance</button></div><textarea value={prompt} onChange={e => setPrompt(e.target.value)} /><div className="prompt-meta"><span>72 / 2,000</span><button>Reset</button></div><label>Negative prompt <span>Optional</span></label><input placeholder="Things to avoid in your image..." /><div className="form-row"><label>Model<select><option>Flux 1.1 Pro Ultra</option><option>Flux Dev</option></select></label><label>Aspect ratio<select><option>16:9 · Landscape</option><option>1:1 · Square</option><option>9:16 · Portrait</option></select></label></div><div className="form-row"><label>Resolution<select><option>2048 × 1152 · 2K</option><option>1024 × 576 · HD</option><option>4096 × 2304 · 4K</option></select></label><label>Seed<div className="input-with-action"><input value="Random" readOnly /><button><Aperture size={14} /></button></div></label></div><div className="slider-row"><span>Guidance scale <b>7.5</b></span><input type="range" defaultValue="54" /></div><div className="slider-row"><span>Steps <b>28</b></span><input type="range" defaultValue="43" /></div><div className="panel-footer"><button className="secondary-button"><Plus size={15} /> Add LoRA</button><button className="secondary-button"><ImageIcon size={15} /> Reference</button></div></div><div className={`generation-canvas ${generated ? 'has-result' : ''}`}>{generated ? <><div className="result-art"><div className="result-light" /><div className="result-person"><div className="head" /><div className="body" /></div><span className="result-label">FLUX / 2K</span></div><div className="result-toolbar"><span>{loading ? 'Submitting generation...' : `${connection} · ready`}</span><div><button className="icon-button"><Download size={16} /></button><button className="icon-button"><MoreHorizontal size={16} /></button></div></div></> : <div className="empty-canvas"><div className="empty-icon"><Sparkles size={23} /></div><h3>Your canvas is empty</h3><p>Describe an image and hit Generate<br />to bring your idea to life.</p><span>⌘ Enter to generate</span></div>}</div></div></StudioLayout>; }
+  return <StudioLayout type="Image" onGenerate={generate}><div className="studio-grid"><div className="control-panel"><div className="panel-heading"><span>Prompt</span><button className="magic-button"><WandSparkles size={14} /> Enhance</button></div><textarea value={prompt} onChange={e => setPrompt(e.target.value)} /><div className="prompt-meta"><span>72 / 2,000</span><button>Reset</button></div><label>Negative prompt <span>Optional</span></label><input placeholder="Things to avoid in your image..." /><div className="form-row"><label>Model<select><option>Flux 1.1 Pro Ultra</option><option>Flux Dev</option></select></label><label>Aspect ratio<select><option>16:9 · Landscape</option><option>1:1 · Square</option><option>9:16 · Portrait</option></select></label></div><div className="form-row"><label>Resolution<select><option>2048 × 1152 · 2K</option><option>1024 × 576 · HD</option><option>4096 × 2304 · 4K</option></select></label><label>Seed<div className="input-with-action"><input value="Random" readOnly /><button><Aperture size={14} /></button></div></label></div><div className="slider-row"><span>Guidance scale <b>7.5</b></span><input type="range" defaultValue="54" /></div><div className="slider-row"><span>Steps <b>28</b></span><input type="range" defaultValue="43" /></div><div className="panel-footer"><button className="secondary-button"><Plus size={15} /> Add LoRA</button><button className="secondary-button"><ImageIcon size={15} /> Reference</button></div></div><div className={`generation-canvas ${generated ? 'has-result' : ''}`}>{generated ? <><div className="result-art"><div className="result-light" /><div className="result-person"><div className="head" /><div className="body" /></div><span className="result-label">FLUX / 2K</span></div><div className="result-toolbar"><span>{loading ? 'Submitting generation...' : `${connection} · ready`}{loading && <i className="job-progress"><b style={{ width: `${progress}%` }} /></i>}</span><div>{job && (job.status === 'queued' || job.status === 'running') && <button className="cancel-job" onClick={async () => { await cancelJob(job.id); setConnection('Job cancelled'); setLoading(false); }}>Cancel</button>}<button className="icon-button"><Download size={16} /></button><button className="icon-button"><MoreHorizontal size={16} /></button></div></div></> : <div className="empty-canvas"><div className="empty-icon"><Sparkles size={23} /></div><h3>Your canvas is empty</h3><p>Describe an image and hit Generate<br />to bring your idea to life.</p><span>⌘ Enter to generate</span></div>}</div></div></StudioLayout>; }
 
 function VideoStudio() {
   const [connection, setConnection] = useState('Ready to render');
