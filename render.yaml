@@ -21,7 +21,10 @@ services:
     runtime: node
     plan: free
     region: oregon
-    buildCommand: npm ci
+    # `npm ci` alone only installs dependencies: `.next/` is gitignored, so
+    # without `npm run build` the `next start` step dies with
+    # "Could not find a production build in the '.next' directory".
+    buildCommand: npm ci && npm run build
     startCommand: npm start
     healthCheckPath: /
     autoDeployTrigger: commit
