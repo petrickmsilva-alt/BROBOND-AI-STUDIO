@@ -39,8 +39,14 @@ class FluxDiffusersProvider(ImageProvider):
             self._pipeline.enable_model_cpu_offload()
         return self._pipeline
 
+    def _apply_lora(self, pipeline, lora_path: str | None) -> None:
+        if lora_path:
+            pipeline.load_lora_weights(lora_path, adapter_name="brobond_persona")
+            pipeline.set_adapters(["brobond_persona"], adapter_weights=[1.0])
+
     def generate(self, prompt: str, parameters: dict[str, Any], output_dir: str) -> GenerationOutput:
         pipeline = self._load()
+        self._apply_lora(pipeline, parameters.get("lora_path"))
         width, height = _dimensions(parameters.get("aspect_ratio", "16:9"), int(parameters.get("resolution", 1024)))
         image = pipeline(
             prompt=prompt,

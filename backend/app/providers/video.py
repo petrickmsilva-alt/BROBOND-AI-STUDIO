@@ -38,8 +38,14 @@ class WanVideoProvider(VideoProvider):
             self._pipeline.to("cuda")
         return self._pipeline
 
+    def _apply_lora(self, pipeline, lora_path: str | None) -> None:
+        if lora_path:
+            pipeline.load_lora_weights(lora_path, adapter_name="brobond_persona")
+            pipeline.set_adapters(["brobond_persona"], adapter_weights=[1.0])
+
     def generate(self, prompt: str, parameters: dict[str, Any], output_dir: str) -> VideoGenerationOutput:
         pipeline = self._load()
+        self._apply_lora(pipeline, parameters.get("lora_path"))
         fps = int(parameters.get("fps", 24))
         duration = int(parameters.get("duration_seconds", 5))
         width, height = _dimensions(parameters.get("aspect_ratio", "16:9"))

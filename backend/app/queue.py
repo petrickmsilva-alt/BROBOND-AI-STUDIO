@@ -3,6 +3,8 @@
 Workers are intentionally provider-agnostic: model adapters can be plugged into
 `process_generation` without changing the HTTP API.
 """
+from pathlib import Path
+
 from celery import Celery
 
 from .core.config import settings
@@ -32,13 +34,28 @@ def process_generation(self, job_id: str) -> dict[str, str]:
         job.status = JobStatus.COMPLETE
         return {"job_id": job_id, "status": job.status.value, "mode": "orchestration-only"}
     try:
+        lora_path = None
+        lora_id = job.parameters.get("lora_id")
+        workspace_id = job.parameters.get("workspace_id")
+        if lora_id and workspace_id:
+            with SessionLocal() as db:
+                lora_asset = db.get(Asset, str(lora_id))
+            if not lora_asset or lora_asset.kind != "lora" or lora_asset.workspace_id != workspace_id:
+                raise RuntimeError("Selected LoRA adapter is not available in this workspace")
+            if settings.storage_enabled:
+                raise RuntimeError("MinIO LoRA download adapter is required before GPU inference")
+            lora_path = str(storage.local_path(lora_asset.object_key))
+            if not Path(lora_path).is_file():
+                raise RuntimeError("Selected LoRA adapter file is missing")
         if job.type == GenerationType.IMAGE:
             from .providers.image import FluxDiffusersProvider
-            result = FluxDiffusersProvider(model_id=job.parameters.get("model", "black-forest-labs/FLUX.1-dev")).generate(job.prompt, job.parameters, settings.weights_dir)
+            parameters = {**job.parameters, "lora_path": lora_path} if lora_path else job.parameters
+            result = FluxDiffusersProvider(model_id=job.parameters.get("model", "black-forest-labs/FLUX.1-dev")).generate(job.prompt, parameters, settings.weights_dir)
             output_type, content_type, extension = "image", "image/png", "png"
         else:
             from .providers.video import WanVideoProvider
-            result = WanVideoProvider(model_id=settings.video_model_id).generate(job.prompt, job.parameters, settings.weights_dir)
+            parameters = {**job.parameters, "lora_path": lora_path} if lora_path else job.parameters
+            result = WanVideoProvider(model_id=settings.video_model_id).generate(job.prompt, parameters, settings.weights_dir)
             output_type, content_type, extension = "video", "video/mp4", "mp4"
         workspace_id = job.parameters.get("workspace_id")
         if workspace_id:
