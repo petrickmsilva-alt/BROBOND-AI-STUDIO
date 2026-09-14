@@ -28,4 +28,7 @@ def test_storyboard_expands_into_requested_scenes() -> None:
         json={"brief": "A man walking through a future city", "scene_count": 4},
     )
     assert response.status_code == 200
-    assert len(response.json()["scenes"]) == 4
+    body = response.json()
+    assert len(body["scenes"]) == 4
+    assert "cinematic" in body["scenes"][0]["prompt"]
+    assert "wide establishing shot" in body["scenes"][0]["prompt"]

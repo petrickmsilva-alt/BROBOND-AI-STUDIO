@@ -164,12 +164,17 @@ function PersonaStudio() {
 
 function Storyboard() {
   const [status, setStatus] = useState('4 scenes');
+  const [scenes, setScenes] = useState(['The arrival', 'Through the city', 'A different sky', 'Beyond the light']);
   const generate = async () => {
     setStatus('Expanding brief...');
-    const result = await expandStoryboard({ brief: 'A man walking through a futuristic city, searching for a light beyond the skyline.', scene_count: 4 });
+    const result = await expandStoryboard({ brief: 'A man walking through a futuristic city, searching for a light beyond the skyline.', scene_count: 4, persona: 'Brazilian athletic man, consistent identity', style: 'cinematic realism', camera_language: 'continuous forward movement' });
+    if (result.remote) {
+      const generatedScenes = (result.data.scenes as { title: string }[]).map(scene => scene.title);
+      setScenes(generatedScenes);
+    }
     setStatus(result.remote ? '4 scenes · API generated' : '4 scenes · local preview');
   };
-  return <><PageHeader eyebrow="STORYBOARD" title="Shape the whole story" description="Break an idea into a sequence of cinematic scenes before you render."><button className="primary-button" onClick={generate}><Sparkles size={16} /> Generate scenes</button></PageHeader><div className="story-input control-panel"><div className="panel-heading"><span>Story brief</span><button className="magic-button"><WandSparkles size={14} /> Expand brief</button></div><textarea defaultValue="A man walking through a futuristic city, searching for a light beyond the skyline." /><div className="story-options"><span>{status}</span><span>·</span><span>Connected narrative</span><button className="secondary-button">Regenerate</button></div></div><div className="scene-grid">{['The arrival','Through the city','A different sky','Beyond the light'].map((scene, i) => <div className="scene-card" key={scene}><div className={`scene-visual scene-${i}`}><span>SCENE {String(i + 1).padStart(2,'0')}</span><button className="play-overlay"><Play size={13} fill="currentColor" /></button></div><div className="scene-copy"><div><h3>{scene}</h3><p>{['Wide establishing shot · 5s','Tracking shot · 5s','Low angle · 5s','Final close-up · 5s'][i]}</p></div><MoreHorizontal size={17} /></div></div>)}</div></>; }
+  return <><PageHeader eyebrow="STORYBOARD" title="Shape the whole story" description="Break an idea into a sequence of cinematic scenes before you render."><button className="primary-button" onClick={generate}><Sparkles size={16} /> Generate scenes</button></PageHeader><div className="story-input control-panel"><div className="panel-heading"><span>Story brief</span><button className="magic-button"><WandSparkles size={14} /> Expand brief</button></div><textarea defaultValue="A man walking through a futuristic city, searching for a light beyond the skyline." /><div className="story-options"><span>{status}</span><span>·</span><span>Connected narrative</span><button className="secondary-button">Regenerate</button></div></div><div className="scene-grid">{scenes.map((scene, i) => <div className="scene-card" key={scene}><div className={`scene-visual scene-${i}`}><span>SCENE {String(i + 1).padStart(2,'0')}</span><button className="play-overlay"><Play size={13} fill="currentColor" /></button></div><div className="scene-copy"><div><h3>{scene}</h3><p>{['Wide establishing shot · 5s','Tracking shot · 5s','Low angle · 5s','Final close-up · 5s'][i]}</p></div><MoreHorizontal size={17} /></div></div>)}</div></>; }
 
 function Assets() {
   const [assets, setAssets] = useState<Asset[]>([]);

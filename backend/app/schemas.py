@@ -116,6 +116,9 @@ class PromptEnhanceResponse(BaseModel):
 class StoryboardRequest(BaseModel):
     brief: str = Field(min_length=1, max_length=4000)
     scene_count: int = Field(default=4, ge=2, le=12)
+    persona: str | None = Field(default=None, max_length=200)
+    style: str = Field(default="cinematic realism", max_length=120)
+    camera_language: str = Field(default="coherent camera movement", max_length=200)
 
 
 class StoryboardScene(BaseModel):

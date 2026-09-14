@@ -231,15 +231,13 @@ def create_persona(request: PersonaCreateRequest) -> Persona:
 
 @app.post("/api/v1/storyboards/expand", response_model=StoryboardResponse, tags=["storyboards"])
 def expand_storyboard(request: StoryboardRequest) -> StoryboardResponse:
-    """Create deterministic scene prompts until an LLM prompt engine is configured."""
-    scenes = [
-        StoryboardScene(
-            number=index,
-            title=f"Scene {index}",
-            prompt=f"{request.brief}. Cinematic sequence {index} of {request.scene_count}, coherent visual continuity, cinematic lighting.",
-        )
-        for index in range(1, request.scene_count + 1)
-    ]
+    """Expand a brief into connected, independently renderable scene prompts."""
+    camera_progression = ["wide establishing shot", "tracking medium shot", "low angle push-in", "intimate close-up"]
+    scenes = []
+    for index in range(1, request.scene_count + 1):
+        camera = f"{camera_progression[(index - 1) % len(camera_progression)]}, {request.camera_language}"
+        prompt = prompt_engine.enhance(request.brief, style=request.style, persona=request.persona, camera=camera, lighting="consistent blue-hour lighting across the sequence")
+        scenes.append(StoryboardScene(number=index, title=f"Scene {index:02d}", prompt=f"{prompt} Continuity beat {index} of {request.scene_count}.", duration_seconds=5))
     return StoryboardResponse(brief=request.brief, scenes=scenes)
 
 
