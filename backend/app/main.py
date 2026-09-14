@@ -42,6 +42,15 @@ if "training_runs" in inspect(engine).get_table_names():
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE training_runs ADD COLUMN workspace_id VARCHAR(36)"))
 
+@app.middleware("http")
+async def security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],

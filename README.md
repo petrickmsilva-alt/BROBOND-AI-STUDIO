@@ -70,3 +70,14 @@ Each generation should become a persisted job, be processed by Celery workers, a
 4. Add MinIO signed upload/download URLs and FFmpeg export pipeline.
 5. Replace local UI simulation with WebSocket job updates and real provider adapters.
 6. Add unit/API tests and local Docker profiles.
+
+## Validation
+
+The repository includes backend and frontend CI in `.github/workflows/ci.yml`. Run the full local validation with:
+
+```bash
+PYTHONPATH=backend .venv/bin/python -m pytest backend/tests -q
+npm run build
+```
+
+The end-to-end backend test covers registration, authenticated upload, generation job creation, storyboard expansion and asset listing.
