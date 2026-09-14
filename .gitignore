@@ -1,0 +1,14 @@
+node_modules
+.next
+out
+.env
+.env.local
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.DS_Store
+coverage
+uploads
+models
+storage

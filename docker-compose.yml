@@ -1,0 +1,52 @@
+services:
+  api:
+    build:
+      context: ./backend
+    environment:
+      ENVIRONMENT: development
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+asyncpg://brobond:brobond@postgres:5432/brobond
+      MINIO_ENDPOINT: minio:9000
+      MINIO_BUCKET: brobond-assets
+      CORS_ORIGINS: http://localhost:3000
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/app:/app/app
+      - ./storage:/app/storage
+    depends_on:
+      - postgres
+      - redis
+      - minio
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: brobond
+      POSTGRES_PASSWORD: brobond
+      POSTGRES_DB: brobond
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: brobond
+      MINIO_ROOT_PASSWORD: brobond-local
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+volumes:
+  postgres_data:
+  minio_data:
