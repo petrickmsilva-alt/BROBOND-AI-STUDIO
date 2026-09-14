@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     queue_enabled: bool = False
     storage_enabled: bool = False
     inference_enabled: bool = False
+    video_model_id: str = "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
     weights_dir: str = "weights"
     minio_endpoint: str = "http://localhost:9000"
     minio_access_key: str = "brobond"

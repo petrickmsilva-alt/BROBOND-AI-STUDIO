@@ -63,6 +63,14 @@ def image_models() -> list[dict[str, str]]:
     ]
 
 
+@app.get("/api/v1/models/video", tags=["models"])
+def video_models() -> list[dict[str, str]]:
+    return [
+        {"id": "wan-2.1-t2v", "label": "Wan 2.1 Text to Video", "status": "local-provider"},
+        {"id": "hunyuan-video", "label": "Hunyuan Video", "status": "planned-provider"},
+    ]
+
+
 @app.post("/api/v1/auth/register", response_model=TokenResponse, status_code=201, tags=["auth"])
 def register_user(request: RegisterRequest, db: Session = Depends(get_db)) -> TokenResponse:
     return register(request, db)

@@ -34,15 +34,21 @@ def process_generation(self, job_id: str) -> dict[str, str]:
         if job.type == GenerationType.IMAGE:
             from .providers.image import FluxDiffusersProvider
             result = FluxDiffusersProvider(model_id=job.parameters.get("model", "black-forest-labs/FLUX.1-dev")).generate(job.prompt, job.parameters, settings.weights_dir)
+            output_type, content_type, extension = "image", "image/png", "png"
+        else:
+            from .providers.video import WanVideoProvider
+            result = WanVideoProvider(model_id=settings.video_model_id).generate(job.prompt, job.parameters, settings.weights_dir)
+            output_type, content_type, extension = "video", "video/mp4", "mp4"
+        workspace_id = job.parameters.get("workspace_id")
+        if workspace_id:
+            object_key, url = storage.save_path(result.path, workspace_id, content_type)
+            with SessionLocal() as db:
+                asset = Asset(workspace_id=workspace_id, name=f"{job.id}.{extension}", kind=output_type, object_key=object_key)
+                db.add(asset)
+                db.commit()
+            job.output_url = url
+        else:
             job.output_url = result.path
-            workspace_id = job.parameters.get("workspace_id")
-            if workspace_id:
-                object_key, url = storage.save_path(result.path, workspace_id, "image/png")
-                with SessionLocal() as db:
-                    asset = Asset(workspace_id=workspace_id, name=f"{job.id}.png", kind="image", object_key=object_key)
-                    db.add(asset)
-                    db.commit()
-                job.output_url = url
         job.progress = 100
         job.status = JobStatus.COMPLETE
     except Exception as error:

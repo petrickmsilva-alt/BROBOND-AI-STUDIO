@@ -21,7 +21,7 @@ Storage mode is local by default: uploaded files are written to `media/` and exp
 
 Image inference is orchestration-only by default. On a CUDA worker, install `requirements-gpu.txt`, set `BROBOND_INFERENCE_ENABLED=true`, and use the Celery worker. The FLUX provider then loads weights from `BROBOND_WEIGHTS_DIR`, uploads generated output through the active storage adapter, creates an `Asset` record, and exposes the final URL on the job. Authenticated generation requests carry the user's workspace into this output pipeline.
 
-FFmpeg capability is exposed at `GET /api/v1/system/media`. Local video assets can be exported to H.264 MP4 with `POST /api/v1/assets/{asset_id}/export` using `quality` (`720p`, `1080p`, `2k`, `4k`) and `fps` (`24` or `30`).
+FFmpeg capability is exposed at `GET /api/v1/system/media`. Local video assets can be exported to H.264 MP4 with `POST /api/v1/assets/{asset_id}/export` using `quality` (`720p`, `1080p`, `2k`, `4k`) and `fps` (`24` or `30`). Video model options are exposed at `GET /api/v1/models/video`. For local Wan inference, install `requirements-video-gpu.txt`; the Celery worker will use `BROBOND_VIDEO_MODEL_ID` and persist the resulting MP4 as a workspace Asset.
 
 ## Test
 
