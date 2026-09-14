@@ -15,7 +15,7 @@ from .lora import lora_trainer
 from .media import MediaError, media
 from .models import Asset, User, Workspace
 from .prompt_engine import prompt_engine
-from .queue import enqueue
+from .queue import enqueue, enqueue_lora_training
 from .storage import storage
 from .system import gpu_info
 from .schemas import (
@@ -241,7 +241,9 @@ def train_persona(persona_id: UUID, request: PersonaTrainRequest) -> PersonaTrai
         raise HTTPException(status_code=422, detail=str(error)) from error
     persona.status = "training"
     persona.details.reference_asset_ids = request.reference_asset_ids
-    return PersonaTrainResponse(persona_id=persona_id, status="queued", image_count=plan.image_count, message="LoRA training job queued for a GPU worker")
+    queued = enqueue_lora_training(str(persona_id), [str(asset_id) for asset_id in request.reference_asset_ids], persona.details.name, request.style)
+    message = "LoRA training job queued for a GPU worker" if queued else "LoRA training plan created; enable Redis and the GPU worker to execute it"
+    return PersonaTrainResponse(persona_id=persona_id, status="queued", image_count=plan.image_count, message=message)
 
 
 @app.post("/api/v1/storyboards/expand", response_model=StoryboardResponse, tags=["storyboards"])

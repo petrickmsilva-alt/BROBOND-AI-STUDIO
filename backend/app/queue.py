@@ -11,6 +11,7 @@ from .models import Asset
 from .schemas import GenerationType, JobStatus
 from .storage import storage
 from .store import store
+from .training import execute_training, prepare_dataset
 
 redis_url = getattr(settings, "redis_url", "redis://localhost:6379/0")
 celery_app = Celery("brobond", broker=redis_url, backend=redis_url)
@@ -55,6 +56,27 @@ def process_generation(self, job_id: str) -> dict[str, str]:
         job.status = JobStatus.FAILED
         return {"job_id": job_id, "status": job.status.value, "error": str(error)}
     return {"job_id": job_id, "status": job.status.value}
+
+
+@celery_app.task(bind=True, name="brobond.train_lora")
+def train_lora(self, persona_id: str, asset_ids: list[str], identity: str, style: str) -> dict[str, str]:
+    try:
+        from uuid import UUID
+        dataset = prepare_dataset(UUID(persona_id), [UUID(asset_id) for asset_id in asset_ids], identity, style)
+        output = execute_training(dataset, dataset.parent / "loras")
+        return {"persona_id": persona_id, "status": "complete", "output": str(output)}
+    except Exception as error:
+        return {"persona_id": persona_id, "status": "failed", "error": str(error)}
+
+
+def enqueue_lora_training(persona_id: str, asset_ids: list[str], identity: str, style: str) -> bool:
+    if not settings.queue_enabled:
+        return False
+    try:
+        train_lora.delay(persona_id, asset_ids, identity, style)
+        return True
+    except Exception:
+        return False
 
 
 def enqueue(job_id: str) -> bool:

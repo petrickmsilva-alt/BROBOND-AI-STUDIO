@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     queue_enabled: bool = False
     storage_enabled: bool = False
     inference_enabled: bool = False
+    training_enabled: bool = False
+    lora_trainer_command: str = ""
     video_model_id: str = "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
     weights_dir: str = "weights"
     minio_endpoint: str = "http://localhost:9000"
