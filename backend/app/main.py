@@ -1,19 +1,23 @@
 """FastAPI entrypoint for BROBOND AI STUDIO's local service boundary."""
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse, current_user, login, register
+from .core.config import settings
 from .db import Base, engine, get_db
 from .events import hub
-from .models import User
+from .models import Asset, User, Workspace
 from .queue import enqueue
+from .storage import storage
 from .schemas import (
     ImageGenerationRequest, Job, JobStatus, Persona, PersonaCreateRequest,
     StoryboardRequest, StoryboardResponse, StoryboardScene, VideoGenerationRequest,
-    GenerationType,
+    AssetResponse, GenerationType,
 )
 from .store import store
 
@@ -104,6 +108,50 @@ async def queue_events(websocket: WebSocket, job_id: UUID) -> None:
             await websocket.receive_text()
     except WebSocketDisconnect:
         await hub.disconnect(job_id, websocket)
+
+
+@app.post("/api/v1/assets/upload", response_model=AssetResponse, status_code=201, tags=["assets"])
+async def upload_asset(
+    file: UploadFile = File(...),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> AssetResponse:
+    """Upload an asset to MinIO or the local media adapter."""
+    allowed = {"image/", "video/", "audio/"}
+    if not file.content_type or not any(file.content_type.startswith(prefix) for prefix in allowed):
+        raise HTTPException(status_code=415, detail="Only image, video and audio files are supported")
+    workspace = db.scalar(select(Workspace).where(Workspace.owner_id == user.id))
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    key, url = await storage.save(file, workspace.id)
+    kind = file.content_type.split("/", 1)[0]
+    asset = Asset(workspace_id=workspace.id, name=file.filename or "upload", kind=kind, object_key=key)
+    db.add(asset)
+    db.commit()
+    db.refresh(asset)
+    return AssetResponse(id=asset.id, name=asset.name, kind=asset.kind, object_key=asset.object_key, url=url, created_at=asset.created_at)
+
+
+@app.get("/api/v1/assets", response_model=list[AssetResponse], tags=["assets"])
+def list_assets(user: User = Depends(current_user), db: Session = Depends(get_db)) -> list[AssetResponse]:
+    workspace = db.scalar(select(Workspace).where(Workspace.owner_id == user.id))
+    if not workspace:
+        return []
+    assets = db.scalars(select(Asset).where(Asset.workspace_id == workspace.id).order_by(Asset.created_at.desc())).all()
+    return [AssetResponse(id=a.id, name=a.name, kind=a.kind, object_key=a.object_key, url=storage.signed_url(a.object_key), created_at=a.created_at) for a in assets]
+
+
+@app.get("/api/v1/assets/download/{object_key:path}", tags=["assets"])
+def download_local_asset(object_key: str):
+    if settings.storage_enabled:
+        raise HTTPException(status_code=404, detail="Use the signed MinIO URL")
+    try:
+        path = storage.local_path(object_key)
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail="Invalid asset path") from error
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Asset not found")
+    return FileResponse(path)
 
 
 @app.post("/api/v1/personas", response_model=Persona, status_code=202, tags=["personas"])

@@ -76,6 +76,15 @@ class Persona(BaseModel):
     details: PersonaCreateRequest
 
 
+class AssetResponse(BaseModel):
+    id: str
+    name: str
+    kind: str
+    object_key: str
+    url: str
+    created_at: datetime
+
+
 class StoryboardRequest(BaseModel):
     brief: str = Field(min_length=1, max_length=4000)
     scene_count: int = Field(default=4, ge=2, le=12)
