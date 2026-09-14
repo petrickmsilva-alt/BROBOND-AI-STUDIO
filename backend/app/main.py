@@ -11,6 +11,7 @@ from .auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse, cu
 from .core.config import settings
 from .db import Base, engine, get_db
 from .events import hub
+from .media import MediaError, media
 from .models import Asset, User, Workspace
 from .queue import enqueue
 from .storage import storage
@@ -18,7 +19,7 @@ from .system import gpu_info
 from .schemas import (
     ImageGenerationRequest, Job, JobStatus, Persona, PersonaCreateRequest,
     StoryboardRequest, StoryboardResponse, StoryboardScene, VideoGenerationRequest,
-    AssetResponse, GenerationType,
+    AssetResponse, ExportRequest, ExportResponse, GenerationType,
 )
 from .store import store
 
@@ -47,6 +48,11 @@ def health() -> dict[str, str]:
 @app.get("/api/v1/system/gpu", tags=["system"])
 def system_gpu() -> dict:
     return gpu_info()
+
+
+@app.get("/api/v1/system/media", tags=["system"])
+def system_media() -> dict[str, object]:
+    return media.capabilities()
 
 
 @app.get("/api/v1/models/image", tags=["models"])
@@ -175,6 +181,31 @@ def download_local_asset(object_key: str):
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Asset not found")
     return FileResponse(path)
+
+
+@app.post("/api/v1/assets/{asset_id}/export", response_model=ExportResponse, tags=["exports"])
+def export_video(asset_id: str, request: ExportRequest, user: User = Depends(current_user), db: Session = Depends(get_db)) -> ExportResponse:
+    if not media.available:
+        raise HTTPException(status_code=503, detail="FFmpeg is not installed on this worker")
+    workspace = db.scalar(select(Workspace).where(Workspace.owner_id == user.id))
+    asset = db.get(Asset, asset_id)
+    if not workspace or not asset or asset.workspace_id != workspace.id:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    if asset.kind != "video":
+        raise HTTPException(status_code=422, detail="Only video assets can be exported")
+    if settings.storage_enabled:
+        raise HTTPException(status_code=501, detail="MinIO source download adapter is not enabled for exports yet")
+    try:
+        source = str(storage.local_path(asset.object_key))
+        destination = str(storage.local_path(f"{workspace.id}/exports/{asset.id}-{request.quality}.mp4"))
+        media.export_h264(source, destination, request.quality, request.fps)
+        output_key = f"{workspace.id}/exports/{asset.id}-{request.quality}.mp4"
+        output_asset = Asset(workspace_id=workspace.id, name=f"{asset.name}-{request.quality}.mp4", kind="video", object_key=output_key)
+        db.add(output_asset)
+        db.commit()
+        return ExportResponse(asset_id=output_asset.id, status="complete", output_url=storage.signed_url(output_key), message="H.264 export complete")
+    except MediaError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
 
 
 @app.post("/api/v1/personas", response_model=Persona, status_code=202, tags=["personas"])

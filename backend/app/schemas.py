@@ -86,6 +86,19 @@ class AssetResponse(BaseModel):
     created_at: datetime
 
 
+class ExportRequest(BaseModel):
+    quality: Literal["720p", "1080p", "2k", "4k"] = "1080p"
+    fps: Literal[24, 30] = 24
+    format: Literal["mp4"] = "mp4"
+
+
+class ExportResponse(BaseModel):
+    asset_id: str
+    status: str
+    output_url: str | None = None
+    message: str
+
+
 class StoryboardRequest(BaseModel):
     brief: str = Field(min_length=1, max_length=4000)
     scene_count: int = Field(default=4, ge=2, le=12)
