@@ -64,9 +64,14 @@ export function expandStoryboard(payload: Record<string, unknown>) {
 }
 
 export type Asset = { id: string; name: string; kind: string; object_key: string; url: string; created_at: string };
+export type LoraVersion = { asset_id: string; persona_id: string; name: string; version: string; url: string; created_at: string };
 
 export function listAssets() {
   return request<Asset[]>('/api/v1/assets', { method: 'GET' });
+}
+
+export function listPersonaLoras(personaId: string) {
+  return request<LoraVersion[]>(`/api/v1/personas/${personaId}/loras`, { method: 'GET' });
 }
 
 export async function uploadAsset(file: File): Promise<ApiResult<Asset>> {

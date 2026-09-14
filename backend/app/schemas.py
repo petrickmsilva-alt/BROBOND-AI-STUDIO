@@ -54,6 +54,7 @@ class VideoGenerationRequest(BaseModel):
     cinematic_mode: bool = True
     slow_motion: bool = False
     native_audio: bool = False
+    lora_id: UUID | None = None
     reference_asset_id: UUID | None = None
 
 
