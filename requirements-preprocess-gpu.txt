@@ -1,0 +1,4 @@
+# Optional GPU preprocessing profile.
+-r requirements-gpu.txt
+controlnet-aux>=0.0.7
+opencv-python-headless>=4.10.0

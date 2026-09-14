@@ -1,0 +1,5 @@
+# Optional profile for Wan/Hunyuan video workers.
+# Install a torch build matching the host CUDA driver first.
+-r requirements-gpu.txt
+imageio>=2.35.1
+imageio-ffmpeg>=0.5.1
