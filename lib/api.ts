@@ -13,9 +13,10 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
 
 async function request<T>(path: string, init: RequestInit): Promise<ApiResult<T>> {
   try {
+    const token = typeof window !== 'undefined' ? window.localStorage.getItem('brobond_access_token') : null;
     const response = await fetch(`${API_URL}${path}`, {
       ...init,
-      headers: { 'Content-Type': 'application/json', ...(init.headers ?? {}) },
+      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(init.headers ?? {}) },
       signal: AbortSignal.timeout(2200),
     });
     if (!response.ok) throw new Error(`API ${response.status}`);
@@ -40,4 +41,27 @@ export function createPersona(payload: Record<string, unknown>) {
 
 export function expandStoryboard(payload: Record<string, unknown>) {
   return request<Record<string, unknown>>('/api/v1/storyboards/expand', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+export type Asset = { id: string; name: string; kind: string; object_key: string; url: string; created_at: string };
+
+export function listAssets() {
+  return request<Asset[]>('/api/v1/assets', { method: 'GET' });
+}
+
+export async function uploadAsset(file: File): Promise<ApiResult<Asset>> {
+  try {
+    const token = typeof window !== 'undefined' ? window.localStorage.getItem('brobond_access_token') : null;
+    const form = new FormData();
+    form.append('file', file);
+    const response = await fetch(`${API_URL}/api/v1/assets/upload`, {
+      method: 'POST', body: form,
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!response.ok) throw new Error(`API ${response.status}`);
+    return { data: await response.json() as Asset, remote: true };
+  } catch {
+    return { data: null as unknown as Asset, remote: false };
+  }
 }

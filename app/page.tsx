@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
-import { createImageJob, createPersona, createVideoJob, expandStoryboard } from '../lib/api';
+import { useEffect, useState } from 'react';
+import { Asset, createImageJob, createPersona, createVideoJob, expandStoryboard, listAssets, uploadAsset } from '../lib/api';
 import {
   Aperture, ArrowUpRight, AudioLines, Bell, Box, ChevronDown, CircleHelp, Clapperboard,
   Clock3, Download, Folder, Gauge, Grid2X2, Image as ImageIcon, Layers3, Library,
@@ -113,4 +113,20 @@ function Storyboard() {
   };
   return <><PageHeader eyebrow="STORYBOARD" title="Shape the whole story" description="Break an idea into a sequence of cinematic scenes before you render."><button className="primary-button" onClick={generate}><Sparkles size={16} /> Generate scenes</button></PageHeader><div className="story-input control-panel"><div className="panel-heading"><span>Story brief</span><button className="magic-button"><WandSparkles size={14} /> Expand brief</button></div><textarea defaultValue="A man walking through a futuristic city, searching for a light beyond the skyline." /><div className="story-options"><span>{status}</span><span>·</span><span>Connected narrative</span><button className="secondary-button">Regenerate</button></div></div><div className="scene-grid">{['The arrival','Through the city','A different sky','Beyond the light'].map((scene, i) => <div className="scene-card" key={scene}><div className={`scene-visual scene-${i}`}><span>SCENE {String(i + 1).padStart(2,'0')}</span><button className="play-overlay"><Play size={13} fill="currentColor" /></button></div><div className="scene-copy"><div><h3>{scene}</h3><p>{['Wide establishing shot · 5s','Tracking shot · 5s','Low angle · 5s','Final close-up · 5s'][i]}</p></div><MoreHorizontal size={17} /></div></div>)}</div></>; }
 
-function Assets() { return <><PageHeader eyebrow="LIBRARY" title="Your creative archive" description="Everything you make, in one calm place."><button className="primary-button"><Plus size={17} /> Upload assets</button></PageHeader><div className="asset-tabs"><button className="active">All assets <span>128</span></button><button>Images <span>84</span></button><button>Videos <span>24</span></button><button>Personas <span>2</span></button><button>Audio <span>18</span></button></div><div className="asset-grid">{['Neon portrait','City motion','Golden hour','Persona reference','The horizon','Studio test'].map((x,i) => <div className="asset-item" key={x}><div className={`asset-image asset-${i}`}><span>{i % 2 ? <Clapperboard size={18} /> : <ImageIcon size={18} />}</span></div><div><strong>{x}</strong><small>{i % 2 ? 'Video · 24 MB' : 'Image · 4.2 MB'}</small></div><MoreHorizontal size={16} /></div>)}</div></>; }
+function Assets() {
+  const [assets, setAssets] = useState<Asset[]>([]);
+  const [remote, setRemote] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  useEffect(() => { listAssets().then(result => { setRemote(result.remote); if (result.remote) setAssets(result.data); }); }, []);
+  const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    const result = await uploadAsset(file);
+    if (result.remote) { setAssets(current => [result.data, ...current]); setRemote(true); }
+    setUploading(false);
+    event.target.value = '';
+  };
+  const demoAssets = ['Neon portrait','City motion','Golden hour','Persona reference','The horizon','Studio test'];
+  return <><PageHeader eyebrow="LIBRARY" title="Your creative archive" description="Everything you make, in one calm place."><label className="primary-button upload-label"><Plus size={17} /> {uploading ? 'Uploading...' : 'Upload assets'}<input type="file" accept="image/*,video/*,audio/*" onChange={handleUpload} /></label></PageHeader><div className="asset-tabs"><button className="active">All assets <span>{remote ? assets.length : 128}</span></button><button>Images <span>84</span></button><button>Videos <span>24</span></button><button>Personas <span>2</span></button><button>Audio <span>18</span></button></div>{remote && assets.length === 0 ? <div className="empty-library"><Library size={22} /><h3>Your library is empty</h3><p>Upload a reference or generate your first asset.</p></div> : <div className="asset-grid">{(remote ? assets : demoAssets).map((item, i) => { const asset = typeof item === 'string' ? null : item; const title = asset?.name ?? item as string; return <div className="asset-item" key={asset?.id ?? title}><div className={`asset-image asset-${i % 6}`} style={asset ? { backgroundImage: `url(${asset.url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}><span>{asset?.kind === 'video' ? <Clapperboard size={18} /> : <ImageIcon size={18} />}</span></div><div><strong>{title}</strong><small>{asset ? `${asset.kind} · synced` : i % 2 ? 'Video · 24 MB' : 'Image · 4.2 MB'}</small></div><MoreHorizontal size={16} /></div>; })}</div>}</>;
+}
