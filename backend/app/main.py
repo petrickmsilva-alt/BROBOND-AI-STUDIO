@@ -7,7 +7,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse, current_user, login, register
+from .auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse, current_user, login, optional_user, register
 from .core.config import settings
 from .db import Base, engine, get_db
 from .events import hub
@@ -79,16 +79,25 @@ def _queue_job(kind: GenerationType, prompt: str, parameters: dict | None = None
     return job
 
 
+def _generation_parameters(request: ImageGenerationRequest | VideoGenerationRequest, user: User | None, db: Session) -> dict:
+    parameters = request.model_dump(mode="json")
+    if user:
+        workspace = db.scalar(select(Workspace).where(Workspace.owner_id == user.id))
+        if workspace:
+            parameters["workspace_id"] = workspace.id
+    return parameters
+
+
 @app.post("/api/v1/generations/images", response_model=Job, status_code=202, tags=["generations"])
-def create_image_generation(request: ImageGenerationRequest) -> Job:
-    """Create an image job. A Celery provider will consume this job in production."""
-    return _queue_job(GenerationType.IMAGE, request.prompt, request.model_dump(mode="json"))
+def create_image_generation(request: ImageGenerationRequest, user: User | None = Depends(optional_user), db: Session = Depends(get_db)) -> Job:
+    """Create an image job. Authenticated jobs are persisted to the user's asset library."""
+    return _queue_job(GenerationType.IMAGE, request.prompt, _generation_parameters(request, user, db))
 
 
 @app.post("/api/v1/generations/videos", response_model=Job, status_code=202, tags=["generations"])
-def create_video_generation(request: VideoGenerationRequest) -> Job:
+def create_video_generation(request: VideoGenerationRequest, user: User | None = Depends(optional_user), db: Session = Depends(get_db)) -> Job:
     """Create an H.264 video job for the configured video provider."""
-    return _queue_job(GenerationType.VIDEO, request.prompt, request.model_dump(mode="json"))
+    return _queue_job(GenerationType.VIDEO, request.prompt, _generation_parameters(request, user, db))
 
 
 @app.get("/api/v1/jobs/{job_id}", response_model=Job, tags=["generations"])

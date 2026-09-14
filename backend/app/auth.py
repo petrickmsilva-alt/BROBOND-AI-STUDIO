@@ -17,6 +17,7 @@ from .db import get_db
 from .models import User, Workspace
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
+optional_oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login", auto_error=False)
 
 
 class RegisterRequest(BaseModel):
@@ -63,6 +64,17 @@ def _verify_password(password: str, password_hash: str) -> bool:
 def _token_for(user: User) -> str:
     expires = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_minutes)
     return jwt.encode({"sub": user.id, "exp": expires}, settings.jwt_secret, algorithm=settings.jwt_algorithm)
+
+
+def optional_user(token: str | None = Depends(optional_oauth2_scheme), db: Session = Depends(get_db)) -> User | None:
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+        user_id = payload.get("sub")
+        return db.get(User, user_id) if user_id else None
+    except jwt.PyJWTError:
+        return None
 
 
 def current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)) -> User:

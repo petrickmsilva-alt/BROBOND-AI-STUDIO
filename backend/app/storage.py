@@ -36,6 +36,18 @@ class StorageService:
         destination.write_bytes(await file.read())
         return key, f"/api/v1/assets/download/{key}"
 
+    def save_path(self, source: str, workspace_id: str, content_type: str = "image/png") -> tuple[str, str]:
+        """Persist a generated file and return its object key and access URL."""
+        source_path = Path(source)
+        key = self._key(source_path.name, workspace_id)
+        if settings.storage_enabled:
+            self.client.upload_file(str(source_path), settings.minio_bucket, key, ExtraArgs={"ContentType": content_type})
+            return key, self.signed_url(key)
+        destination = self.local_root / key
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(source_path.read_bytes())
+        return key, f"/api/v1/assets/download/{key}"
+
     def signed_url(self, key: str) -> str:
         if settings.storage_enabled:
             return self.client.generate_presigned_url("get_object", Params={"Bucket": settings.minio_bucket, "Key": key}, ExpiresIn=3600)

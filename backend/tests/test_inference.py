@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -17,3 +19,11 @@ def test_image_parameters_are_persisted_on_job() -> None:
     body = response.json()
     assert body["parameters"]["steps"] == 36
     assert body["parameters"]["seed"] == 42
+
+
+def test_authenticated_generation_targets_workspace() -> None:
+    registration = client.post("/api/v1/auth/register", json={"email": f"critical-output-{uuid4()}@example.com", "name": "Output Owner", "password": "strong-pass-123"})
+    token = registration.json()["access_token"]
+    response = client.post("/api/v1/generations/images", headers={"Authorization": f"Bearer {token}"}, json={"prompt": "Persist this output"})
+    assert response.status_code == 202
+    assert response.json()["parameters"]["workspace_id"]

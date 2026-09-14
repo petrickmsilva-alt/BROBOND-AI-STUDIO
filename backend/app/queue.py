@@ -6,7 +6,10 @@ Workers are intentionally provider-agnostic: model adapters can be plugged into
 from celery import Celery
 
 from .core.config import settings
+from .db import SessionLocal
+from .models import Asset
 from .schemas import GenerationType, JobStatus
+from .storage import storage
 from .store import store
 
 redis_url = getattr(settings, "redis_url", "redis://localhost:6379/0")
@@ -32,6 +35,14 @@ def process_generation(self, job_id: str) -> dict[str, str]:
             from .providers.image import FluxDiffusersProvider
             result = FluxDiffusersProvider(model_id=job.parameters.get("model", "black-forest-labs/FLUX.1-dev")).generate(job.prompt, job.parameters, settings.weights_dir)
             job.output_url = result.path
+            workspace_id = job.parameters.get("workspace_id")
+            if workspace_id:
+                object_key, url = storage.save_path(result.path, workspace_id, "image/png")
+                with SessionLocal() as db:
+                    asset = Asset(workspace_id=workspace_id, name=f"{job.id}.png", kind="image", object_key=object_key)
+                    db.add(asset)
+                    db.commit()
+                job.output_url = url
         job.progress = 100
         job.status = JobStatus.COMPLETE
     except Exception as error:
