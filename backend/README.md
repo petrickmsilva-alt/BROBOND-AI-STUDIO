@@ -13,6 +13,8 @@ uvicorn app.main:app --app-dir backend --reload --host 0.0.0.0 --port 8000
 
 Open the interactive contract at `http://localhost:8000/docs`.
 
+The default database is local SQLite (`brobond.db`). Set `BROBOND_DATABASE_URL` to a PostgreSQL URL and `BROBOND_JWT_SECRET` in `.env` for a hosted environment. Authentication endpoints are `/api/v1/auth/register`, `/api/v1/auth/login`, and `/api/v1/auth/me`.
+
 ## Test
 
 ```bash

@@ -8,6 +8,7 @@ out/
 __pycache__/
 .venv/
 .pytest_cache/
+*.db
 
 # Generated media and model weights
 media/

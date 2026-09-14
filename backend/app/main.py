@@ -1,9 +1,13 @@
 """FastAPI entrypoint for BROBOND AI STUDIO's local service boundary."""
 from uuid import UUID
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
 
+from .auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse, current_user, login, register
+from .db import Base, engine, get_db
+from .models import User
 from .schemas import (
     ImageGenerationRequest, Job, JobStatus, Persona, PersonaCreateRequest,
     StoryboardRequest, StoryboardResponse, StoryboardScene, VideoGenerationRequest,
@@ -16,6 +20,9 @@ app = FastAPI(
     version="0.1.0",
     description="Local-first orchestration API for generative visual workflows.",
 )
+# Development bootstrap. Production deployments should run Alembic migrations instead.
+Base.metadata.create_all(bind=engine)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
@@ -28,6 +35,21 @@ app.add_middleware(
 @app.get("/health", tags=["system"])
 def health() -> dict[str, str]:
     return {"status": "ok", "service": "brobond-api", "mode": "local"}
+
+
+@app.post("/api/v1/auth/register", response_model=TokenResponse, status_code=201, tags=["auth"])
+def register_user(request: RegisterRequest, db: Session = Depends(get_db)) -> TokenResponse:
+    return register(request, db)
+
+
+@app.post("/api/v1/auth/login", response_model=TokenResponse, tags=["auth"])
+def login_user(request: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
+    return login(request, db)
+
+
+@app.get("/api/v1/auth/me", response_model=UserResponse, tags=["auth"])
+def get_current_user(user: User = Depends(current_user)) -> UserResponse:
+    return UserResponse.model_validate(user, from_attributes=True)
 
 
 def _queue_job(kind: GenerationType, prompt: str) -> Job:
