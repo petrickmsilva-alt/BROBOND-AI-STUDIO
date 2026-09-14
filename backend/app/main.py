@@ -18,6 +18,7 @@ from .media import MediaError, media
 from .models import Asset, TrainingRun, User, Workspace
 from .prompt_engine import prompt_engine
 from .queue import enqueue, enqueue_lora_training
+from .readiness import readiness
 from .storage import storage
 from .system import gpu_info
 from .schemas import (
@@ -58,6 +59,11 @@ def health() -> dict[str, str]:
 @app.get("/api/v1/system/gpu", tags=["system"])
 def system_gpu() -> dict:
     return gpu_info()
+
+
+@app.get("/api/v1/system/readiness", tags=["system"])
+def system_readiness() -> dict:
+    return readiness()
 
 
 @app.get("/api/v1/system/media", tags=["system"])
