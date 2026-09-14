@@ -30,7 +30,8 @@ A fundação visual, API, autenticação, jobs, storage, providers, prompt engin
 - [x] Persona LoRA contracts
 - [x] Character memory foundation
 - [x] Versioned LoRA assets
-- [ ] Knowledge Base persistente no PostgreSQL
+- [x] Knowledge Base persistente no PostgreSQL
+- [x] Memory Resolver API inicial
 - [ ] Memory Resolver em cada GenerationSpec
 - [ ] Character Library completa
 - [ ] Prompt Library classificada

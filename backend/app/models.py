@@ -56,3 +56,15 @@ class TrainingRun(Base):
     log: Mapped[str] = mapped_column(Text, default="Training queued")
     output_asset_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class KnowledgeEntry(Base):
+    __tablename__ = "knowledge_entries"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    category: Mapped[str] = mapped_column(String(40), index=True)
+    code: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    title: Mapped[str] = mapped_column(String(180))
+    content: Mapped[str] = mapped_column(Text)
+    source: Mapped[str] = mapped_column(String(120), default="core")
+    version: Mapped[int] = mapped_column(default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

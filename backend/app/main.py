@@ -11,8 +11,9 @@ from sqlalchemy.orm import Session
 from .auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse, current_user, login, optional_user, register
 from .conditioning import catalog
 from .core.config import settings
-from .db import Base, engine, get_db
+from .db import Base, SessionLocal, engine, get_db
 from .events import hub
+from .knowledge import resolve as resolve_knowledge, seed_knowledge
 from .lora import lora_trainer
 from .media import MediaError, media
 from .models import Asset, TrainingRun, User, Workspace
@@ -24,7 +25,7 @@ from .system import gpu_info
 from .schemas import (
     ImageGenerationRequest, Job, JobStatus, Persona, PersonaCreateRequest,
     StoryboardRequest, StoryboardResponse, StoryboardScene, VideoGenerationRequest,
-    AssetResponse, ConditioningRequest, ExportRequest, ExportResponse, GenerationType, LoraVersionResponse, PersonaTrainRequest, PersonaTrainResponse, PromptEnhanceRequest, PromptEnhanceResponse, TrainingStatusResponse,
+    AssetResponse, ConditioningRequest, ExportRequest, ExportResponse, GenerationType, KnowledgeResponse, LoraVersionResponse, PersonaTrainRequest, PersonaTrainResponse, PromptEnhanceRequest, PromptEnhanceResponse, TrainingStatusResponse,
 )
 from .store import store
 
@@ -41,6 +42,8 @@ if "training_runs" in inspect(engine).get_table_names():
     if "workspace_id" not in columns:
         with engine.begin() as connection:
             connection.execute(text("ALTER TABLE training_runs ADD COLUMN workspace_id VARCHAR(36)"))
+with SessionLocal() as seed_db:
+    seed_knowledge(seed_db)
 
 @app.middleware("http")
 async def security_headers(request, call_next):
@@ -89,6 +92,12 @@ def enhance_prompt(request: PromptEnhanceRequest) -> PromptEnhanceResponse:
 @app.get("/api/v1/models/conditioning", tags=["models"])
 def conditioning_models() -> list[dict[str, str]]:
     return catalog()
+
+
+@app.get("/api/v1/knowledge", response_model=list[KnowledgeResponse], tags=["knowledge"])
+def knowledge(query: str | None = None, category: str | None = None, db: Session = Depends(get_db)) -> list[KnowledgeResponse]:
+    entries = resolve_knowledge(db, query=query, category=category)
+    return [KnowledgeResponse.model_validate(entry, from_attributes=True) for entry in entries]
 
 
 @app.get("/api/v1/models/image", tags=["models"])

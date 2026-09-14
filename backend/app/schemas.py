@@ -126,6 +126,16 @@ class ConditioningRequest(BaseModel):
     mode: Literal["edges", "depth", "pose", "tile"]
 
 
+class KnowledgeResponse(BaseModel):
+    id: str
+    category: str
+    code: str
+    title: str
+    content: str
+    source: str
+    version: int
+
+
 class ExportRequest(BaseModel):
     quality: Literal["720p", "1080p", "2k", "4k"] = "1080p"
     fps: Literal[24, 30] = 24
