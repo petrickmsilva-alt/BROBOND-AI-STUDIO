@@ -1,5 +1,6 @@
 """FastAPI entrypoint for BROBOND AI STUDIO's local service boundary."""
 import asyncio
+import time
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
@@ -34,16 +35,33 @@ app = FastAPI(
     version="0.1.0",
     description="Local-first orchestration API for generative visual workflows.",
 )
-# Development bootstrap. Production deployments should run Alembic migrations instead.
-Base.metadata.create_all(bind=engine)
-# Lightweight local migration for existing SQLite development databases.
-if "training_runs" in inspect(engine).get_table_names():
-    columns = {column["name"] for column in inspect(engine).get_columns("training_runs")}
-    if "workspace_id" not in columns:
-        with engine.begin() as connection:
-            connection.execute(text("ALTER TABLE training_runs ADD COLUMN workspace_id VARCHAR(36)"))
-with SessionLocal() as seed_db:
-    seed_knowledge(seed_db)
+def _bootstrap_database(retries: int = 12, delay_seconds: float = 5.0) -> None:
+    """Create tables and seed knowledge, retrying while the database is still
+    booting. On Render the managed Postgres can take a few minutes to become
+    reachable after a fresh blueprint deploy; retrying here avoids a
+    crash-loop on first boot. Development deployments should run Alembic
+    migrations instead of create_all."""
+    last_error: Exception | None = None
+    for attempt in range(1, retries + 1):
+        try:
+            Base.metadata.create_all(bind=engine)
+            # Lightweight local migration for existing SQLite development databases.
+            if "training_runs" in inspect(engine).get_table_names():
+                columns = {column["name"] for column in inspect(engine).get_columns("training_runs")}
+                if "workspace_id" not in columns:
+                    with engine.begin() as connection:
+                        connection.execute(text("ALTER TABLE training_runs ADD COLUMN workspace_id VARCHAR(36)"))
+            with SessionLocal() as seed_db:
+                seed_knowledge(seed_db)
+            return
+        except Exception as exc:  # pragma: no cover - depends on DB availability
+            last_error = exc
+            print(f"[brobond] database not ready (attempt {attempt}/{retries}): {exc}", flush=True)
+            time.sleep(delay_seconds)
+    raise RuntimeError(f"database bootstrap failed after {retries} attempts: {last_error}")
+
+
+_bootstrap_database()
 
 @app.middleware("http")
 async def security_headers(request, call_next):
@@ -56,7 +74,7 @@ async def security_headers(request, call_next):
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=settings.cors_origin_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

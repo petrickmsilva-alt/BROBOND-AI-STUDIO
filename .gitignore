@@ -15,3 +15,6 @@ media/
 weights/
 *.safetensors
 *.ckpt
+
+# Local CI venv
+.venv-ci/
