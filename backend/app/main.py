@@ -14,6 +14,7 @@ from .events import hub
 from .models import Asset, User, Workspace
 from .queue import enqueue
 from .storage import storage
+from .system import gpu_info
 from .schemas import (
     ImageGenerationRequest, Job, JobStatus, Persona, PersonaCreateRequest,
     StoryboardRequest, StoryboardResponse, StoryboardScene, VideoGenerationRequest,
@@ -43,6 +44,19 @@ def health() -> dict[str, str]:
     return {"status": "ok", "service": "brobond-api", "mode": "local"}
 
 
+@app.get("/api/v1/system/gpu", tags=["system"])
+def system_gpu() -> dict:
+    return gpu_info()
+
+
+@app.get("/api/v1/models/image", tags=["models"])
+def image_models() -> list[dict[str, str]]:
+    return [
+        {"id": "flux-1.1-pro-ultra", "label": "Flux 1.1 Pro Ultra", "status": "remote-provider"},
+        {"id": "flux-dev", "label": "FLUX.1 Dev", "status": "local-provider"},
+    ]
+
+
 @app.post("/api/v1/auth/register", response_model=TokenResponse, status_code=201, tags=["auth"])
 def register_user(request: RegisterRequest, db: Session = Depends(get_db)) -> TokenResponse:
     return register(request, db)
@@ -58,8 +72,8 @@ def get_current_user(user: User = Depends(current_user)) -> UserResponse:
     return UserResponse.model_validate(user, from_attributes=True)
 
 
-def _queue_job(kind: GenerationType, prompt: str) -> Job:
-    job = store.add_job(Job(type=kind, prompt=prompt))
+def _queue_job(kind: GenerationType, prompt: str, parameters: dict | None = None) -> Job:
+    job = store.add_job(Job(type=kind, prompt=prompt, parameters=parameters or {}))
     # Redis/Celery is optional in local development; the job remains inspectable.
     enqueue(str(job.id))
     return job
@@ -68,13 +82,13 @@ def _queue_job(kind: GenerationType, prompt: str) -> Job:
 @app.post("/api/v1/generations/images", response_model=Job, status_code=202, tags=["generations"])
 def create_image_generation(request: ImageGenerationRequest) -> Job:
     """Create an image job. A Celery provider will consume this job in production."""
-    return _queue_job(GenerationType.IMAGE, request.prompt)
+    return _queue_job(GenerationType.IMAGE, request.prompt, request.model_dump(mode="json"))
 
 
 @app.post("/api/v1/generations/videos", response_model=Job, status_code=202, tags=["generations"])
 def create_video_generation(request: VideoGenerationRequest) -> Job:
     """Create an H.264 video job for the configured video provider."""
-    return _queue_job(GenerationType.VIDEO, request.prompt)
+    return _queue_job(GenerationType.VIDEO, request.prompt, request.model_dump(mode="json"))
 
 
 @app.get("/api/v1/jobs/{job_id}", response_model=Job, tags=["generations"])

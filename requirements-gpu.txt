@@ -1,0 +1,8 @@
+# Install this profile only on a CUDA worker with a compatible NVIDIA driver.
+# Pin torch to the CUDA version installed on the host when deploying.
+torch>=2.4.0
+diffusers>=0.30.0
+transformers>=4.44.0
+accelerate>=0.34.0
+safetensors>=0.4.4
+Pillow>=10.4.0

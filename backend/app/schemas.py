@@ -28,6 +28,7 @@ class Job(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     progress: int = 0
     output_url: str | None = None
+    parameters: dict = Field(default_factory=dict)
 
 
 class ImageGenerationRequest(BaseModel):

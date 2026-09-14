@@ -8,6 +8,8 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
     queue_enabled: bool = False
     storage_enabled: bool = False
+    inference_enabled: bool = False
+    weights_dir: str = "weights"
     minio_endpoint: str = "http://localhost:9000"
     minio_access_key: str = "brobond"
     minio_secret_key: str = "brobond_local_storage"

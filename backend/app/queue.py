@@ -6,7 +6,7 @@ Workers are intentionally provider-agnostic: model adapters can be plugged into
 from celery import Celery
 
 from .core.config import settings
-from .schemas import JobStatus
+from .schemas import GenerationType, JobStatus
 from .store import store
 
 redis_url = getattr(settings, "redis_url", "redis://localhost:6379/0")
@@ -22,9 +22,21 @@ def process_generation(self, job_id: str) -> dict[str, str]:
         return {"job_id": job_id, "status": "cancelled"}
     job.status = JobStatus.RUNNING
     job.progress = 10
-    # Future: call Flux/Wan provider, stream progress, save to MinIO.
-    job.status = JobStatus.COMPLETE
-    job.progress = 100
+    if not settings.inference_enabled:
+        # Orchestration-only mode is safe for machines without model weights.
+        job.progress = 100
+        job.status = JobStatus.COMPLETE
+        return {"job_id": job_id, "status": job.status.value, "mode": "orchestration-only"}
+    try:
+        if job.type == GenerationType.IMAGE:
+            from .providers.image import FluxDiffusersProvider
+            result = FluxDiffusersProvider(model_id=job.parameters.get("model", "black-forest-labs/FLUX.1-dev")).generate(job.prompt, job.parameters, settings.weights_dir)
+            job.output_url = result.path
+        job.progress = 100
+        job.status = JobStatus.COMPLETE
+    except Exception as error:
+        job.status = JobStatus.FAILED
+        return {"job_id": job_id, "status": job.status.value, "error": str(error)}
     return {"job_id": job_id, "status": job.status.value}
 
 
