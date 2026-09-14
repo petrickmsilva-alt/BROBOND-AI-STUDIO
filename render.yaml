@@ -1,0 +1,99 @@
+services:
+  - type: web
+    name: brobond-api
+    runtime: python
+    plan: starter
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/v1/health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      - key: BROBOND_DATABASE_URL
+        fromDatabase:
+          name: brobond-postgres
+          property: connectionString
+      - key: BROBOND_REDIS_URL
+        fromService:
+          name: brobond-queue
+          type: keyvalue
+          property: connectionString
+      - key: BROBOND_QUEUE_ENABLED
+        value: "true"
+      - key: BROBOND_STORAGE_ENABLED
+        value: "false"
+      - key: BROBOND_JWT_SECRET
+        generateValue: true
+      - key: BROBOND_MINIO_ENDPOINT
+        sync: false
+      - key: BROBOND_MINIO_ACCESS_KEY
+        sync: false
+      - key: BROBOND_MINIO_SECRET_KEY
+        sync: false
+      - key: BROBOND_MINIO_BUCKET
+        value: brobond-assets
+
+  - type: worker
+    name: brobond-worker
+    runtime: python
+    plan: starter
+    region: oregon
+    buildCommand: pip install -r requirements.txt
+    startCommand: celery -A app.queue.celery_app worker --loglevel=info --workdir=backend
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      - key: BROBOND_DATABASE_URL
+        fromDatabase:
+          name: brobond-postgres
+          property: connectionString
+      - key: BROBOND_REDIS_URL
+        fromService:
+          name: brobond-queue
+          type: keyvalue
+          property: connectionString
+      - key: BROBOND_QUEUE_ENABLED
+        value: "true"
+      - key: BROBOND_JWT_SECRET
+        fromService:
+          name: brobond-api
+          type: web
+          envVarKey: BROBOND_JWT_SECRET
+      - key: BROBOND_STORAGE_ENABLED
+        value: "false"
+      - key: BROBOND_INFERENCE_ENABLED
+        value: "false"
+      - key: BROBOND_TRAINING_ENABLED
+        value: "false"
+
+  - type: web
+    name: brobond-studio
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
+      - key: NEXT_PUBLIC_API_URL
+        sync: false
+
+  - type: keyvalue
+    name: brobond-queue
+    plan: starter
+    region: oregon
+    ipAllowList: []
+    maxmemoryPolicy: noeviction
+
+databases:
+  - name: brobond-postgres
+    plan: starter
+    region: oregon
+    databaseName: brobond
+    postgresMajorVersion: "16"
