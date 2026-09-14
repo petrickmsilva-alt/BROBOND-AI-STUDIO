@@ -69,6 +69,18 @@ class PersonaCreateRequest(BaseModel):
     reference_asset_ids: list[UUID] = Field(default_factory=list, max_length=50)
 
 
+class PersonaTrainRequest(BaseModel):
+    reference_asset_ids: list[UUID] = Field(min_length=20, max_length=50)
+    style: str = Field(default="cinematic realism", max_length=160)
+
+
+class PersonaTrainResponse(BaseModel):
+    persona_id: UUID
+    status: str
+    image_count: int
+    message: str
+
+
 class Persona(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     status: Literal["training", "trained", "failed"] = "training"

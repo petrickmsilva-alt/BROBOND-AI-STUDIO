@@ -11,6 +11,7 @@ from .auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse, cu
 from .core.config import settings
 from .db import Base, engine, get_db
 from .events import hub
+from .lora import lora_trainer
 from .media import MediaError, media
 from .models import Asset, User, Workspace
 from .prompt_engine import prompt_engine
@@ -20,7 +21,7 @@ from .system import gpu_info
 from .schemas import (
     ImageGenerationRequest, Job, JobStatus, Persona, PersonaCreateRequest,
     StoryboardRequest, StoryboardResponse, StoryboardScene, VideoGenerationRequest,
-    AssetResponse, ExportRequest, ExportResponse, GenerationType, PromptEnhanceRequest, PromptEnhanceResponse,
+    AssetResponse, ExportRequest, ExportResponse, GenerationType, PersonaTrainRequest, PersonaTrainResponse, PromptEnhanceRequest, PromptEnhanceResponse,
 )
 from .store import store
 
@@ -227,6 +228,20 @@ def export_video(asset_id: str, request: ExportRequest, user: User = Depends(cur
 def create_persona(request: PersonaCreateRequest) -> Persona:
     """Register a persona and reserve a future LoRA training job."""
     return store.add_persona(Persona(details=request, status="training"))
+
+
+@app.post("/api/v1/personas/{persona_id}/train", response_model=PersonaTrainResponse, status_code=202, tags=["personas"])
+def train_persona(persona_id: UUID, request: PersonaTrainRequest) -> PersonaTrainResponse:
+    persona = store.personas.get(persona_id)
+    if not persona:
+        raise HTTPException(status_code=404, detail="Persona not found")
+    try:
+        plan = lora_trainer.build_plan(persona_id, request.reference_asset_ids, persona.details.name, request.style)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    persona.status = "training"
+    persona.details.reference_asset_ids = request.reference_asset_ids
+    return PersonaTrainResponse(persona_id=persona_id, status="queued", image_count=plan.image_count, message="LoRA training job queued for a GPU worker")
 
 
 @app.post("/api/v1/storyboards/expand", response_model=StoryboardResponse, tags=["storyboards"])

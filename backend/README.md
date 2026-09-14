@@ -23,6 +23,8 @@ Image inference is orchestration-only by default. On a CUDA worker, install `req
 
 FFmpeg capability is exposed at `GET /api/v1/system/media`. Local video assets can be exported to H.264 MP4 with `POST /api/v1/assets/{asset_id}/export` using `quality` (`720p`, `1080p`, `2k`, `4k`) and `fps` (`24` or `30`). Video model options are exposed at `GET /api/v1/models/video`. For local Wan inference, install `requirements-video-gpu.txt`; the Celery worker will use `BROBOND_VIDEO_MODEL_ID` and persist the resulting MP4 as a workspace Asset.
 
+Persona training is validated through `POST /api/v1/personas/{persona_id}/train` and requires 20–50 reference asset IDs. The endpoint creates a training plan; a future GPU worker will execute the actual LoRA optimization and publish the resulting safetensors file.
+
 ## Test
 
 ```bash
