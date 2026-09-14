@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { API_URL, Asset, AuthUser, Job, authenticate, cancelJob, createImageJob, createPersona, createVideoJob, enhancePrompt, expandStoryboard, listAssets, uploadAsset } from '../lib/api';
+import { API_URL, Asset, AuthUser, Job, authenticate, cancelJob, createImageJob, createPersona, createVideoJob, enhancePrompt, expandStoryboard, listAssets, trainPersona, uploadAsset } from '../lib/api';
 import {
   Aperture, ArrowUpRight, AudioLines, Bell, Box, ChevronDown, CircleHelp, Clapperboard,
   Clock3, Download, Folder, Gauge, Grid2X2, Image as ImageIcon, Layers3, Library,
@@ -154,13 +154,34 @@ function VideoStudio() {
 function MotionStudio() { return <><PageHeader eyebrow="MOTION CONTROL" title="Direct every move" description="Turn a reference frame into a precisely choreographed shot."><button className="primary-button"><Sparkles size={16} /> Generate motion</button></PageHeader><div className="motion-layout"><div className="upload-zone"><div className="upload-icon"><Move3d size={24} /></div><h3>Drop a reference image</h3><p>PNG, JPG up to 20 MB</p><button className="secondary-button"><Plus size={15} /> Upload image</button></div><div className="control-panel motion-controls"><div className="panel-heading"><span>Camera path</span><span className="muted">8 presets</span></div><div className="motion-grid">{['Dolly in','Dolly out','Orbit left','Orbit right','Crane up','Crane down','Handheld','Static'].map((x, i) => <button className={i === 0 ? 'motion-option selected' : 'motion-option'} key={x}><span className="motion-glyph">{i < 4 ? '↗' : i === 7 ? '·' : '↕'}</span>{x}</button>)}</div><label>Intensity <b className="right-value">72%</b><input type="range" defaultValue="72" /></label><label>Keyframes <b className="right-value">12</b><input type="range" defaultValue="35" /></label></div></div></>; }
 
 function PersonaStudio() {
-  const [status, setStatus] = useState('Ready to train');
-  const train = async () => {
-    setStatus('Registering persona...');
-    const result = await createPersona({ name: 'Petrick Martins', age: 50, appearance: 'Athletic portrait', eye_color: 'Dark brown', beard: 'Short beard', hair: 'Long, tied back', height_m: 1.85, style: 'Cinematic realism', reference_asset_ids: [] });
-    setStatus(result.remote ? 'Training job queued' : 'Local preview · ready to train');
+  const [personaId, setPersonaId] = useState<string | null>(null);
+  const [referenceIds, setReferenceIds] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [status, setStatus] = useState('Add 20–50 reference images');
+  const handleReferences = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    if (files.length < 20 || files.length > 50) { setStatus('Select between 20 and 50 images'); return; }
+    setUploading(true); setStatus(`Uploading 0/${files.length} references...`);
+    const uploaded: string[] = [];
+    for (let index = 0; index < files.length; index += 1) {
+      const result = await uploadAsset(files[index]);
+      if (result.remote) uploaded.push(result.data.id);
+      setStatus(`Uploading ${index + 1}/${files.length} references...`);
+    }
+    setReferenceIds(uploaded); setUploading(false);
+    setStatus(uploaded.length === files.length ? `${uploaded.length} references ready for training` : 'API offline · references not synced');
+    event.target.value = '';
   };
-  return <><PageHeader eyebrow="PERSONA LAB" title="Make identity consistent" description="Train a private visual persona for stories that feel unmistakably yours."><button className="primary-button" onClick={train}><Plus size={17} /> New persona</button></PageHeader><div className="persona-layout"><div className="persona-card"><div className="persona-cover"><div className="persona-portrait"><UserRound size={42} /></div><span className="trained-badge"><span className="status-dot" /> Trained</span></div><div className="persona-body"><div><h2>Petrick Martins</h2><p>BROBOND · Athletic portrait</p></div><MoreHorizontal size={18} /><div className="persona-tags"><span>50 years</span><span>1.85m</span><span>Short beard</span><span>Tied hair</span></div><div className="persona-footer"><span><ImageIcon size={14} /> 42 reference images</span><span>LoRA v1.2</span></div></div></div><div className="training-panel"><div className="panel-heading"><span>Persona details</span><button className="text-button">Edit</button></div>{[['Appearance','Athletic, defined features'],['Eye color','Dark brown'],['Hair','Long, tied back'],['Style','Cinematic realism']].map(([a,b]) => <div className="detail-row" key={a}><span>{a}</span><strong>{b}</strong></div>)}<div className="lora-progress"><div><span>LoRA training</span><b>{status}</b></div><div className="progress"><i /></div></div><button className="secondary-button full"><Sparkles size={15} /> Use in a creation</button></div></div></>; }
+  const startTraining = async () => {
+    setStatus('Creating persona...');
+    const created = personaId ? { remote: true, data: { id: personaId } } : await createPersona({ name: 'Petrick Martins', age: 50, appearance: 'Athletic portrait', eye_color: 'Dark brown', beard: 'Short beard', hair: 'Long, tied back', height_m: 1.85, style: 'Cinematic realism', reference_asset_ids: referenceIds });
+    if (!created.remote) { setStatus('API offline · start FastAPI to train'); return; }
+    const id = String(created.data.id); setPersonaId(id); setStatus('Queuing LoRA training...');
+    const trained = await trainPersona(id, { reference_asset_ids: referenceIds, style: 'cinematic realism' });
+    setStatus(trained.remote ? 'Training queued · GPU worker pending' : 'API offline · training not queued');
+  };
+  return <><PageHeader eyebrow="PERSONA LAB" title="Make identity consistent" description="Train a private visual persona for stories that feel unmistakably yours."><label className="primary-button upload-label"><Plus size={17} /> {uploading ? 'Uploading...' : 'Add references'}<input type="file" accept="image/*" multiple onChange={handleReferences} /></label></PageHeader><div className="persona-layout"><div className="persona-card"><div className="persona-cover"><div className="persona-portrait"><UserRound size={42} /></div><span className="trained-badge"><span className="status-dot" /> {referenceIds.length >= 20 ? 'Ready' : 'Draft'}</span></div><div className="persona-body"><div><h2>Petrick Martins</h2><p>BROBOND · Athletic portrait</p></div><MoreHorizontal size={18} /><div className="persona-tags"><span>50 years</span><span>1.85m</span><span>Short beard</span><span>Tied hair</span></div><div className="persona-footer"><span><ImageIcon size={14} /> {referenceIds.length} / 20–50 references</span><span>LoRA v1.2</span></div></div></div><div className="training-panel"><div className="panel-heading"><span>Persona details</span><button className="text-button">Edit</button></div>{[['Appearance','Athletic, defined features'],['Eye color','Dark brown'],['Hair','Long, tied back'],['Style','Cinematic realism']].map(([a,b]) => <div className="detail-row" key={a}><span>{a}</span><strong>{b}</strong></div>)}<div className="lora-progress"><div><span>LoRA training</span><b>{status}</b></div><div className="progress"><i style={{ width: `${Math.min(referenceIds.length / 20 * 100, 100)}%` }} /></div></div><button className="secondary-button full" disabled={uploading || referenceIds.length < 20} onClick={startTraining}><Sparkles size={15} /> Start LoRA training</button></div></div></>;
+}
 
 function Storyboard() {
   const [status, setStatus] = useState('4 scenes');

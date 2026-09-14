@@ -55,6 +55,10 @@ export function createPersona(payload: Record<string, unknown>) {
   return request<Record<string, unknown>>('/api/v1/personas', { method: 'POST', body: JSON.stringify(payload) });
 }
 
+export function trainPersona(personaId: string, payload: Record<string, unknown>) {
+  return request<Record<string, unknown>>(`/api/v1/personas/${personaId}/train`, { method: 'POST', body: JSON.stringify(payload) });
+}
+
 export function expandStoryboard(payload: Record<string, unknown>) {
   return request<Record<string, unknown>>('/api/v1/storyboards/expand', { method: 'POST', body: JSON.stringify(payload) });
 }
