@@ -116,9 +116,34 @@ class _Reader:
             self.closed.set()
 
     def settle(self, seconds: float = 0.6) -> "_Reader":
-        """Wait for the server to close the socket, or give up."""
+        """Wait for the server to close the socket, or give up.
+
+        With the in-process TestClient a server-initiated close is not
+        observable from the reader (see
+        `test_the_route_exits_after_a_terminal_event`), so this budget is a
+        lower bound, not a signal — message delivery is asserted with
+        `wait_for`, which polls the messages directly.
+        """
 
         self.closed.wait(timeout=seconds)
+        return self
+
+    def wait_for(self, predicate, timeout: float = 5.0) -> "_Reader":
+        """Poll until `predicate(self.messages)` holds, the socket closes,
+        or the budget runs out.
+
+        Message delivery is asserted on the messages, not on the close:
+        under load the two no longer arrive in lockstep, and coupling the
+        assertions to the close is what flaked the suite.
+        """
+
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if predicate(self.messages):
+                return self
+            if self.closed.is_set():
+                break
+            time.sleep(0.02)
         return self
 
     def labels(self) -> list[str]:
@@ -418,12 +443,13 @@ def test_a_connected_client_sees_the_job_finish(client, orchestration_only) -> N
         from app.queue import process_generation
 
         process_generation(str(job.id))
-        reader.settle()
+        reader.wait_for(lambda m: any(x.get("event") == "complete" for x in m))
 
     assert reader.labels()[0] == "snapshot"
     assert "started" in reader.labels()
     assert "complete" in reader.labels()
     # PR002: the wire says `completed`; the internal state stays `complete`.
+    # `complete` is terminal: nothing may follow it on the wire.
     assert reader.messages[-1]["status"] == "completed"
     assert reader.messages[-1]["progress"] == 100
 
@@ -438,7 +464,8 @@ def test_the_terminal_event_is_sent_once(client, orchestration_only) -> None:
         from app.queue import process_generation
 
         process_generation(str(job.id))
-        reader.settle()
+        reader.wait_for(lambda m: any(x.get("event") == "complete" for x in m))
+        time.sleep(0.2)  # a regressed duplicate would follow immediately
 
     assert reader.labels().count("complete") == 1
 
@@ -452,7 +479,8 @@ def test_a_client_that_connects_late_gets_the_history(client, orchestration_only
     assert hub.history(job.id), "the transitions were recorded"
 
     with client.websocket_connect(f"/api/v1/queue/events/{job.id}?token={token}") as websocket:
-        reader = _Reader(websocket).settle()
+        reader = _Reader(websocket)
+        reader.wait_for(lambda m: any(x.get("event") == "complete" for x in m))
 
     assert reader.labels()[0] == "snapshot"
     assert reader.messages[0]["status"] == "completed", "the client learns the current state first"
@@ -496,7 +524,9 @@ def test_the_buffer_is_freed_once_a_client_is_done(client, orchestration_only) -
         from app.queue import process_generation
 
         process_generation(str(job.id))
-        reader.settle()
+        reader.wait_for(lambda m: any(x.get("event") == "complete" for x in m))
+    # Exiting the with block disconnects the client, which ends the route and
+    # frees the buffer.
     time.sleep(0.1)
     assert hub.history(job.id) == []
 
@@ -543,7 +573,7 @@ def test_a_failure_reaches_the_client_with_its_reason(client, monkeypatch) -> No
         from app.queue import process_generation
 
         process_generation(str(job.id))
-        reader.settle()
+        reader.wait_for(lambda m: any(x.get("event") == "failed" for x in m))
 
     assert reader.messages[-1]["event"] == "failed"
     assert reader.messages[-1]["error"] == "CUDA GPU is required"

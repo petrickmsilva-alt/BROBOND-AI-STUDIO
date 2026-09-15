@@ -13,7 +13,22 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install -r requirements.txt
-      - run: PYTHONPATH=backend pytest backend/tests -q
+      # On failure the failed tests are mirrored into the check-run summary:
+      # log downloads can be unavailable, and the summary is always readable.
+      - run: |
+          set -o pipefail
+          if ! PYTHONPATH=backend pytest backend/tests -q 2>&1 | tee /tmp/pytest.log; then
+            {
+              echo "## Backend tests failed"
+              echo '```'
+              grep -E "^(FAILED|ERROR)" /tmp/pytest.log | head -25 || true
+              echo '```'
+              echo '```'
+              tail -15 /tmp/pytest.log
+              echo '```'
+            } >> "${GITHUB_STEP_SUMMARY}"
+            exit 1
+          fi
       # ETAPA 16: the 90% floor is enforced, not just reported. The denominator
       # includes the four dead modules from AUDIT.md P0-1 (100 statements, 0%),
       # so this number is conservative by construction — see
