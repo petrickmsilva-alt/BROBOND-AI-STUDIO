@@ -30,7 +30,11 @@ services:
       BROBOND_MINIO_ENDPOINT: http://minio:9000
       BROBOND_MINIO_ACCESS_KEY: brobond
       BROBOND_MINIO_SECRET_KEY: brobond_local_storage
-      BROBOND_JWT_SECRET: change-me-in-compose
+      # Local-dev secret (63 bytes). Replace in any real deployment: the API
+      # refuses to boot with a secret shorter than 32 bytes (PR002).
+      BROBOND_JWT_SECRET: brobond-compose-local-dev-0123456789-abcdefghijklmnopqrstuvwxyz
+      # Auth rate limit (attempts per client IP per minute, per process; 0 disables).
+      BROBOND_RATE_LIMIT_AUTH_PER_MINUTE: "20"
     ports: ["8000:8000"]
     depends_on: [postgres, redis, minio]
   worker:
@@ -46,7 +50,9 @@ services:
       BROBOND_MINIO_ENDPOINT: http://minio:9000
       BROBOND_MINIO_ACCESS_KEY: brobond
       BROBOND_MINIO_SECRET_KEY: brobond_local_storage
-      BROBOND_JWT_SECRET: change-me-in-compose
+      # Must match the API's secret so worker-side token validation agrees.
+      BROBOND_JWT_SECRET: brobond-compose-local-dev-0123456789-abcdefghijklmnopqrstuvwxyz
+      BROBOND_RATE_LIMIT_AUTH_PER_MINUTE: "20"
     depends_on: [api]
 volumes:
   postgres_data:

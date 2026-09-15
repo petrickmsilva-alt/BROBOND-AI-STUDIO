@@ -111,10 +111,20 @@ def test_compile_exposes_the_resolution_trace() -> None:
     assert body["trace"]["sources"]["lens"] == "shot"
 
 
+def _token() -> dict:
+    from uuid import uuid4
+
+    return {
+        "Authorization": f"Bearer {client.post('/api/v1/auth/register', json={'email': f'core-{uuid4()}@example.com', 'name': 'Core User', 'password': 'strong-pass-123'}).json()['access_token']}"
+    }
+
+
 def test_compile_is_a_dry_run_and_creates_no_job() -> None:
-    queue_before = len(client.get("/api/v1/queue").json())
+    # PR002: the queue is tenant-scoped and answers only to a token.
+    headers = _token()
+    queue_before = len(client.get("/api/v1/queue", headers=headers).json())
     client.post("/api/v1/core/compile", json={"prompt": "x"})
-    assert len(client.get("/api/v1/queue").json()) == queue_before
+    assert len(client.get("/api/v1/queue", headers=headers).json()) == queue_before
 
 
 def test_compile_binds_the_workspace_of_an_authenticated_caller() -> None:
@@ -191,11 +201,22 @@ def test_prompt_enhance_contract_is_unchanged() -> None:
         "/api/v1/models/image",
         "/api/v1/models/video",
         "/api/v1/models/conditioning",
-        "/api/v1/knowledge",
     ],
 )
 def test_existing_read_endpoints_still_answer(path: str) -> None:
     assert client.get(path).status_code == 200
+
+
+def test_knowledge_requires_authentication() -> None:
+    """PR002: the knowledge base holds persona PII, so it is no longer public.
+
+    It still answers — to a token. (The seed content is global, shared by every
+    authenticated tenant; there is deliberately no workspace filter.)
+    """
+    assert client.get("/api/v1/knowledge").status_code == 401
+    response = client.get("/api/v1/knowledge", headers=_token(), params={"category": "character"})
+    assert response.status_code == 200
+    assert any(entry["code"] == "CHAR_PETRICK" for entry in response.json())
 
 
 def test_compile_exposes_every_field_the_spec_carries() -> None:
@@ -236,9 +257,10 @@ def test_route_inventory_only_grew() -> None:
     assert len(websockets) == 2
     # 27 /api/v1 routes before the Core, 29 after ETAPA 2, 37 after ETAPA 4,
     # 46 after ETAPA 5, 50 after ETAPA 6, 51 after ETAPA 8, 52 after ETAPA 9,
-    # 54 after ETAPA 10, 56 after ETAPA 13, 58 after ETAPA 14. The guard is that
-    # the number only grows: nothing was ever removed.
-    assert len([route for route in http if route.path.startswith("/api/v1")]) == 58
+    # 54 after ETAPA 10, 56 after ETAPA 13, 58 after ETAPA 14, 64 after PR003
+    # (six persona-profile routes). The guard is that the number only grows:
+    # nothing was ever removed.
+    assert len([route for route in http if route.path.startswith("/api/v1")]) == 64
 
 
 # ------------------------------------------------- no generation logic in routes

@@ -15,8 +15,11 @@ from dataclasses import replace
 from .contracts import (
     PERSONA_IDENTITY_FIELDS,
     PersonaMemory,
+    PersonaProfile,
+    PersonaProfileSource,
     PersonaSource,
     PersonaStatus,
+    ReferenceImage,
 )
 
 
@@ -77,10 +80,18 @@ class SeedPersonaSource:
 
 
 class MemoryResolver:
-    """Resolves persona identity and guards its continuity."""
+    """Resolves persona identity and guards its continuity.
 
-    def __init__(self, source: PersonaSource | None = None) -> None:
+    PR003: the resolver also knows the *full* persona profile — wardrobe,
+    LoRA asset, reference images — through an optional `PersonaProfileSource`
+    injection. When no profile source is present, `resolve_persona` derives
+    the profile from the identity alone, so the pre-PR003 call graph behaves
+    exactly as it did.
+    """
+
+    def __init__(self, source: PersonaSource | None = None, profile_source: PersonaProfileSource | None = None) -> None:
         self._source: PersonaSource = source or SeedPersonaSource()
+        self._profile_source: PersonaProfileSource | None = profile_source
 
     # ------------------------------------------------------------------ lookup
 
@@ -94,6 +105,28 @@ class MemoryResolver:
         if not persona_id:
             return None
         return self._source.fetch(persona_id)
+
+    def resolve_persona(self, persona_id: str | None) -> PersonaProfile | None:
+        """Return the full persona profile, or None when unknown/absent.
+
+        PR003: the product view of a persona — identity plus wardrobe, LoRA
+        asset and reference images. It prefers the injected profile source
+        (the persistent store) and, when there is none or it has no row for
+        the id, derives the profile from the identity source so a character
+        known only to the ledger still resolves. Never raises for a missing
+        persona, mirroring `resolve`.
+        """
+
+        if not persona_id:
+            return None
+        if self._profile_source is not None:
+            profile = self._profile_source.get_profile(persona_id)
+            if profile is not None:
+                return profile
+        persona = self._source.fetch(persona_id)
+        if persona is None:
+            return None
+        return _profile_from_memory(persona)
 
     def resolve_by_name(self, name: str | None) -> PersonaMemory | None:
         if not name:
@@ -112,8 +145,11 @@ class MemoryResolver:
 
     # -------------------------------------------------------------- vocabulary
 
-    def identity_phrase(self, persona: PersonaMemory | None) -> str:
+    def identity_phrase(self, persona: PersonaMemory | None, wardrobe: list[str] | None = None) -> str:
         """Build the PERSONA prompt block for a persona.
+
+        `wardrobe` optionally narrows the wardrobe part of the identity to
+        the items a project selected (PR004); `None` keeps them all.
 
         Returns an empty string when there is no usable identity, so the
         PromptCompiler drops the block entirely instead of emitting a stub.
@@ -127,6 +163,11 @@ class MemoryResolver:
         if persona.height_m is not None:
             traits.append(f"{persona.height_m:.2f}m tall")
         traits.extend(part for part in (persona.body_type, persona.hair, persona.beard, persona.eyes) if part)
+        wardrobe_names = [part.strip() for part in str(persona.wardrobe).split(",") if part.strip()]
+        if wardrobe is not None:
+            wardrobe_names = [name for name in wardrobe_names if name in wardrobe]
+        if wardrobe_names:
+            traits.append(f"wardrobe: {', '.join(wardrobe_names)}")
         if not traits:
             return persona.name
         return f"{persona.name}, {', '.join(traits)}"
@@ -177,3 +218,22 @@ class MemoryResolver:
         """Immutable memory snapshot attached to an episode or job."""
 
         return {**persona.to_dict(), "snapshot_of_version": persona.version}
+
+
+def _profile_from_memory(persona: PersonaMemory) -> PersonaProfile:
+    """Derive a profile from an identity-only source (ledger, seed).
+
+    The identity's `reference_images` are bare asset ids; they become
+    reference images of type "reference" with a stable order. Wardrobe and
+    LoRA stay empty/None: the ledger predates both (PR001/002 contract).
+    """
+
+    return PersonaProfile(
+        identity=persona,
+        wardrobe=(),
+        lora_id=None,
+        reference_images=tuple(
+            ReferenceImage(asset_id=asset_id, image_type="reference", order_index=index)
+            for index, asset_id in enumerate(persona.reference_images)
+        ),
+    )

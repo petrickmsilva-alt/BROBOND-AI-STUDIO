@@ -1,7 +1,7 @@
 """Typed API contracts for the local-first generation service."""
 from datetime import datetime
 from enum import Enum
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -45,6 +45,13 @@ class ImageGenerationRequest(BaseModel):
     controlnet: Literal["none", "pose", "depth", "canny", "tile"] = "none"
     controlnet_scale: float = Field(default=0.8, ge=0, le=2)
     ip_adapter_scale: float = Field(default=0.7, ge=0, le=1)
+    #: PR003: resolve the persona's identity, default style and LoRA from the
+    #: persistent Persona Memory Engine. Optional — requests without it
+    #: behave exactly as before.
+    persona_id: str | None = Field(default=None, max_length=36)
+    #: PR004: optionally narrow the persona wardrobe block to the items the
+    #: project selected (names exactly as stored on the persona).
+    wardrobe: list[str] | None = None
 
 
 class VideoGenerationRequest(BaseModel):
@@ -59,6 +66,11 @@ class VideoGenerationRequest(BaseModel):
     native_audio: bool = False
     lora_id: UUID | None = None
     reference_asset_id: UUID | None = None
+    #: PR003: resolve the persona's identity, default style and LoRA from the
+    #: persistent Persona Memory Engine (same optional rule as images).
+    persona_id: str | None = Field(default=None, max_length=36)
+    #: PR004: optionally narrow the persona wardrobe block (same rule as images).
+    wardrobe: list[str] | None = None
 
 
 class PersonaCreateRequest(BaseModel):
@@ -111,6 +123,132 @@ class Persona(BaseModel):
     lora_version: str | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     details: PersonaCreateRequest
+    #: PR002: the workspace that owns this persona, so training and LoRA
+    #: listing can be checked against the acting user's tenant. Optional for
+    #: compatibility with rows and payloads created before PR002.
+    workspace_id: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# PR003 — Persona Memory Engine (persistent persona profiles)
+# ---------------------------------------------------------------------------
+
+
+class PersonaWardrobeItem(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    category: str = Field(default="", max_length=80)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class PersonaWardrobeResponse(BaseModel):
+    id: str
+    name: str
+    category: str
+    metadata: dict[str, Any]
+
+
+class PersonaRevisionResponse(BaseModel):
+    id: str
+    revision: int
+    notes: dict[str, Any]
+    created_by: str
+    created_at: datetime
+
+
+class PersonaImageResponse(BaseModel):
+    id: str
+    #: Asset ids are strings: the legacy training flow may reference assets
+    #: that are created after the persona, and the row stores plain ids.
+    asset_id: str
+    image_type: Literal["face", "body", "style", "reference"]
+    order_index: int
+    #: Present only while the referenced asset still exists.
+    name: str | None = None
+    url: str | None = None
+
+
+class PersonaProfileResponse(BaseModel):
+    id: str
+    workspace_id: str
+    name: str
+    slug: str
+    age: int
+    height: float
+    body_type: str
+    skin_tone: str
+    hair: str
+    beard: str
+    eyes: str
+    voice: str
+    default_style: str
+    lora_id: str | None
+    revision: int
+    created_at: datetime
+    updated_at: datetime
+    wardrobe: list[PersonaWardrobeResponse]
+    images: list[PersonaImageResponse]
+    revisions: list[PersonaRevisionResponse]
+
+
+class PersonaUpdateRequest(BaseModel):
+    """Partial update; only the provided fields are applied.
+
+    Any identity field that changes bumps ``revision`` and appends a
+    ``persona_identity_revision`` row (the ETAPA 4 continuity rule).
+    """
+
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    age: int | None = Field(default=None, ge=1, le=120)
+    height: float | None = Field(default=None, gt=0.4, lt=3.0)
+    body_type: str | None = Field(default=None, max_length=80)
+    skin_tone: str | None = Field(default=None, max_length=80)
+    hair: str | None = Field(default=None, max_length=120)
+    beard: str | None = Field(default=None, max_length=120)
+    eyes: str | None = Field(default=None, max_length=80)
+    voice: str | None = Field(default=None, max_length=120)
+    default_style: str | None = Field(default=None, max_length=160)
+    lora_id: str | None = Field(default=None, max_length=36)
+    wardrobe: list[PersonaWardrobeItem] | None = None
+
+
+class PersonaImageAddRequest(BaseModel):
+    asset_id: str = Field(min_length=1, max_length=36)
+    image_type: Literal["face", "body", "style", "reference"] = "reference"
+    order_index: int | None = Field(default=None, ge=0)
+
+
+class JobResponse(BaseModel):
+    """The external shape of a job (PR002).
+
+    Identical to `Job` except `status`, which is mapped through
+    `events.external_status`: the system keeps `complete` internally and
+    answers `completed` on the wire (Bible §14) without breaking clients and
+    stored state that know `complete` (Bible §2).
+    """
+
+    id: UUID
+    type: str
+    status: str
+    prompt: str
+    created_at: datetime
+    progress: int
+    output_url: str | None = None
+    parameters: dict = Field(default_factory=dict)
+
+    @classmethod
+    def from_job(cls, job: Job) -> "JobResponse":
+        from .events import external_status
+
+        return cls(
+            id=job.id,
+            type=job.type.value,
+            status=external_status(job.status.value),
+            prompt=job.prompt,
+            created_at=job.created_at,
+            progress=job.progress,
+            output_url=job.output_url,
+            parameters=job.parameters,
+        )
 
 
 class AssetResponse(BaseModel):
@@ -237,6 +375,8 @@ class GenerationSpecRequest(BaseModel):
     kind: Literal["image", "video"] = "image"
     project_id: str | None = Field(default=None, max_length=36)
     persona_id: str | None = Field(default=None, max_length=80)
+    #: PR004: optionally narrow the persona wardrobe block to selected items.
+    wardrobe: list[str] | None = None
     style: str | None = Field(default=None, max_length=120)
     shot: str | None = Field(default=None, max_length=80)
     provider: str = Field(default="flux-dev", max_length=80)

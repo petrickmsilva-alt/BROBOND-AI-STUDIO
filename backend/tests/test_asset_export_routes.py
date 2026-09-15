@@ -256,23 +256,43 @@ def test_training_status_reports_an_unknown_run(headers) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _raw_token() -> str:
+    response = client.post(
+        "/api/v1/auth/register",
+        json={"email": f"ws-{uuid4()}@example.com", "name": "WS Owner", "password": "strong-pass-123"},
+    )
+    assert response.status_code == 201, response.text
+    return response.json()["access_token"]
+
+
 def test_the_training_socket_reports_a_missing_run_and_closes() -> None:
-    """It must say so and stop, not poll a row that will never appear."""
+    """It must say so and stop, not poll a row that will never appear.
 
-    with client.websocket_connect(f"/api/v1/personas/{uuid4()}/training/events/{uuid4()}") as socket:
-        message = socket.receive_json()
-    assert message["status"] == "failed"
-    assert message["progress"] == 100
-    assert message["log"] == "Training run not found"
-
-
-def test_the_training_socket_is_open_without_authentication() -> None:
-    """Recorded, not endorsed: this socket has no auth guard.
-
-    The run id is a random UUID, so it is not enumerable, but the endpoint does
-    not check identity the way the HTTP status route does. Pinning the current
-    behaviour keeps the gap visible instead of silently changing it here.
+    PR002: the socket authenticates first (token query parameter), and a run
+    that does not exist — or does not belong to the caller — is refused with
+    a policy violation before it is ever accepted.
     """
 
-    with client.websocket_connect(f"/api/v1/personas/{uuid4()}/training/events/{uuid4()}") as socket:
-        assert socket.receive_json()["status"] == "failed"
+    from starlette.websockets import WebSocketDisconnect
+
+    token = _raw_token()
+    with pytest.raises(WebSocketDisconnect) as raised:
+        with client.websocket_connect(f"/api/v1/personas/{uuid4()}/training/events/{uuid4()}?token={token}"):
+            pass
+    assert raised.value.code == 1008
+
+
+def test_the_training_socket_requires_authentication() -> None:
+    """PR002: the gap this used to pin is closed — no token, no socket.
+
+    The previous version of this test recorded the socket opening with no
+    identity at all. The endpoint now checks identity the way the HTTP status
+    route does, and the refusal happens before the connection is accepted.
+    """
+
+    from starlette.websockets import WebSocketDisconnect
+
+    with pytest.raises(WebSocketDisconnect) as raised:
+        with client.websocket_connect(f"/api/v1/personas/{uuid4()}/training/events/{uuid4()}"):
+            pass
+    assert raised.value.code == 1008

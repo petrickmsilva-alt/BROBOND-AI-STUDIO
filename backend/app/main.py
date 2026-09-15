@@ -1,16 +1,18 @@
 """FastAPI entrypoint for BROBOND AI STUDIO's local service boundary."""
 import asyncio
+import json
 from pathlib import Path
 import time
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-from sqlalchemy import inspect, select, text
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from .auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse, current_user, login, optional_user, register
+from .audit import audit
+from .auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse, auth_rate_limiter, current_user, login, optional_user, register, ws_identity
 from .conditioning import catalog
 from .core.contracts import GenerationKind, GenerationSpec
 from .core import (
@@ -41,15 +43,15 @@ from .core import (
     StyleResolver,
 )
 from .core.config import settings
-from .db import Base, SessionLocal, engine, get_db
-from .events import TERMINAL_STATUSES, hub, job_event
+from .db import SessionLocal, get_db
+from .events import EVENT_CANCELLED, TERMINAL_STATUSES, hub, job_event
 from .knowledge import resolve as resolve_knowledge, seed_knowledge
 from .lora import lora_trainer
 from .media import MediaError, media
 from .models import Asset, TrainingRun, User, Workspace
 from .providers import registry as provider_registry
 from .prompt_engine import prompt_engine
-from .queue import enqueue, enqueue_lora_training
+from .queue import enqueue, enqueue_lora_training, transition
 from .readiness import readiness
 from .storage import storage
 from .system import gpu_info
@@ -72,7 +74,13 @@ from .schemas import (
     FrameProfileResponse,
     FramingResponse,
     GenerationSpecRequest, GenerationSpecResponse, GenerationType, KnowledgeResponse, LoraVersionResponse,
-    ImageGenerationRequest, Job, JobStatus, Persona, PersonaCreateRequest,
+    ImageGenerationRequest, Job, JobResponse, JobStatus, Persona, PersonaCreateRequest,
+    PersonaImageAddRequest,
+    PersonaImageResponse,
+    PersonaProfileResponse,
+    PersonaRevisionResponse,
+    PersonaUpdateRequest,
+    PersonaWardrobeResponse,
     LensProfileResponse,
     LibraryAuditResponse,
     LightingProfileResponse,
@@ -95,7 +103,9 @@ from .schemas import (
     TimeQualityResponse,
     TrainingStatusResponse,
 )
-from .store import store
+from .repositories import PersonaRepositoryError, persona_repo
+from .job_service import job_service
+from .jobs import to_api_job, to_core_job
 
 #: How often the queue WebSocket checks the event buffer, in seconds. The hub is
 #: in-process and the worker runs synchronously, so the route polls rather than
@@ -109,21 +119,27 @@ app = FastAPI(
     description="Local-first orchestration API for generative visual workflows.",
 )
 def _bootstrap_database(retries: int = 12, delay_seconds: float = 5.0) -> None:
-    """Create tables and seed knowledge, retrying while the database is still
-    booting. On Render the managed Postgres can take a few minutes to become
-    reachable after a fresh blueprint deploy; retrying here avoids a
-    crash-loop on first boot. Development deployments should run Alembic
-    migrations instead of create_all."""
+    """Apply migrations and seed knowledge, retrying while the database is
+    still booting. On Render the managed Postgres can take a few minutes to
+    become reachable after a fresh blueprint deploy; retrying here avoids a
+    crash-loop on first boot.
+
+    PR002: the schema now comes from Alembic instead of `create_all` plus a
+    manual `ALTER TABLE`. The initial migration is idempotent, so a legacy
+    dev database created by the old bootstrap upgrades in place instead of
+    needing to be dropped. Moving this out of import time is a later PR —
+    the test suite opens 25 `TestClient`s that rely on the import-time
+    bootstrap, and redesigning that fixture is out of scope here."""
+    from alembic import command
+    from alembic.config import Config as AlembicConfig
+
+    alembic_ini = Path(__file__).resolve().parents[2] / "alembic.ini"
     last_error: Exception | None = None
     for attempt in range(1, retries + 1):
         try:
-            Base.metadata.create_all(bind=engine)
-            # Lightweight local migration for existing SQLite development databases.
-            if "training_runs" in inspect(engine).get_table_names():
-                columns = {column["name"] for column in inspect(engine).get_columns("training_runs")}
-                if "workspace_id" not in columns:
-                    with engine.begin() as connection:
-                        connection.execute(text("ALTER TABLE training_runs ADD COLUMN workspace_id VARCHAR(36)"))
+            alembic_config = AlembicConfig(str(alembic_ini))
+            alembic_config.set_main_option("script_location", str(alembic_ini.parent / "alembic"))
+            command.upgrade(alembic_config, "head")
             with SessionLocal() as seed_db:
                 seed_knowledge(seed_db)
             return
@@ -151,7 +167,45 @@ _bootstrap_database()
 cinematic_library = CinematicLibrary()
 persona_ledger = PersonaLedger()
 persona_engine = PersonaMemoryEngine(ledger=persona_ledger)
-memory_resolver = MemoryResolver(persona_ledger)
+
+
+class _CompositePersonaSource:
+    """PR003: persistent personas first, the character ledger as fallback.
+
+    Implements the Core's `PersonaSource` protocol at the application
+    boundary: the Core still imports no SQLAlchemy. `fetch` lets the spec
+    builder resolve a persona by id whether it is a PostgreSQL row or a
+    seeded character. `search` deliberately returns the ledger only:
+    persistent personas are workspace-scoped product data and must never
+    leak into the global character catalog (tenant privacy).
+    """
+
+    def __init__(self, ledger: PersonaLedger) -> None:
+        self._ledger = ledger
+
+    def fetch(self, persona_id: str):
+        row = persona_repo.find_by_id(persona_id)
+        if row is not None:
+            return persona_repo.to_memory(row)
+        return self._ledger.fetch(persona_id)
+
+    def search(self, query: str = "") -> list:
+        return self._ledger.search(query)
+
+
+class _PersistentPersonaProfileSource:
+    """PR003: `PersonaProfileSource` adapter over the persona repository.
+
+    The MemoryResolver uses it in `resolve_persona`; the Core never sees a
+    SQLAlchemy model, only the `PersonaProfile` contract.
+    """
+
+    def get_profile(self, persona_id: str):
+        row = persona_repo.find_by_id(persona_id)
+        return persona_repo.to_profile(row) if row is not None else None
+
+
+memory_resolver = MemoryResolver(_CompositePersonaSource(persona_ledger), profile_source=_PersistentPersonaProfileSource())
 style_resolver = StyleResolver()
 # ETAPA 6: the resolver serves the full 300-shot library. SEED_SHOTS (the ten
 # published presets) stays untouched; the expansion is composed in here, at the
@@ -236,7 +290,19 @@ def conditioning_models() -> list[dict[str, str]]:
 
 
 @app.get("/api/v1/knowledge", response_model=list[KnowledgeResponse], tags=["knowledge"])
-def knowledge(query: str | None = None, category: str | None = None, db: Session = Depends(get_db)) -> list[KnowledgeResponse]:
+def knowledge(
+    query: str | None = None,
+    category: str | None = None,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> list[KnowledgeResponse]:
+    """Search the knowledge base (PR002: identity required).
+
+    The base contains persona PII (e.g. CHAR_PETRICK's full profile), so it
+    is no longer publicly readable; the seed content is global and shared by
+    every authenticated tenant, which is why there is no workspace filter
+    here.
+    """
     entries = resolve_knowledge(db, query=query, category=category)
     return [KnowledgeResponse.model_validate(entry, from_attributes=True) for entry in entries]
 
@@ -258,13 +324,37 @@ def video_models() -> list[dict[str, str]]:
 
 
 @app.post("/api/v1/auth/register", response_model=TokenResponse, status_code=201, tags=["auth"])
-def register_user(request: RegisterRequest, db: Session = Depends(get_db)) -> TokenResponse:
-    return register(request, db)
+def register_user(
+    request: RegisterRequest,
+    http_request: Request,
+    db: Session = Depends(get_db),
+    _rate_limited: None = Depends(auth_rate_limiter),
+) -> TokenResponse:
+    """Create an account (PR002: rate-limited and audited)."""
+    try:
+        result = register(request, db)
+    except HTTPException:
+        audit(db, actor=None, action="auth.register.failed", detail={"email": request.email}, request=http_request)
+        raise
+    audit(db, actor=result.user, action="auth.register", resource_type="user", resource_id=result.user.id, detail={"email": request.email}, request=http_request)
+    return result
 
 
 @app.post("/api/v1/auth/login", response_model=TokenResponse, tags=["auth"])
-def login_user(request: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
-    return login(request, db)
+def login_user(
+    request: LoginRequest,
+    http_request: Request,
+    db: Session = Depends(get_db),
+    _rate_limited: None = Depends(auth_rate_limiter),
+) -> TokenResponse:
+    """Sign in (PR002: rate-limited, and every attempt — success or failure — audited)."""
+    try:
+        result = login(request, db)
+    except HTTPException:
+        audit(db, actor=None, action="auth.login.failed", detail={"email": request.email}, request=http_request)
+        raise
+    audit(db, actor=result.user, action="auth.login", resource_type="user", resource_id=result.user.id, request=http_request)
+    return result
 
 
 @app.get("/api/v1/auth/me", response_model=UserResponse, tags=["auth"])
@@ -272,8 +362,28 @@ def get_current_user(user: User = Depends(current_user)) -> UserResponse:
     return UserResponse.model_validate(user, from_attributes=True)
 
 
-def _queue_job(kind: GenerationType, prompt: str, parameters: dict | None = None) -> Job:
-    job = store.add_job(Job(type=kind, prompt=prompt, parameters=parameters or {}))
+def _workspace_for(db: Session, user: User) -> Workspace | None:
+    return db.scalar(select(Workspace).where(Workspace.owner_id == user.id))
+
+
+def _queue_job(kind: GenerationType, prompt: str, parameters: dict | None = None, user: User | None = None, request: Request | None = None) -> Job:
+    # PR004-prep: creation goes through the Core's JobService and its
+    # injected JobRepository (default: the jobs table). The API object is
+    # still what the route returns — only the path to persistence changed.
+    job = Job(type=kind, prompt=prompt, parameters=parameters or {})
+    job_service.create(to_core_job(job))
+    # PR002: job creation is a critical action and is audited with the acting
+    # user (or an anonymous mark) and the client address.
+    audit(
+        SessionLocal(),
+        actor=user,
+        action="job.created",
+        resource_type="job",
+        resource_id=str(job.id),
+        workspace_id=job.parameters.get("workspace_id"),
+        detail={"type": kind.value, "model": (parameters or {}).get("model")},
+        request=request,
+    )
     # Redis/Celery is optional in local development; the job remains inspectable.
     enqueue(str(job.id))
     return job
@@ -282,40 +392,88 @@ def _queue_job(kind: GenerationType, prompt: str, parameters: dict | None = None
 def _generation_parameters(request: ImageGenerationRequest | VideoGenerationRequest, user: User | None, db: Session) -> dict:
     parameters = request.model_dump(mode="json")
     if user:
-        workspace = db.scalar(select(Workspace).where(Workspace.owner_id == user.id))
+        workspace = _workspace_for(db, user)
         if workspace:
             parameters["workspace_id"] = workspace.id
+            # PR003: a request scoped to a persona inherits the persona's
+            # trained LoRA (asset id) unless the caller picked one explicitly.
+            # The worker resolves the asset workspace-scoped and puts the real
+            # path on the spec — the same path user-selected LoRAs already use.
+            if request.persona_id and parameters.get("lora_id") is None:
+                persona = persona_repo.find_by_id(request.persona_id, workspace_id=workspace.id)
+                if persona is not None and persona.lora_id:
+                    parameters["lora_id"] = persona.lora_id
     return parameters
 
 
+def _job_for_user(job_id: UUID, user: User, db: Session) -> Job:
+    """Fetch a job and refuse anything the caller does not own.
+
+    PR002: 404 rather than 403 so a token cannot be used to enumerate other
+    tenants' job ids — the same rule the asset routes already apply.
+    """
+
+    core_job = job_service.get(str(job_id))
+    job = to_api_job(core_job) if core_job is not None else None
+    if not job:
+        raise HTTPException(status_code=404, detail="Generation job not found")
+    workspace = _workspace_for(db, user)
+    if not workspace or job.parameters.get("workspace_id") != workspace.id:
+        raise HTTPException(status_code=404, detail="Generation job not found")
+    return job
+
+
 @app.post("/api/v1/generations/images", response_model=Job, status_code=202, tags=["generations"])
-def create_image_generation(request: ImageGenerationRequest, user: User | None = Depends(optional_user), db: Session = Depends(get_db)) -> Job:
+def create_image_generation(
+    request: ImageGenerationRequest,
+    http_request: Request,
+    user: User | None = Depends(optional_user),
+    db: Session = Depends(get_db),
+) -> Job:
     """Create an image job. Authenticated jobs are persisted to the user's asset library."""
-    return _queue_job(GenerationType.IMAGE, request.prompt, _generation_parameters(request, user, db))
+    return _queue_job(GenerationType.IMAGE, request.prompt, _generation_parameters(request, user, db), user=user, request=http_request)
 
 
 @app.post("/api/v1/generations/videos", response_model=Job, status_code=202, tags=["generations"])
-def create_video_generation(request: VideoGenerationRequest, user: User | None = Depends(optional_user), db: Session = Depends(get_db)) -> Job:
+def create_video_generation(
+    request: VideoGenerationRequest,
+    http_request: Request,
+    user: User | None = Depends(optional_user),
+    db: Session = Depends(get_db),
+) -> Job:
     """Create an H.264 video job for the configured video provider."""
-    return _queue_job(GenerationType.VIDEO, request.prompt, _generation_parameters(request, user, db))
+    return _queue_job(GenerationType.VIDEO, request.prompt, _generation_parameters(request, user, db), user=user, request=http_request)
 
 
-@app.get("/api/v1/jobs/{job_id}", response_model=Job, tags=["generations"])
-def get_job(job_id: UUID) -> Job:
-    job = store.get_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Generation job not found")
-    return job
+@app.get("/api/v1/jobs/{job_id}", response_model=JobResponse, tags=["generations"])
+def get_job(job_id: UUID, user: User = Depends(current_user), db: Session = Depends(get_db)) -> JobResponse:
+    """Read one of the caller's jobs (PR002: identity required)."""
+    return JobResponse.from_job(_job_for_user(job_id, user, db))
 
 
-@app.post("/api/v1/jobs/{job_id}/cancel", response_model=Job, tags=["queue"])
-def cancel_job(job_id: UUID) -> Job:
-    job = store.get_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Generation job not found")
+@app.post("/api/v1/jobs/{job_id}/cancel", response_model=JobResponse, tags=["queue"])
+def cancel_job(request: Request, job_id: UUID, user: User = Depends(current_user), db: Session = Depends(get_db)) -> JobResponse:
+    """Cancel one of the caller's jobs (PR002: identity required).
+
+    The cancellation goes through `transition()`, the single point where a
+    job moves, so it is persisted and announced to any watching client —
+    before PR002 a cancel mutated the in-memory object without emitting
+    anything.
+    """
+
+    job = _job_for_user(job_id, user, db)
     if job.status in {JobStatus.QUEUED, JobStatus.RUNNING}:
-        job.status = JobStatus.CANCELLED
-    return job
+        transition(job, JobStatus.CANCELLED, event=EVENT_CANCELLED)
+        audit(
+            db,
+            actor=user,
+            action="job.cancelled",
+            resource_type="job",
+            resource_id=str(job.id),
+            workspace_id=job.parameters.get("workspace_id"),
+            request=request,
+        )
+    return JobResponse.from_job(job)
 
 
 @app.websocket("/api/v1/queue/events/{job_id}")
@@ -327,17 +485,36 @@ async def queue_events(websocket: WebSocket, job_id: UUID) -> None:
     finish and the client would never hear about it, because nothing ever called
     `hub.publish`. It now drains the hub's event buffer and closes on a terminal
     status, so a client that connects late still gets the history and a clean end.
+
+    PR002: the socket is authenticated before it is accepted. Browsers cannot
+    set headers on a WebSocket handshake, so the bearer token rides the
+    `token` query parameter (`auth.ws_identity`). A client that does not own
+    the job is closed with the same 1008 reason an unknown job gets — a token
+    must not let another tenant enumerate job ids.
     """
 
-    job = store.get_job(job_id)
-    if not job:
-        await websocket.close(code=1008, reason="Generation job not found")
-        return
+    with SessionLocal() as db:
+        user = ws_identity(websocket.query_params.get("token"), db)
+        if not user:
+            await websocket.close(code=1008, reason="Authentication required")
+            return
+        workspace = db.scalar(select(Workspace).where(Workspace.owner_id == user.id))
+        if not workspace:
+            await websocket.close(code=1008, reason="Authentication required")
+            return
+        _ws_core = job_service.get(str(job_id))
+        job = to_api_job(_ws_core) if _ws_core is not None else None
+        if not job or job.parameters.get("workspace_id") != workspace.id:
+            await websocket.close(code=1008, reason="Generation job not found")
+            return
+        # External contract on the wire: the snapshot says `completed`, not
+        # the internal `complete` (see schemas.JobResponse).
+        snapshot = JobResponse.from_job(job).model_dump(mode="json")
     await hub.connect(job_id, websocket)
     try:
         # The current state first: a client must never have to wait for the next
         # transition to learn where the job already is.
-        await websocket.send_json(job.model_dump(mode="json"))
+        await websocket.send_json(snapshot)
         cursor = 0
         sent_terminal = False
         while True:
@@ -348,7 +525,8 @@ async def queue_events(websocket: WebSocket, job_id: UUID) -> None:
                     sent_terminal = True
             cursor += len(events)
 
-            current = store.get_job(job_id)
+            _current_core = job_service.get(str(job_id))
+            current = to_api_job(_current_core) if _current_core is not None else None
             status = current.status.value if current else job.status.value
             if status in TERMINAL_STATUSES:
                 # Only synthesise a closing event if the buffer did not already
@@ -404,15 +582,32 @@ def list_assets(user: User = Depends(current_user), db: Session = Depends(get_db
 
 
 @app.get("/api/v1/assets/download/{object_key:path}", tags=["assets"])
-def download_local_asset(object_key: str):
+def download_local_asset(
+    object_key: str,
+    request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """Serve a stored file (PR002: identity and tenant required).
+
+    Object keys are namespaced `{workspace_id}/...`; the key must belong to
+    the caller's workspace, so a token cannot be used to walk another
+    tenant's files.
+    """
     if settings.storage_enabled:
         raise HTTPException(status_code=404, detail="Use the signed MinIO URL")
+    # Shape first, ownership second: an absolute or escaping key is rejected
+    # by the path guard (400) before any tenant rule can classify it.
     try:
         path = storage.local_path(object_key)
     except ValueError as error:
         raise HTTPException(status_code=400, detail="Invalid asset path") from error
+    workspace = _workspace_for(db, user)
+    if not workspace or object_key.split("/", 1)[0] != workspace.id:
+        raise HTTPException(status_code=404, detail="Asset not found")
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Asset not found")
+    audit(db, actor=user, action="asset.downloaded", resource_type="asset", resource_id=object_key, workspace_id=workspace.id, request=request)
     return FileResponse(path)
 
 
@@ -474,36 +669,242 @@ def export_video(asset_id: str, request: ExportRequest, user: User = Depends(cur
 
 
 @app.post("/api/v1/personas", response_model=Persona, status_code=202, tags=["personas"])
-def create_persona(request: PersonaCreateRequest) -> Persona:
-    """Register a persona and reserve a future LoRA training job."""
-    return store.add_persona(Persona(details=request, status="training"))
+def create_persona(request: PersonaCreateRequest, http_request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)) -> Persona:
+    """Register a persona and reserve a future LoRA training job.
+
+    PR002: identity required. PR003: the persona is persisted in PostgreSQL
+    (`personas` + `persona_images` + the first `persona_identity_revision`
+    row) — the response contract is unchanged, so PersonaStudio and the
+    training flow keep working untouched. Reference ids are stored as-is
+    (the legacy flow may reference assets created afterwards); the dedicated
+    `/images` endpoint is the one that validates existence.
+    """
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    try:
+        row = persona_repo.create(
+            workspace.id,
+            name=request.name,
+            age=request.age,
+            height=request.height_m,
+            body_type=request.appearance,
+            eyes=request.eye_color,
+            beard=request.beard,
+            hair=request.hair,
+            default_style=request.style,
+            reference_asset_ids=[str(asset_id) for asset_id in request.reference_asset_ids],
+            actor_id=user.id,
+        )
+    except PersonaRepositoryError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    persona = Persona(id=UUID(row.id), status="training", created_at=row.created_at, details=request, workspace_id=workspace.id)
+    audit(db, actor=user, action="persona.created", resource_type="persona", resource_id=row.id, workspace_id=workspace.id, detail={"name": request.name, "slug": row.slug}, request=http_request)
+    return persona
+
+
+def _persona_profile_response(row, db: Session) -> PersonaProfileResponse:
+    """Map a persona row (plus its children) onto the API response.
+
+    Asset names/URLs are joined on the fly; a referenced asset that no longer
+    exists still shows up (with null name/url) — references are historical.
+    """
+    images = [_persona_image_response(image, db) for image in persona_repo.images(row.id)]
+    wardrobe = [PersonaWardrobeResponse(id=item.id, name=item.name, category=item.category, metadata=_wardrobe_metadata(item.metadata_json)) for item in persona_repo.wardrobe(row.id)]
+    revisions = [
+        PersonaRevisionResponse(
+            id=revision.id,
+            revision=revision.revision,
+            notes=_wardrobe_metadata(revision.notes),
+            created_by=revision.created_by,
+            created_at=revision.created_at,
+        )
+        for revision in persona_repo.revisions(row.id)
+    ]
+    return PersonaProfileResponse(
+        id=row.id,
+        workspace_id=row.workspace_id,
+        name=row.name,
+        slug=row.slug,
+        age=row.age,
+        height=row.height,
+        body_type=row.body_type,
+        skin_tone=row.skin_tone,
+        hair=row.hair,
+        beard=row.beard,
+        eyes=row.eyes,
+        voice=row.voice,
+        default_style=row.default_style,
+        lora_id=row.lora_id,
+        revision=row.revision,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+        wardrobe=wardrobe,
+        images=images,
+        revisions=revisions,
+    )
+
+
+def _wardrobe_metadata(raw: str) -> dict:
+    try:
+        value = json.loads(raw or "{}")
+        return value if isinstance(value, dict) else {}
+    except json.JSONDecodeError:
+        return {}
+
+
+@app.get("/api/v1/personas", response_model=list[PersonaProfileResponse], tags=["personas"])
+def list_persona_profiles(user: User = Depends(current_user), db: Session = Depends(get_db)) -> list[PersonaProfileResponse]:
+    """List the caller's persistent persona profiles (PR003)."""
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    return [_persona_profile_response(row, db) for row in persona_repo.list_workspace(workspace.id)]
+
+
+@app.get("/api/v1/personas/{persona_id}", response_model=PersonaProfileResponse, tags=["personas"])
+def get_persona_profile(persona_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> PersonaProfileResponse:
+    """Read one of the caller's persona profiles (PR003; foreign ids 404)."""
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    row = persona_repo.find_by_id(persona_id, workspace_id=workspace.id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Persona not found")
+    return _persona_profile_response(row, db)
+
+
+@app.patch("/api/v1/personas/{persona_id}", response_model=PersonaProfileResponse, tags=["personas"])
+def update_persona_profile(persona_id: str, request: PersonaUpdateRequest, http_request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)) -> PersonaProfileResponse:
+    """Partially update a persona profile (PR003).
+
+    Identity changes bump ``revision`` and append an immutable
+    ``persona_identity_revision`` row; ``wardrobe`` (when present) replaces
+    the whole wardrobe. The slug is the stable identifier and never changes.
+    """
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    if persona_repo.find_by_id(persona_id, workspace_id=workspace.id) is None:
+        raise HTTPException(status_code=404, detail="Persona not found")
+    changes = request.model_dump(exclude_unset=True)
+    wardrobe_items = changes.pop("wardrobe", None)
+    row = persona_repo.update(persona_id, changes, actor_id=user.id, wardrobe_items=wardrobe_items)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Persona not found")
+    audit(db, actor=user, action="persona.updated", resource_type="persona", resource_id=row.id, workspace_id=workspace.id, detail={"fields": sorted(changes), "revision": row.revision}, request=http_request)
+    return _persona_profile_response(row, db)
+
+
+@app.delete("/api/v1/personas/{persona_id}", status_code=204, tags=["personas"])
+def delete_persona_profile(persona_id: str, http_request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Delete a persona profile and its children (PR003).
+
+    Referenced assets and training-run history are untouched: the persona
+    only pointed at them (append-only principle).
+    """
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    if persona_repo.find_by_id(persona_id, workspace_id=workspace.id) is None:
+        raise HTTPException(status_code=404, detail="Persona not found")
+    persona_repo.delete(persona_id)
+    audit(db, actor=user, action="persona.deleted", resource_type="persona", resource_id=persona_id, workspace_id=workspace.id, detail={}, request=http_request)
+
+
+@app.get("/api/v1/personas/{persona_id}/images", response_model=list[PersonaImageResponse], tags=["personas"])
+def list_persona_images(persona_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> list[PersonaImageResponse]:
+    """List a persona's image references (PR003)."""
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    row = persona_repo.find_by_id(persona_id, workspace_id=workspace.id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Persona not found")
+    return [_persona_image_response(image, db) for image in persona_repo.images(row.id)]
+
+
+def _persona_image_response(image, db: Session) -> PersonaImageResponse:
+    asset = db.get(Asset, image.asset_id) if image.asset_id else None
+    return PersonaImageResponse(
+        id=image.id,
+        asset_id=image.asset_id,
+        image_type=image.image_type,
+        order_index=image.order_index,
+        name=asset.name if asset is not None else None,
+        url=storage.signed_url(asset.object_key) if asset is not None else None,
+    )
+
+
+@app.post("/api/v1/personas/{persona_id}/images", response_model=PersonaImageResponse, status_code=201, tags=["personas"])
+def add_persona_image(persona_id: str, request: PersonaImageAddRequest, http_request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)) -> PersonaImageResponse:
+    """Attach a stored image asset to a persona (PR003).
+
+    The persona only references existing assets — no upload happens here.
+    The asset must belong to the caller's workspace and be an image
+    (404 otherwise); re-attaching the same asset is 409.
+    """
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    row = persona_repo.find_by_id(persona_id, workspace_id=workspace.id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Persona not found")
+    asset = db.get(Asset, request.asset_id)
+    if asset is None or asset.workspace_id != workspace.id:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    if asset.kind != "image":
+        raise HTTPException(status_code=422, detail="Only image assets can be attached to a persona")
+    image = persona_repo.attach_image(persona_id, request.asset_id, request.image_type, request.order_index)
+    if image is None:
+        raise HTTPException(status_code=409, detail="Asset already attached to this persona")
+    audit(db, actor=user, action="persona.image.attached", resource_type="persona_image", resource_id=image.id, workspace_id=workspace.id, detail={"persona_id": persona_id, "asset_id": request.asset_id, "image_type": request.image_type}, request=http_request)
+    return PersonaImageResponse(id=image.id, asset_id=image.asset_id, image_type=image.image_type, order_index=image.order_index, name=asset.name, url=storage.signed_url(asset.object_key))
 
 
 @app.post("/api/v1/personas/{persona_id}/train", response_model=PersonaTrainResponse, status_code=202, tags=["personas"])
-def train_persona(persona_id: UUID, request: PersonaTrainRequest, user: User | None = Depends(optional_user), db: Session = Depends(get_db)) -> PersonaTrainResponse:
-    persona = store.personas.get(persona_id)
-    if not persona:
+def train_persona(persona_id: UUID, request: PersonaTrainRequest, http_request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)) -> PersonaTrainResponse:
+    """Queue LoRA training for one of the caller's personas (PR002: identity required).
+
+    The route used to accept anonymous training (the last `optional_user` on
+    a route that creates GPU work). Personas now carry the workspace that
+    created them, and only that tenant can train them.
+    """
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    # PR003: personas live in PostgreSQL now — training reads the row, so it
+    # survives restarts and every tenant's personas are isolated by the
+    # workspace-scoped lookup (foreign ids 404, same as before).
+    persona = persona_repo.find_by_id(str(persona_id), workspace_id=workspace.id)
+    if persona is None:
         raise HTTPException(status_code=404, detail="Persona not found")
     try:
-        plan = lora_trainer.build_plan(persona_id, request.reference_asset_ids, persona.details.name, request.style)
+        plan = lora_trainer.build_plan(str(persona_id), request.reference_asset_ids, persona.name, request.style)
     except ValueError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
-    persona.status = "training"
-    persona.details.reference_asset_ids = request.reference_asset_ids
-    workspace = db.scalar(select(Workspace).where(Workspace.owner_id == user.id)) if user else None
-    run = TrainingRun(persona_id=str(persona_id), workspace_id=workspace.id if workspace else None, status="queued", progress=0, log="Training plan created")
+    # Legacy contract: queueing a run refreshes the persona's reference set
+    # with the exact assets the run will train on (face/body/style images
+    # chosen through the profile screen are untouched).
+    persona_repo.replace_references(str(persona_id), [str(asset_id) for asset_id in request.reference_asset_ids])
+    run = TrainingRun(persona_id=str(persona_id), workspace_id=workspace.id, status="queued", progress=0, log="Training plan created")
     db.add(run)
     db.commit()
     db.refresh(run)
-    queued = enqueue_lora_training(run.id, str(persona_id), run.workspace_id, [str(asset_id) for asset_id in request.reference_asset_ids], persona.details.name, request.style)
+    queued = enqueue_lora_training(run.id, str(persona_id), run.workspace_id, [str(asset_id) for asset_id in request.reference_asset_ids], persona.name, request.style)
     message = "LoRA training job queued for a GPU worker" if queued else "Training run created; enable Redis and the GPU worker to execute it"
+    audit(db, actor=user, action="persona.training.queued", resource_type="training_run", resource_id=run.id, workspace_id=workspace.id, detail={"persona_id": str(persona_id), "references": len(request.reference_asset_ids)}, request=http_request)
     return PersonaTrainResponse(persona_id=persona_id, run_id=UUID(run.id), status=run.status, progress=run.progress, image_count=plan.image_count, message=message)
 
 
 @app.get("/api/v1/personas/{persona_id}/training/{run_id}", response_model=TrainingStatusResponse, tags=["personas"])
-def training_status(persona_id: UUID, run_id: UUID, db: Session = Depends(get_db)) -> TrainingStatusResponse:
+def training_status(persona_id: UUID, run_id: UUID, user: User = Depends(current_user), db: Session = Depends(get_db)) -> TrainingStatusResponse:
+    """Read one of the caller's training runs (PR002: identity required)."""
     run = db.get(TrainingRun, str(run_id))
     if not run or run.persona_id != str(persona_id):
+        raise HTTPException(status_code=404, detail="Training run not found")
+    workspace = _workspace_for(db, user)
+    if not workspace or run.workspace_id != workspace.id:
         raise HTTPException(status_code=404, detail="Training run not found")
     return TrainingStatusResponse(run_id=run_id, persona_id=persona_id, status=run.status, progress=run.progress, log=run.log, output_asset_id=run.output_asset_id)
 
@@ -526,6 +927,19 @@ def list_persona_loras(persona_id: UUID, user: User = Depends(current_user), db:
 
 @app.websocket("/api/v1/personas/{persona_id}/training/events/{run_id}")
 async def training_events(websocket: WebSocket, persona_id: UUID, run_id: UUID) -> None:
+    # PR002: authenticate before accepting, same `token` query parameter as
+    # the queue events socket, and require the run to belong to the caller's
+    # tenant.
+    with SessionLocal() as db:
+        user = ws_identity(websocket.query_params.get("token"), db)
+        if not user:
+            await websocket.close(code=1008, reason="Authentication required")
+            return
+        workspace = db.scalar(select(Workspace).where(Workspace.owner_id == user.id))
+        run = db.get(TrainingRun, str(run_id)) if workspace else None
+        if not workspace or not run or run.persona_id != str(persona_id) or run.workspace_id != workspace.id:
+            await websocket.close(code=1008, reason="Training run not found")
+            return
     await websocket.accept()
     try:
         while True:
@@ -632,6 +1046,10 @@ def compile_generation_spec(
         project_id=request.project_id,
         user_id=workspace_id,
         persona_id=request.persona_id,
+        # PR004: the compiler resolves identity, default style, LoRA and the
+        # wardrobe automatically from the persona; `wardrobe` only narrows
+        # the wardrobe block to the project's selection.
+        wardrobe=request.wardrobe,
         style=request.style,
         shot=request.shot,
         provider=request.provider,
@@ -664,9 +1082,16 @@ def compile_generation_spec(
     )
 
 
-@app.get("/api/v1/queue", response_model=list[Job], tags=["queue"])
-def list_queue() -> list[Job]:
-    return list(store.jobs.values())
+@app.get("/api/v1/queue", response_model=list[JobResponse], tags=["queue"])
+def list_queue(user: User = Depends(current_user), db: Session = Depends(get_db)) -> list[JobResponse]:
+    """List the caller's generation queue (PR001: real data, no seed; PR002: identity required)."""
+    workspace = _workspace_for(db, user)
+    # PR004-prep: the listing comes from the JobRepository (workspace-scoped
+    # by construction). A user without a workspace lists nothing — before the
+    # refactor that edge case fell back to an unscoped query.
+    if not workspace:
+        return []
+    return [JobResponse.from_job(to_api_job(core_job)) for core_job in job_service.list_by_workspace(workspace.id)]
 
 
 # ---------------------------------------------------------------------------
@@ -714,15 +1139,15 @@ def _persona_history(persona_id: str) -> PersonaHistoryResponse:
 
 
 @app.get("/api/v1/core/personas", response_model=list[PersonaMemoryResponse], tags=["core"])
-def list_persona_memory(query: str = "") -> list[PersonaMemoryResponse]:
-    """Current identities in the character library, with their version."""
+def list_persona_memory(query: str = "", user: User = Depends(current_user)) -> list[PersonaMemoryResponse]:
+    """Current identities in the character library, with their version (PR002: identity required)."""
 
     return [_persona_memory(persona.persona_id) for persona in persona_engine.catalog(query)]
 
 
 @app.get("/api/v1/core/personas/{persona_id}", response_model=PersonaHistoryResponse, tags=["core"])
-def read_persona_memory(persona_id: str) -> PersonaHistoryResponse:
-    """A character's full history: every revision, who made it and why.
+def read_persona_memory(persona_id: str, user: User = Depends(current_user)) -> PersonaHistoryResponse:
+    """A character's full history: every revision, who made it and why (PR002: identity required).
 
     Nothing is overwritten, so `history` grows monotonically and identity
     versions stay retrievable.
@@ -732,8 +1157,8 @@ def read_persona_memory(persona_id: str) -> PersonaHistoryResponse:
 
 
 @app.post("/api/v1/core/personas/{persona_id}/revise", response_model=PersonaVersionResponse, tags=["core"])
-def revise_persona_memory(persona_id: str, request: PersonaRevisionRequest) -> PersonaVersionResponse:
-    """Apply an attributed edit.
+def revise_persona_memory(persona_id: str, request: PersonaRevisionRequest, http_request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)) -> PersonaVersionResponse:
+    """Apply an attributed edit (PR002: identity required, audited).
 
     Identity fields require `authorized: true`; without it the change is
     rejected with 409, because identity may never change silently.
@@ -756,12 +1181,13 @@ def revise_persona_memory(persona_id: str, request: PersonaRevisionRequest) -> P
         raise HTTPException(status_code=404, detail=f"unknown persona: {persona_id}") from None
     except MemoryError_ as error:
         raise HTTPException(status_code=409, detail=str(error)) from None
+    audit(db, actor=user, action="persona.identity.revised", resource_type="persona", resource_id=persona_id, detail={"actor": request.actor, "reason": request.reason, "fields": sorted(changes)}, request=http_request)
     return PersonaVersionResponse(**entry.to_dict())
 
 
 @app.post("/api/v1/core/personas/{persona_id}/approve", response_model=PersonaMemoryResponse, tags=["core"])
-def approve_persona_memory(persona_id: str, request: PersonaTransitionRequest) -> PersonaMemoryResponse:
-    """Promote a planned character to approved.
+def approve_persona_memory(persona_id: str, request: PersonaTransitionRequest, http_request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)) -> PersonaMemoryResponse:
+    """Promote a planned character to approved (PR002: identity required, audited).
 
     Refuses with 409 when no identity attribute is defined: approval certifies
     an identity, it never invents one.
@@ -773,12 +1199,13 @@ def approve_persona_memory(persona_id: str, request: PersonaTransitionRequest) -
         raise HTTPException(status_code=404, detail=f"unknown persona: {persona_id}") from None
     except MemoryError_ as error:
         raise HTTPException(status_code=409, detail=str(error)) from None
+    audit(db, actor=user, action="persona.identity.approved", resource_type="persona", resource_id=persona_id, detail={"actor": request.actor}, request=http_request)
     return _persona_memory(persona_id)
 
 
 @app.post("/api/v1/core/personas/{persona_id}/retire", response_model=PersonaMemoryResponse, tags=["core"])
-def retire_persona_memory(persona_id: str, request: PersonaTransitionRequest) -> PersonaMemoryResponse:
-    """Retire a character. Episodes already made keep their memory snapshots."""
+def retire_persona_memory(persona_id: str, request: PersonaTransitionRequest, http_request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)) -> PersonaMemoryResponse:
+    """Retire a character (PR002: identity required, audited). Episodes already made keep their memory snapshots."""
 
     try:
         persona_engine.retire(persona_id, actor=request.actor, reason=request.reason or "retired")
@@ -786,26 +1213,29 @@ def retire_persona_memory(persona_id: str, request: PersonaTransitionRequest) ->
         raise HTTPException(status_code=404, detail=f"unknown persona: {persona_id}") from None
     except MemoryError_ as error:
         raise HTTPException(status_code=409, detail=str(error)) from None
+    audit(db, actor=user, action="persona.identity.retired", resource_type="persona", resource_id=persona_id, detail={"actor": request.actor}, request=http_request)
     return _persona_memory(persona_id)
 
 
 @app.post("/api/v1/core/personas/{persona_id}/episodes/{episode_id}/snapshot", response_model=dict, tags=["core"])
-def snapshot_persona_for_episode(persona_id: str, episode_id: str) -> dict:
-    """Bind the current identity to an episode.
+def snapshot_persona_for_episode(persona_id: str, episode_id: str, http_request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
+    """Bind the current identity to an episode (PR002: identity required, audited).
 
     This is what makes "existing episodes keep their original memory snapshot"
     true: later revisions do not reach back into this episode.
     """
 
     try:
-        return persona_engine.remember(persona_id, episode_id=episode_id)
+        snapshot = persona_engine.remember(persona_id, episode_id=episode_id)
     except PersonaNotFound:
         raise HTTPException(status_code=404, detail=f"unknown persona: {persona_id}") from None
+    audit(db, actor=user, action="persona.identity.snapshot", resource_type="persona_episode", resource_id=episode_id, detail={"persona_id": persona_id}, request=http_request)
+    return snapshot
 
 
 @app.get("/api/v1/core/personas/{persona_id}/episodes/{episode_id}/memory", response_model=PersonaMemoryResponse, tags=["core"])
-def recall_episode_memory(persona_id: str, episode_id: str) -> PersonaMemoryResponse:
-    """The identity an episode was actually made with, not the current one."""
+def recall_episode_memory(persona_id: str, episode_id: str, user: User = Depends(current_user)) -> PersonaMemoryResponse:
+    """The identity an episode was actually made with, not the current one (PR002: identity required)."""
 
     persona = persona_engine.recall(episode_id, persona_id)
     if persona is None:
@@ -824,8 +1254,8 @@ def recall_episode_memory(persona_id: str, episode_id: str) -> PersonaMemoryResp
 
 
 @app.get("/api/v1/core/personas/{persona_id}/continuity", response_model=dict, tags=["core"])
-def persona_continuity(persona_id: str, episodes: list[str] = Query(default_factory=list)) -> dict:
-    """Whether a character stayed consistent across the given episodes."""
+def persona_continuity(persona_id: str, episodes: list[str] = Query(default_factory=list), user: User = Depends(current_user)) -> dict:
+    """Whether a character stayed consistent across the given episodes (PR002: identity required)."""
 
     if persona_engine.resolve(persona_id) is None:
         raise HTTPException(status_code=404, detail=f"unknown persona: {persona_id}")

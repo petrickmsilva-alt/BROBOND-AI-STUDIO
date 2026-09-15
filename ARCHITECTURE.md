@@ -355,10 +355,38 @@ teste.
 
 ---
 
-## Fila de jobs e eventos (ETAPA 11)
+## Fila de jobs e eventos (ETAPA 11, persistência no PR002, Repository Pattern no PR004-prep)
 
-O fluxo de um job é: `POST /api/v1/queue` grava no `MemoryStore` → `process_generation`
-(Celery) executa → o cliente acompanha por `/api/v1/queue/events/{job_id}`.
+O fluxo de um job é: `POST /api/v1/generations/*` cria o job no **repositório** →
+`process_generation(job_id)` (Celery) executa a partir do id — lê o job num processo
+diferente → o cliente acompanha por `/api/v1/queue/events/{job_id}` autenticado.
+
+PR002 mudou a base do fluxo: jobs deixaram o `dict` em memória (`MemoryStore`; o `dict` de
+personas do mesmo store ficou **Legacy** no PR003 — personas agora vivem em
+`repositories/persona_repository.py`) e viram `JobRow`. `transition()` persiste **e** emite no
+mesmo passo, e o estado terminal `complete` interno é respondido como `completed` na borda
+(`events.external_status()` / `schemas.JobResponse`) sem renomear o enum — contrato interno
+e clientes existentes intactos.
+
+**PR004-prep (Repository Pattern):** o fluxo de jobs não depende mais diretamente do
+PostgreSQL. A separação é em três camadas, com dependência apontando para dentro:
+
+```text
+JobService (core/job_service.py)     regra de negócio: máquina de estados, validação
+        |  conhece SOMENTE a interface — injetada no construtor
+        v
+JobRepository (protocol)             repositories/job_repository.py — 6 operações
+        +-- PostgresJobRepository    (default) tabela jobs — o único job módulo com SQLAlchemy
+        +-- RedisJobRepository       (opt-in)  JSON em hashes + set por workspace
+        +-- MemoryJobRepository      (testes)  dict isolado, sem I/O
+```
+
+A troca de backend é uma linha no composition root (`app/job_service.py`); o Core, as
+rotas e o worker não mudam. O Core troca o `Job` do Pydantic por um value object próprio
+(`core.job_service.Job`) — o mapeamento vive na borda (`app/jobs.py`). O facade
+`app/store.py` (superfície histórica `store.add_job` etc.) permanece, agora **delegando**
+ao `JobService` e sem nenhum import de SQLAlchemy. `queue.store` segue acessível por
+compatibilidade com call sites e testes existentes.
 
 ### `transition()` é o único ponto de mutação
 
@@ -366,9 +394,11 @@ O fluxo de um job é: `POST /api/v1/queue` grava no `MemoryStore` → `process_g
 transition(job, JobStatus.RUNNING, PROGRESS_RENDERING, event=EVENT_PROGRESS)
 ```
 
-Escreve `job.status` e `job.progress` **e** emite o evento, no mesmo passo. Antes cada call
-site atribuía os dois campos diretamente e nada era emitido — por isso `EventHub.publish`
-não tinha chamador algum: não existia um instante que significasse "o job andou".
+Escreve `job.status` e `job.progress`, **persiste** via `JobService.transition()` (que
+valida a máquina de estados e delega ao `JobRepository` injetado — default: a tabela
+`jobs`) **e** emite o evento, no mesmo passo. Antes cada call site atribuía os dois campos
+diretamente e nada era emitido — por isso `EventHub.publish` não tinha chamador algum: não
+existia um instante que significasse "o job andou".
 
 `status` e `progress` são ambos opcionais, para que um tick de progresso não precise
 reafirmar o status. Um teste estrutural varre o AST de `queue.py` e falha se qualquer
@@ -389,6 +419,12 @@ Todo evento tem exatamente `{job_id, event, status, progress, at}`. `output_url`
 aparecem só quando significam algo. Os nomes vêm de `JOB_EVENTS`
 (`queued, started, progress, complete, failed, cancelled`); `TERMINAL_STATUSES` é
 `{complete, failed, cancelled}` e é o que encerra o stream.
+
+PR002: o campo `status` do payload é o nome **externo** — `external_status()` mapeia
+`complete` → `completed` num único lugar (dentro de `job_event`), enquanto o nome do
+**evento** continua `complete` (é um identificador de contrato, não um valor de estado).
+Toda a superfície que cruza a borda (eventos, snapshot do WS, `JobResponse`) passa por essa
+mesma função; o banco e o worker seguem falando `complete`.
 
 ### Por que `publish_sync` e não `publish`
 
@@ -412,6 +448,11 @@ preso sem resposta.
 | `/api/v1/personas/{persona_id}/training/events/{run_id}` | polling com `asyncio.sleep(2)` |
 
 O de treinamento nunca foi migrado — fora do escopo desta etapa, registrado como pendência.
+
+PR002: os dois autenticam pelo query parameter `token` (`auth.ws_identity` — browsers não
+definem header em handshake de WebSocket) e checam a posse do job/run pelo workspace do
+caller. Sem token, ou com token alheio, o socket é fechado com `1008` **antes** do
+`accept`. O cliente (`lib/api.ts → wsUrl`) anexa o token do `localStorage` quando existe.
 
 ### Limitação conhecida: o hub é in-process
 
@@ -648,6 +689,80 @@ Duas regras de produto valem mais que o mecanismo:
   `(episode_id, persona_id)`; revisões posteriores não a alcançam. `continuity()` distingue
   "consistente" de "sem registro" — ausência de dado nunca é lida como consistência.
 
+### Persona Memory Engine (PR003)
+
+As personas do produto (perfis persistentes) deixaram a memória do processo
+sem tocar o desenho acima: o `Core` continua dependendo de protocolos, e a
+persistência entrou por injeção no composition root (`main.py`).
+
+```text
+POST /api/v1/personas/*  ──►  repositories/persona_repository.py  ──►  PostgreSQL (migration 0002)
+                                                        │
+        Persona (tabela)  ◄─────────────────────────────┤   o único módulo que fala com o SQLAlchemy
+        │ to_memory() / to_profile()                    │
+        ▼                                                ▼
+_CompositePersonaSource (fetch)      _PersistentPersonaProfileSource (get_profile)
+        └────────────► MemoryResolver ◄────────────────────┘
+                          │ resolve()           → identidade (prompt, estilo, versionamento)
+                          │ resolve_persona()   → perfil completo (wardrobe, LoRA, referências)
+                          ▼
+                 GenerationSpecBuilder  (persona_id do request / do core/compile)
+```
+
+Regras fixadas por teste (`test_persona_engine.py`):
+
+- **O Core não toca SQL.** Os adapters vivem em `main.py`; `memory_resolver.py`
+  só conhece `PersonaMemory`/`PersonaProfile`.
+- **Composite em `fetch`, privado em `search`.** Uma persona persistida resolve
+  no builder por id; mas o catálogo global `/core/personas` segue listando
+  apenas personagens do ledger — o perfil de um tenant não vaza para outro.
+- **`PersonaSource` não mudou.** O protocolo original (`fetch`/`search`) e os
+  seus implementadores continuam válidos; o perfil completo entra pelo
+  protocolo opcional `PersonaProfileSource` (injeção, não acoplamento).
+- **Revisão append-only.** Toda mudança de identidade no `PATCH` incrementa
+  `revision` e appende uma linha em `persona_identity_revision` (nunca
+  reescrita); metadados (estilo, LoRA) não contam como identidade.
+- **Slug único por workspace** (`uq_personas_workspace_slug`), 409 na API.
+- **Persona referencia asset, não armazena.** `persona_images` aponta para
+  assets existentes (upload segue no fluxo de assets); o treino legado pode
+  referenciar id ainda não criado, por isso a coluna não é FK — a validação
+  de existência vive na rota `/images`.
+- **LoRA da persona via parâmetro.** O `lora_id` da persona entra em
+  `job.parameters` (o worker já resolve asset → path com checagem de
+  workspace); o `spec.lora` não carrega id cru, mantendo a regra da ETAPA 16.
+
+Detalhes de schema, contratos e decisões: `docs/PERSONA_ENGINE.md`.
+
+## Project Memory (PR004.1)
+
+A memória de projeto do estúdio (persona ativa, estilo, wardrobe, LoRA,
+câmera, proporção, duração e último prompt) segue um **contrato congelado**
+independente do backend: hoje `localStorage`, amanhã PostgreSQL. O objeto
+(`ProjectMemoryState`) é exatamente o mesmo nos dois mundos; só o
+transporte troca.
+
+- **Contrato** — `ProjectMemoryState` em `lib/memory/project_memory.ts`:
+  `projectId` é o único campo obrigatório, os demais opcionais. O formato
+  só muda com migration (envelope versionado `v`).
+- **Adapter (única fronteira de storage)** — `lib/memory/project_memory.ts`
+  expõe `loadProjectMemory(projectId)`, `saveProjectMemory(state)` e
+  `clearProjectMemory(projectId)`. É o **único arquivo do repositório** que
+  referencia `window.localStorage` (guarda estrutural). Uma única chave
+  oficial (`PROJECT_MEMORY_KEY`); nenhum componente conhece a string.
+- **Hook** — `useProjectMemory(projectId)` (`lib/memory/use_project_memory.ts`)
+  retorna `{ memory, save, clear }` e **somente consome o adapter**: não
+  toca storage, não conhece a chave, não serializa. `save` é atualização
+  parcial (merge).
+- **Regra arquitetural** — nenhum componente (ou `lib`) acessa
+  `localStorage` diretamente; o token de auth (PR002) e a chave legacy do
+  Persona Lab também passam pelo adapter como seams nominais, mas **não**
+  fazem parte do `ProjectMemoryState`.
+- **Migração futura** — uma tabela `project_memory(project_id, workspace_id,
+  state JSONB, version, updated_at)` + endpoint autenticado; o adapter troca
+  o corpo das três funções mantendo a assinatura, o hook não muda.
+
+Contrato, adapter, hook, regras e migração: `docs/PROJECT_MEMORY.md`.
+
 ## Contrato de provider (ETAPA 3)
 
 **Todo provider recebe apenas `GenerationSpec`.** A assinatura é o mecanismo de aplicação
@@ -726,7 +841,7 @@ Regras adicionais aplicadas desde a ETAPA 2, cada uma com teste que falha se for
 | Rotas não contêm lógica de geração | `test_core_api.py::test_no_route_contains_prompt_or_direction_logic` procura vocabulário de prompt/câmera no trecho de rotas de `main.py`. |
 | Nenhum componente do Core importa um par | `test_core_independence.py` (probe em subprocesso + guarda estática). |
 | O Core não importa FastAPI, SQLAlchemy, Celery ou boto3 | `test_module_does_not_depend_on_the_application_layer`. |
-| O Core não conhece o banco | `MemoryResolver`/`StyleResolver`/`ShotResolver` recebem um `Protocol` (`PersonaSource`, `StyleSource`, `ShotSource`). O adapter persistente entra por injeção. |
+| O Core não conhece o banco | `MemoryResolver`/`StyleResolver`/`ShotResolver` recebem um `Protocol` (`PersonaSource`, `StyleSource`, `ShotSource`); `JobService` recebe `JobRepository` por injeção (PR004-prep). O provider (Postgres/Redis/memória) entra na borda, nunca no Core. |
 | Prompt bruto nunca vai ao modelo | `test_raw_prompt_is_never_emitted_alone`. |
 | Identidade não muda em silêncio | `test_unauthorized_identity_change_is_refused` + versionamento. |
 | O storyboard não produz prompt | `test_the_engine_never_produces_prompt_text` + `test_the_new_endpoint_does_not_produce_prompt_text`. |

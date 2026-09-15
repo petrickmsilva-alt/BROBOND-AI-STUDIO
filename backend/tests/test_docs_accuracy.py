@@ -224,19 +224,20 @@ def test_the_roadmap_says_twelve_components_not_six() -> None:
 CORE_BANNED = {"fastapi", "starlette", "sqlalchemy", "celery", "boto3", "pydantic_settings"}
 
 CORE_COMPONENTS = [
-    "cinematic_library", "director_agent", "generation_spec_builder", "memory_resolver",
-    "persona_memory", "prompt_compiler", "quality", "shot_library", "shot_resolver",
-    "storyboard_engine", "style_resolver", "timeline",
+    "cinematic_library", "director_agent", "generation_spec_builder", "job_service",
+    "memory_resolver", "persona_memory", "prompt_compiler", "quality", "shot_library",
+    "shot_resolver", "storyboard_engine", "style_resolver", "timeline",
 ]
 
 
 @pytest.mark.parametrize("component", CORE_COMPONENTS)
 def test_every_core_component_is_framework_free(component: str) -> None:
-    """Twelve components, none importing a framework. Measured by AST.
+    """Thirteen components, none importing a framework. Measured by AST.
 
     This is a weaker property than `INDEPENDENT_MODULES`, which also requires
-    importing with no Core sibling. Five of the twelve compose their siblings by
-    design, so they satisfy this and not that — see docs/ETAPAS.md.
+    importing with no Core sibling. Six of the thirteen compose their
+    siblings (or an injected interface) by design, so they satisfy this and
+    not that — see docs/ETAPAS.md.
     """
 
     tree = ast.parse((ROOT / "backend" / "app" / "core" / f"{component}.py").read_text(encoding="utf-8"))
@@ -249,9 +250,9 @@ def test_every_core_component_is_framework_free(component: str) -> None:
     assert not (imported & CORE_BANNED), sorted(imported & CORE_BANNED)
 
 
-def test_the_documentation_counts_twelve_components() -> None:
-    assert len(CORE_COMPONENTS) == 12
-    assert "**12**" in _read(ETAPAS_DOC) or "**12**" in _read(ARCHITECTURE)
+def test_the_documentation_counts_thirteen_components() -> None:
+    assert len(CORE_COMPONENTS) == 13
+    assert "**13**" in _read(ETAPAS_DOC) or "**13**" in _read(ARCHITECTURE)
 
 
 # ---------------------------------------------------------------------------
@@ -295,10 +296,16 @@ def _identity_dependency(route) -> str | None:
 
 
 def test_the_authorisation_count_is_the_real_one(inventory) -> None:
-    """10 of 58 routes touch identity — 6 require it, 4 do not.
+    """31 of 64 routes touch identity — 28 require it, 3 do not (PR003).
 
-    All three numbers are measured here and compared against the prose, because
-    they drift independently of each other.
+    PR002 closed the P0-2 exposure: 25 of 58 (22 required, 3 optional).
+    PR003 added the six persona-profile routes, all `Depends(current_user)`:
+    31 of 64 (28 required, 3 optional). Before PR002 the numbers were 10
+    (6 required, 4 optional). The prose and the guard move together, because
+    the three numbers drift independently of each other. The two WebSockets
+    are also authenticated, through the `token` query parameter (see
+    test_security_authorization.py) — they are not routes, so they are not in
+    the count.
     """
 
     kinds = [_identity_dependency(r) for r in inventory["http"]]
@@ -306,8 +313,8 @@ def test_the_authorisation_count_is_the_real_one(inventory) -> None:
     optional = len([k for k in kinds if k == "optional_user"])
     touching = required + optional
 
-    assert required == 6, f"rotas exigindo token mudaram: {required}"
-    assert optional == 4, f"rotas com identidade opcional mudaram: {optional}"
+    assert required == 28, f"rotas exigindo token mudaram: {required}"
+    assert optional == 3, f"rotas com identidade opcional mudaram: {optional}"
 
     text = _read(LIMITATIONS)
     assert f"**{touching} de {inventory['http_count']} rotas**" in text

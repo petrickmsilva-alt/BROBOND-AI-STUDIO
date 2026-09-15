@@ -13,7 +13,7 @@ mudar e o documento não for regenerado, a suíte falha.
 
 ## Resumo
 
-- **58** rotas HTTP sob `/api/v1`
+- **64** rotas HTTP sob `/api/v1`
 - **31** delas são `/api/v1/core/*` — a camada de decisão
 - **2** WebSockets
 - **12** tags
@@ -25,7 +25,7 @@ OpenAPI interativo em `/docs` (Swagger) e `/redoc` quando o serviço está no ar
 | Método | Rota | Descrição |
 | --- | --- | --- |
 | `GET` | `/api/v1/assets` | list_assets |
-| `GET` | `/api/v1/assets/download/{object_key:path}` | download_local_asset |
+| `GET` | `/api/v1/assets/download/{object_key:path}` | Serve a stored file (PR002: identity and tenant required). |
 | `POST` | `/api/v1/assets/upload` | Upload an asset to MinIO or the local media adapter. |
 | `POST` | `/api/v1/assets/{asset_id}/conditioning` | create_conditioning_asset |
 
@@ -33,9 +33,9 @@ OpenAPI interativo em `/docs` (Swagger) e `/redoc` quando o serviço está no ar
 
 | Método | Rota | Descrição |
 | --- | --- | --- |
-| `POST` | `/api/v1/auth/login` | login_user |
+| `POST` | `/api/v1/auth/login` | Sign in (PR002: rate-limited, and every attempt — success or failure — audited). |
 | `GET` | `/api/v1/auth/me` | get_current_user |
-| `POST` | `/api/v1/auth/register` | register_user |
+| `POST` | `/api/v1/auth/register` | Create an account (PR002: rate-limited and audited). |
 
 ## `core` — 31
 
@@ -52,14 +52,14 @@ OpenAPI interativo em `/docs` (Swagger) e `/redoc` quando o serviço está no ar
 | `GET` | `/api/v1/core/cinematic/motivations/of` | Which motivations a camera move can claim, and whether it is still. |
 | `POST` | `/api/v1/core/compile` | Compile a GenerationSpec without executing it (dry run). |
 | `POST` | `/api/v1/core/direct` | Turn a plain-language intention into direction. |
-| `GET` | `/api/v1/core/personas` | Current identities in the character library, with their version. |
-| `GET` | `/api/v1/core/personas/{persona_id}` | A character's full history: every revision, who made it and why. |
-| `POST` | `/api/v1/core/personas/{persona_id}/approve` | Promote a planned character to approved. |
-| `GET` | `/api/v1/core/personas/{persona_id}/continuity` | Whether a character stayed consistent across the given episodes. |
-| `GET` | `/api/v1/core/personas/{persona_id}/episodes/{episode_id}/memory` | The identity an episode was actually made with, not the current one. |
-| `POST` | `/api/v1/core/personas/{persona_id}/episodes/{episode_id}/snapshot` | Bind the current identity to an episode. |
-| `POST` | `/api/v1/core/personas/{persona_id}/retire` | Retire a character. Episodes already made keep their memory snapshots. |
-| `POST` | `/api/v1/core/personas/{persona_id}/revise` | Apply an attributed edit. |
+| `GET` | `/api/v1/core/personas` | Current identities in the character library, with their version (PR002: identity required). |
+| `GET` | `/api/v1/core/personas/{persona_id}` | A character's full history: every revision, who made it and why (PR002: identity required). |
+| `POST` | `/api/v1/core/personas/{persona_id}/approve` | Promote a planned character to approved (PR002: identity required, audited). |
+| `GET` | `/api/v1/core/personas/{persona_id}/continuity` | Whether a character stayed consistent across the given episodes (PR002: identity required). |
+| `GET` | `/api/v1/core/personas/{persona_id}/episodes/{episode_id}/memory` | The identity an episode was actually made with, not the current one (PR002: identity required). |
+| `POST` | `/api/v1/core/personas/{persona_id}/episodes/{episode_id}/snapshot` | Bind the current identity to an episode (PR002: identity required, audited). |
+| `POST` | `/api/v1/core/personas/{persona_id}/retire` | Retire a character (PR002: identity required, audited). Episodes already made keep their memory snapshots. |
+| `POST` | `/api/v1/core/personas/{persona_id}/revise` | Apply an attributed edit (PR002: identity required, audited). |
 | `GET` | `/api/v1/core/providers` | Every registered adapter, with its kind, status and checkpoint. |
 | `GET` | `/api/v1/core/providers/health` | Whether each local adapter could run on this machine, right now. |
 | `POST` | `/api/v1/core/quality/assess` | Check a rendered artifact against the spec it was supposed to satisfy. |
@@ -85,13 +85,13 @@ OpenAPI interativo em `/docs` (Swagger) e `/redoc` quando o serviço está no ar
 | --- | --- | --- |
 | `POST` | `/api/v1/generations/images` | Create an image job. Authenticated jobs are persisted to the user's asset library. |
 | `POST` | `/api/v1/generations/videos` | Create an H.264 video job for the configured video provider. |
-| `GET` | `/api/v1/jobs/{job_id}` | get_job |
+| `GET` | `/api/v1/jobs/{job_id}` | Read one of the caller's jobs (PR002: identity required). |
 
 ## `knowledge` — 1
 
 | Método | Rota | Descrição |
 | --- | --- | --- |
-| `GET` | `/api/v1/knowledge` | knowledge |
+| `GET` | `/api/v1/knowledge` | Search the knowledge base (PR002: identity required). |
 
 ## `models` — 3
 
@@ -101,14 +101,20 @@ OpenAPI interativo em `/docs` (Swagger) e `/redoc` quando o serviço está no ar
 | `GET` | `/api/v1/models/image` | image_models |
 | `GET` | `/api/v1/models/video` | video_models |
 
-## `personas` — 4
+## `personas` — 10
 
 | Método | Rota | Descrição |
 | --- | --- | --- |
+| `GET` | `/api/v1/personas` | List the caller's persistent persona profiles (PR003). |
 | `POST` | `/api/v1/personas` | Register a persona and reserve a future LoRA training job. |
+| `DELETE` | `/api/v1/personas/{persona_id}` | Delete a persona profile and its children (PR003). |
+| `GET` | `/api/v1/personas/{persona_id}` | Read one of the caller's persona profiles (PR003; foreign ids 404). |
+| `PATCH` | `/api/v1/personas/{persona_id}` | Partially update a persona profile (PR003). |
+| `GET` | `/api/v1/personas/{persona_id}/images` | List a persona's image references (PR003). |
+| `POST` | `/api/v1/personas/{persona_id}/images` | Attach a stored image asset to a persona (PR003). |
 | `GET` | `/api/v1/personas/{persona_id}/loras` | list_persona_loras |
-| `POST` | `/api/v1/personas/{persona_id}/train` | train_persona |
-| `GET` | `/api/v1/personas/{persona_id}/training/{run_id}` | training_status |
+| `POST` | `/api/v1/personas/{persona_id}/train` | Queue LoRA training for one of the caller's personas (PR002: identity required). |
+| `GET` | `/api/v1/personas/{persona_id}/training/{run_id}` | Read one of the caller's training runs (PR002: identity required). |
 
 ## `prompt-engine` — 1
 
@@ -120,8 +126,8 @@ OpenAPI interativo em `/docs` (Swagger) e `/redoc` quando o serviço está no ar
 
 | Método | Rota | Descrição |
 | --- | --- | --- |
-| `POST` | `/api/v1/jobs/{job_id}/cancel` | cancel_job |
-| `GET` | `/api/v1/queue` | list_queue |
+| `POST` | `/api/v1/jobs/{job_id}/cancel` | Cancel one of the caller's jobs (PR002: identity required). |
+| `GET` | `/api/v1/queue` | List the caller's generation queue (PR001: real data, no seed; PR002: identity required). |
 
 ## `storyboards` — 1
 

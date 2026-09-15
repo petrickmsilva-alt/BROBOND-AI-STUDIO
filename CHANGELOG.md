@@ -6,6 +6,369 @@ versões de produto do `ROADMAP.md`.
 
 ---
 
+## [Unreleased] — PR004.1: PROJECT MEMORY CONTRACT
+
+Micro PR de padronização: o contrato de Project Memory foi congelado e toda
+a persistência de memória de projeto agora passa por **um único Memory
+Adapter**. Nenhuma alteração visual.
+
+### O que mudou
+
+- **Contrato oficial** — `ProjectMemoryState` em `lib/memory/project_memory.ts`:
+  `projectId` (único obrigatório), `workspaceId`, `personaId`, `wardrobeId`,
+  `styleId`, `loraId`, `cameraPreset`, `aspectRatio`, `lastPrompt`,
+  `lastPlatform`, `duration`, `updatedAt`. O formato é idêntico no
+  `localStorage` de hoje e no PostgreSQL de amanhã; **só muda com
+  migration** (envelope versionado `v`; versão desconhecida → recusa a
+  leitura, sem perda silenciosa; shape v0 do PR004 migra automaticamente,
+  write-through).
+- **Memory Adapter** — `lib/memory/project_memory.ts`:
+  `loadProjectMemory(projectId)` / `saveProjectMemory(state)` /
+  `clearProjectMemory(projectId)`. Sem acoplamento a React. Uma única
+  chave oficial (`PROJECT_MEMORY_KEY`); desserialização sanitizada (campos
+  desconhecidos descartados, tipos errados ignorados); SSR/bloqueio de
+  storage degradam para `null`, nunca lançam.
+- **Hook** — `useProjectMemory(projectId)` (`lib/memory/use_project_memory.ts`)
+  retorna `{ memory, save, clear }` e somente consome o adapter; `save` é
+  atualização parcial (merge + `updatedAt`).
+- **Frontend** — nenhum componente conhece a chave de armazenamento nem toca
+  `localStorage`: `app/page.tsx` consome o hook; o token de auth (PR002) e a
+  chave legacy `brobond_persona_id` (Persona Lab) passam pelo adapter como
+  seams nominais (`getAuthToken`/`setAuthToken`/`clearAuthToken`,
+  `setLegacyPersonaId`) — contratos separados, fora do
+  `ProjectMemoryState`. `cameraPreset`/`aspectRatio`/`duration` agora são
+  owned pelo Home (mesmos controles, mesmos defaults — zero mudança visual)
+  para que o contrato possa persisti-los.
+- **Legacy** — `lib/projectMemory.ts` (v0) marcado Legacy (Bible §2): sem
+  call sites live, delega ao adapter, não toca storage.
+- **Testes** — suíte comportamental nova (vitest, escopado a `lib/memory/`):
+  persistência, serialização, desserialização, atualização parcial, clear,
+  compatibilidade de versão, seams SSR/bloqueadas e hook — com **gate de
+  cobertura 95%** no CI. Guards estruturais em
+  `backend/tests/test_project_memory_contract.py` (nenhum componente toca
+  `localStorage`; um único arquivo referencia `window.localStorage`; uma
+  chave oficial; contrato = exatamente os campos da spec; hook consome
+  apenas o adapter; CI roda a suíte).
+- **Docs** — `docs/PROJECT_MEMORY.md` (contrato, adapter, hook, migração
+  PostgreSQL); seções novas em `ARCHITECTURE.md`.
+
+### Decisões
+
+- O repo não tinha runner de JS; o vitest foi adicionado **escopado ao
+  contrato** (devDeps + step no CI) — o restante do frontend continua
+  coberto por guards estruturais no backend.
+- `wardrobeId`/`styleId` carregam hoje nomes/join (o produto ainda não tem
+  id por item de wardrobe nem catálogo de estilos versionado); quando o
+  backend introduzir ids reais, a migration é de *valor*, não de *shape*.
+
+---
+
+## [Unreleased] — PR004: STUDIO PERSONA PIPELINE
+
+O Persona Engine (PR003) agora atravessa o produto: o usuário escolhe a
+Persona no Image Studio e no Video Studio, o compiler resolve identidade,
+estilo, LoRA, wardrobe e referência automaticamente, e o projeto restaura
+tudo ao reabrir. **Nenhuma alteração estrutural no banco** — apenas
+entidades existentes; o contrato `GenerationSpec` ficou intacto e nenhuma
+API mudou de comportamento.
+
+### Novos componentes (frontend)
+
+- **`app/components/studio/PersonaSelector.tsx`** (ETAPA 1): seletor
+  reutilizável dos dois estúdios — lista as personas do workspace, busca por
+  nome, avatar (face primeiro), default style, indicador de LoRA treinado e
+  seleção. Componente puro: os dados chegam por prop (degradado honesto
+  quando o workspace ainda não tem personas).
+- **`app/components/studio/PersonaPreview.tsx`** (ETAPA 2): cartão de
+  identidade em tempo real — imagem principal, nome, barba, cabelo, voz,
+  estilo padrão, LoRA e roupas cadastradas; o wardrobe é selecionável (os
+  nomes viajam no request `wardrobe` e no Project Memory).
+- **`lib/projectMemory.ts`** (ETAPA 6): persistência do projeto —
+  `persona_id`, `default_style`, `last_lora`, `selected_wardrobe` — em
+  `localStorage` (o banco não tem coluna de estado de projeto e o PR proíbe
+  alterar o schema; o formato espelha os nomes dos campos do backend, então
+  uma entidade server-side futura adota o payload 1:1).
+
+### Studio (ETAPAS 4/5/7)
+
+- **Image Studio**: painel Identity (PersonaSelector + preview), campo
+  Style com o atalho **“Usar estilo da Persona”**, e o payload do job ganha
+  `persona_id` + `style` + `wardrobe` (os controles explícitos continuam
+  vencendo — precedência inalterada).
+- **Video Studio**: o mesmo painel + **câmera** (`camera_motion`:
+  static/pan/tilt/zoom/tracking/crane) e duração (já existia, 5/10/15s) —
+  o usuário escolhe a Persona; o resto o compiler decide.
+- **Topbar**: a persona ativa vira a **identidade no topo da tela**
+  (avatar + nome + estilo), visível em qualquer módulo.
+- **Sidebar**: novo grupo **STUDIO** (Personas / Image / Video / Projects)
+  com estado selecionado; WORKSPACE e LIBRARY preservados.
+- A busca legacy `brobond_persona_id` nos estúdios foi **superada** pela
+  fonte nova (Project Memory); o campo continua sendo escrito pelo Persona
+  Lab, que não mudou.
+
+### Backend (ETAPA 3 — compiler resolve tudo)
+
+- `POST /core/compile` (e o worker, pelo `spec_adapter`) aceitam
+  `persona_id` + `wardrobe` **opcional**: o compiler resolve identidade,
+  `default_style`, LoRA, wardrobe e referências do perfil persistente.
+  `wardrobe` só **estreita** o bloco (itens selecionados pelo projeto);
+  `GenerationSpec` não ganhou nenhum campo.
+- `memory_resolver.identity_phrase(persona, wardrobe=None)`: o bloco PERSONA
+  do prompt agora inclui `wardrobe: …` quando a persona tem roupas.
+- `persona_repo.to_memory` passa a mapear o wardrobe (antes fixo em `""`).
+- **Referência automática**: sem referência explícita, o worker resolve a
+  imagem da própria persona (`_persona_reference_object_key`): face primeiro,
+  depois ordem de exibição; asset precisa ser `image` **do workspace do
+  job** (mesma regra de posse das referências explícitas); sem nada
+  adequado o job segue sem referência — falha de identidade nunca derruba
+  a geração.
+- `PersonaRepository.wardrobe` agora ordena por **nome** (a ordenação por
+  `id`/uuid4 era não-determinística entre backends e restarts).
+
+### Testes (ETAPA 8)
+
+- **23 testes novos** em `backend/tests/test_studio_persona_pipeline.py`:
+  unidade do bloco de identidade + filtro de wardrobe; compile end-to-end
+  com persona/wardrobe/estilo via `/core/compile`; schemas aceitando os
+  campos do pipeline; worker auto-referência (face primeiro, fallback por
+  ordem, posse de workspace, não-imagem) e guarda estrutural do wiring;
+  guards estruturais do frontend (seletor reutilizável, preview, payloads
+  com `persona_id`, câmera/duração no vídeo, Project Memory com os 4
+  campos, grupo STUDIO na sidebar e identidade na topbar).
+- Guarda `test_storage` atualizada para os **três** call sites de
+  `storage.download` (LoRA, referência explícita e referência da persona).
+- Suíte: **1.188 testes** (1.187 passed + 1 skipped); cobertura total
+  **95%** (gate CI: 90%).
+
+### Honestidade (o que não há neste PR)
+
+- Sem browser no ambiente de build: **sem screenshots/GIFs** do Studio
+  gerados aqui (documentado em `docs/LIMITATIONS.md`); a regressão visual é
+  garantida pelo build + pelos guards estruturais.
+- Project Memory em `localStorage` por decisão de escopo (sem coluna de
+  estado de projeto no schema — ver `docs/PERSONA_ENGINE.md`).
+
+---
+
+## [Unreleased] — PR004-prep: ARQUITETURA DE JOBS — REPOSITORY PATTERN
+
+O fluxo de jobs foi desacoplado do PostgreSQL por injeção de dependência,
+sem alterar nenhuma API, nenhum comportamento externo e sem apagar
+nenhum arquivo (Bible §2/§3). O Core ganha o 13º componente.
+
+### Arquitetura (camadas em dependência)
+
+- **`backend/app/core/job_service.py`** (novo, 13º componente): `JobService`
+  — máquina de estados do job (`queued → running → complete/failed/cancelled`;
+  terminais imutáveis; tick de progresso sempre permitido), validação de
+  status e o value object `Job` puro (zero framework, zero SQLAlchemy; a
+  interface é conhecida só por hint de tipo, sem import em runtime).
+- **`backend/app/repositories/job_repository.py`** (novo): a interface
+  `JobRepository` — exatamente as seis operações: `create`, `get`, `update`,
+  `transition`, `list_by_workspace`, `delete`.
+- **`backend/app/repositories/postgres_job_repository.py`** (novo,
+  **default**): `JobRow`/tabela `jobs` (Alembic `0001`, inalterada). Único
+  módulo de job com SQLAlchemy (guarda AST).
+- **`backend/app/repositories/redis_job_repository.py`** (novo, opt-in):
+  JSON em hashes `brobond:job:{id}` + set por workspace; conexão lazy.
+- **`backend/app/repositories/memory_job_repository.py`** (novo, testes):
+  dict isolado, thread-safe, sem I/O.
+- **`backend/app/models/`** (agora pacote): `JobRow` vive em `models/job.py`
+  (git registra como rename; `app.models` re-exporta — nenhum call site
+  mudou).
+- **`backend/app/jobs.py`** (novo): mapeamento `Job` (API/Pydantic) ↔ `Job`
+  (Core) — único ponto onde os dois vocabulários se encontram.
+- **`backend/app/job_service.py`** (novo): composition root do serviço —
+  `job_service = JobService(PostgresJobRepository())`; trocar de backend é
+  uma linha aqui.
+
+### Compatibilidade (comportamento externo idêntico)
+
+- Rotas, worker e eventos inalterados; `transition()` continua sendo o único
+  ponto onde o job anda (persiste via `JobService` **e** emite).
+- `app/store.py`: `JobStore`/`Store` permanecem, agora **delegando** ao
+  `JobService` — zero import de SQLAlchemy no módulo (guarda AST); `queue.store`
+  segue acessível para call sites e testes históricos.
+- `queue.list_jobs` sem workspace: antes caía numa query sem escopo; agora
+  lista vazio (a edge case de usuário sem workspace era vetor de enumeração
+  cross-tenant — endurecimento intencional, documentado).
+- Novos testes: `test_job_repository.py` (20) — interface nos 3 providers,
+  mesmo ciclo de vida em Postgres/Redis/memória, máquina de estados idêntica,
+  guards de pureza DI (Core não importa provider; store sem SQLAlchemy;
+  Postgres é o único job módulo com SQLAlchemy) e facade legado funcional.
+
+---
+
+## [Unreleased] — PR003: PERSONA MEMORY ENGINE
+
+As personas deixam a memória do processo e ganham persistência em PostgreSQL
+(Bible §2: nada recriado, nada deletado, Core sem SQL). A arquitetura é
+preservada: o `Core` continua dependendo só de protocolos, e a nova camada de
+persistência fica entre as rotas e o banco.
+
+### Persistência (Alembic `0002`)
+
+- **4 novas tabelas** na migration idempotente `0002_persona_engine`
+  (`downgrade` é no-op documentado — a Bible proíbe drop de tabelas
+  históricas): `personas` (perfil + `uq_personas_workspace_slug`),
+  `persona_images` (referências a assets existentes), `persona_wardrobe`
+  (metadata JSON) e `persona_identity_revision` (histórico append-only).
+- **`backend/app/repositories/persona_repository.py`** (pacote novo, camada
+  app): `create` / `update` / `delete` / `find_by_id` / `find_by_slug` /
+  `list_workspace` + helpers de imagens/wardrobe/revisões. É o único lugar
+  que fala com os models SQLAlchemy; as rotas e o `MemoryResolver` dependem
+  dele. Sessões curtas por chamada, mesma convenção do `JobStore` (PR002).
+- **`knowledge_entries`** já existia na baseline `0001` (guard
+  idempotente), então o 0002 só cria as tabelas de persona.
+
+### Core evoluído (12 → continua 12 componentes, novos contratos)
+
+- `contracts.py`: `WardrobeItem`, `ReferenceImage`, `PersonaProfile` e o
+  protocolo opcional `PersonaProfileSource` — o `PersonaSource` original
+  (`fetch`/`search`) **não mudou**, todos os implementadores existentes
+  seguem válidos.
+- `MemoryResolver.resolve_persona(persona_id)`: devolve o perfil completo
+  (identidade + wardrobe + LoRA + imagens de referência), preferindo a fonte
+  persistente e derivando o perfil da identidade quando só existe o ledger
+  (personagens seed).
+- `main.py` (composition root): `_CompositePersonaSource` (persona
+  persistente → fallback ledger; o `search` global permanece apenas com
+  personagens — persona de um tenant nunca vaza para o catálogo) e
+  `_PersistentPersonaProfileSource`, injetados no resolver.
+- **Gerações herdaram a persona**: `ImageGenerationRequest`/
+  `VideoGenerationRequest` ganham `persona_id` opcional; a identidade e o
+  estilo padrão da persona persistida passam a chegar no `GenerationSpec`
+  via `MemoryResolver`, e o `lora_id` treinado da persona é herdado nos
+  parâmetros (LoRA explícito no request sempre vence).
+
+### API (6 rotas novas, todas `Depends(current_user)`)
+
+- `GET /api/v1/personas` — lista os perfis do workspace.
+- `GET /api/v1/personas/{id}` — perfil completo (wardrobe, imagens,
+  revisões).
+- `PATCH /api/v1/personas/{id}` — atualização parcial; mudança de
+  identidade incrementa `revision` e appende linha imutável em
+  `persona_identity_revision`; `wardrobe` (quando enviado) substitui o
+  guarda-roupa inteiro.
+- `DELETE /api/v1/personas/{id}` — remove perfil e filhas; assets
+  referenciados e histórico de treino permanecem.
+- `GET /api/v1/personas/{id}/images` — referências de imagem com
+  name/url do asset quando ele ainda existe.
+- `POST /api/v1/personas/{id}/images` — anexa asset **existente** do
+  workspace (só `kind=image`; 404 externo/ausente, 422 não-imagem, 409
+  duplicado). Upload continua apenas no fluxo de assets.
+- `POST /api/v1/personas` (existente) agora **persiste** o perfil no banco;
+  o contrato de request/response é inalterado (PersonaStudio e o fluxo de
+  treino funcionam sem mudança). Slug duplicado no workspace → 409.
+- `/personas/{id}/train` agora lê a persona do banco (sobrevive a restart)
+  e mantém o contrato legado de atualizar o conjunto de referências.
+
+### Frontend
+
+- Nova tela **`/studio/personas`** (Dark Premium): listar, criar, editar
+  identidade/wardrobe/estilo/LoRA, anexar imagens do acervo e excluir —
+  com histórico de revisões visível. `lib/api.ts` ganha as funções de
+  perfil; a página inicial ganha o atalho.
+
+### Testes e docs
+
+- `backend/tests/test_persona_engine.py` (19 testes): CRUD, isolamento de
+  workspace, slug único, revisões append-only, imagens, `resolve_persona`,
+  `/core/compile` consumindo persona persistida, herança de LoRA, catálogo
+  privado e as duas migrations (upgrade + downgrade sem drop).
+- `docs/PERSONA_ENGINE.md` novo; `ARCHITECTURE.md`, `docs/ETAPAS.md`,
+  `docs/LIMITATIONS.md`, `ROADMAP.md` e `docs/API.md` atualizados.
+
+---
+
+## [2026-09-15] — PR002: SEGURANÇA E PERSISTÊNCIA (entregue no PR #6)
+
+O backend passa a ser um ambiente de produção sem alterar a arquitetura
+(Bible §2/§18): a auditoria `SPRINT1_AUDIT_REPORT.md` (P0-2 e P0-4) foi
+executada e os dois achados de segurança mais graves foram fechados.
+
+### Segurança
+
+- **JWT ≥ 32 bytes**: default de desenvolvimento agora tem 70 bytes e um
+  `field_validator` **recusa iniciar** a aplicação com `BROBOND_JWT_SECRET`
+  menor que 32 bytes (mínimo do RFC 7518 para HS256). `docker-compose.yml` e
+  `.env.example` atualizados para segredos válidos.
+- **Autorização em todas as rotas protegidas**: 22 de 58 rotas exigem token
+  (`/queue`, `/jobs/*`, `/assets/download/*`, `/knowledge`, as 4 rotas de
+  `/personas/*` e as 8 de `/core/personas/*`); 3 aceitam sem exigir
+  (`/generations/*`, `/core/compile` — mantido o contrato original); 33
+  permanecem públicas por desenho (dados de referência e Core read-only).
+- **Proteção de download/cancel/jobs por tenant**: `/jobs/{id}`,
+  `/jobs/{id}/cancel`, `/queue` e `/assets/download/{key}` checam posse pelo
+  workspace do caller — resposta **404** (não 403), para o id de outro tenant
+  não ser enumerável.
+- **PII removida do acesso público**: `GET /api/v1/knowledge` (perfis de
+  personagens, ex. CHAR_PETRICK) agora exige identidade.
+- **Rate limit configurável**: `BROBOND_RATE_LIMIT_AUTH_PER_MINUTE`
+  (default 20/min/IP, `0` desliga) em `/auth/login` e `/auth/register`, com
+  `Retry-After` no 429. In-memory por processo; o passo seguinte declarado é
+  store compartilhado (Redis), documentado em `docs/LIMITATIONS.md` §2.
+- **Audit log**: `app/audit.py` + tabela `audit_log` append-only. Ações
+  críticas (login bem-sucedido/falhado, registro, criação/cancelamento de
+  job, download de asset, criação de persona, treino, revisões/aprovações de
+  identidade) escrevem a linha + uma linha estruturada no logger
+  `brobond.audit`.
+- **WebSockets autenticados**: os 2 sockets aceitam o token pelo query
+  parameter `token` (browsers não definem header em handshake) e verificam
+  posse do job/run — fecham com `1008` **antes** de aceitar. O cliente
+  (`lib/api.ts → wsUrl`) agora anexa o token do `localStorage`.
+
+### Persistência
+
+- **Alembic instalado e usado** (`alembic==1.13.3`, já pinado): `alembic.ini`
+  + `alembic/env.py` (URL lida das settings da aplicação) +
+  `alembic/versions/0001_initial_schema.py` — migration inicial com as 7
+  tabelas existentes + `jobs` + `audit_log`.
+- **Jobs fora da RAM**: `JobRow` (tabela `jobs`) + `JobStore` em
+  `app/store.py` — a API e o worker Celery leem/escrevem a mesma linha;
+  `process_generation(job_id)` é agora o contrato real de outro processo.
+  O cancelamento passa por `transition()` (persiste **e** emite o evento —
+  antes o cancel não emitia nada).
+- **Bootstrap por migration**: `app.main._bootstrap_database` roda
+  `alembic upgrade head` (com retry para o Postgres do Render) em vez de
+  `create_all` + `ALTER TABLE` manual. A migration é idempotente: um banco
+  legado do bootstrap antigo atualiza no lugar (coluna
+  `training_runs.workspace_id` adicionada quando ausente).
+- **`Dockerfile.api`** agora copia `alembic/` e `alembic.ini` para o
+  `upgrade head` funcionar no container.
+
+### Compatibilidade (nada quebrado)
+
+- `complete` continua sendo o estado **interno** (`JobStatus`, eventos,
+  worker); a borda responde **`completed`** via `events.external_status()` /
+  `schemas.JobResponse` — uma única função, um único lugar. `TERMINAL_STATUSES`
+  e os nomes de evento são inalterados.
+- `/generations/*` continua aceitando anônimo (202); consequência documentada:
+  job anônimo não tem tenant e não pode ser lido de volta (fixado por teste;
+  a UI avisa "sign in to track it").
+- Zero arquivos deletados; `MemoryStore` segue existindo para personas
+  (persistência delas é o PR004); `docs/API.md` regenerado pelo script.
+
+### Testes e validação
+
+- **1.125 testes** (era 1.077): 4 arquivos novos —
+  `test_security_authorization.py` (matriz 401, isolamento de tenant, rate
+  limit, validador de JWT, WS), `test_job_persistence.py` (job visível para
+  outro processo, worker por id, cancel persistido, fila por tenant),
+  `test_audit_log.py` (ações com linha e logger estruturado, append-only por
+  AST) e `test_migrations.py` (upgrade em banco novo, idempotência, upgrade
+  de banco legado, downgrade).
+- Testes existentes atualizados apenas onde o PR muda o contrato:
+  `test_knowledge.py` e `test_core_api.py` (`/knowledge` com token),
+  `test_queue_events.py` (WS com `?token=`, snapshot `completed`),
+  `test_core_persona_api.py` (rotas protegidas), `test_lora.py`,
+  `test_asset_export_routes.py` (socket de training agora exige token),
+  `test_queue_training_paths.py` (leitura de volta via store),
+  `test_docs_accuracy.py` (contagem 22/3 e docs).
+- Cobertura `backend/app`: **95%** (gate CI: 90%). `npm run build` OK.
+
+---
+
 ## [Unreleased] — ETAPA 17: DOCUMENTAÇÃO
 
 Relatório técnico completo em `ETAPA17_REPORT.md`.

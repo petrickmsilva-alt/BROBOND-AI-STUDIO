@@ -56,6 +56,21 @@ JOB_EVENTS: tuple[str, ...] = (
 TERMINAL_STATUSES: frozenset[str] = frozenset({"complete", "failed", "cancelled"})
 
 
+def external_status(status: str) -> str:
+    """Map an internal status onto the name the wire contract uses (PR002).
+
+    The system keeps `JobStatus.COMPLETE` internally — renaming the enum
+    value would break every stored job, the provider contract and the client
+    code that predates the rename (Bible §2: never break existing APIs). The
+    external surface answers `completed`, which is the name the product
+    constitution (Bible §14) declares. Every payload that crosses the
+    boundary goes through `job_event` or `JobResponse`, so the mapping lives
+    in exactly one place.
+    """
+
+    return "completed" if status == "complete" else status
+
+
 def job_event(
     job_id: UUID | str,
     *,
@@ -75,7 +90,10 @@ def job_event(
     payload = {
         "job_id": str(job_id),
         "event": event,
-        "status": status,
+        # PR002: the wire says `completed`; the internal state stays `complete`
+        # (see `external_status`). Event *names* are contract identifiers, not
+        # status values, and keep their original names.
+        "status": external_status(status),
         "progress": int(progress),
         "at": datetime.now(timezone.utc).isoformat(),
     }

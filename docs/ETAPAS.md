@@ -42,9 +42,9 @@ antes de o formato de relatório ser estabelecido na ETAPA 4. O que entregaram e
 | --- | --- | --- |
 | **P0-1** | Dois backends paralelos; seis módulos mortos **e quebrados** | **Aberto por decisão** — 4 módulos, 100 statements que não importam. Não apagados (instrução permanente), não consertados (ressuscitariam um backend duplicado). Fronteira fixada por teste. Ver `docs/LIMITATIONS.md` §5 |
 | **P0-2a** | `process_generation` devolvia sempre `cancelled` | **Corrigido na ETAPA 3** |
-| **P0-2b** | `MemoryStore` em memória | **Aberto** — um worker Celery em outro processo não enxerga o job. Ver `docs/LIMITATIONS.md` §2 |
+| **P0-2b** | `MemoryStore` em memória | **Fechado no PR002 e PR003** — jobs são linhas na tabela `jobs` (migration Alembic `0001`); `JobStore` é o repositório comum da API e do worker. Personas fechadas no PR003: tabela `personas` (migration `0002`) + `repositories/persona_repository.py`. Ver `docs/LIMITATIONS.md` §2 e `docs/PERSONA_ENGINE.md` |
 | **P0-3** | `EventHub.publish` sem chamadores | **Corrigido na ETAPA 11** — `publish_sync`, porque o worker Celery é síncrono e o hub era asyncio-only |
-| **P0-4** | Endpoints sem token; vazamento cross-tenant em `GET /api/v1/queue`; PII em `GET /api/v1/knowledge` | **Parcial** — o vazamento e a PII foram tratados; **6 de 58 rotas** exigem token; outras 4 o aceitam sem exigir. Ver `docs/LIMITATIONS.md` §3 |
+| **P0-4** | Endpoints sem token; vazamento cross-tenant em `GET /api/v1/queue`; PII em `GET /api/v1/knowledge` | **Fechado no PR002 (ampliado no PR003)** — **28 de 64 rotas** exigem token, 3 o aceitam sem exigir (gerações + `/core/compile`), 33 permanecem públicas por desenho (dados de referência e Core read-only); os 2 WebSockets autenticam por `?token=`; rate limit configurável em login/registro e audit log para ações críticas. Ver `docs/LIMITATIONS.md` §3 |
 
 ---
 
@@ -58,7 +58,7 @@ Estas regras foram respeitadas em todas as etapas e são verificadas por testes:
    Verificado por análise AST em `test_core_api.py`.
 3. **Todo provider recebe apenas `GenerationSpec`** — nunca prompt solto, nunca `dict` de
    parâmetros.
-4. **O Core não importa framework.** Os **12** componentes são livres de `fastapi`,
+4. **O Core não importa framework.** Os **13** componentes são livres de `fastapi`,
    `starlette`, `sqlalchemy`, `celery`, `boto3` e `pydantic_settings` — verificado por análise
    AST. A guarda `test_core_independence.py` lista **8** deles em `INDEPENDENT_MODULES`, porque
    ela afirma uma propriedade mais forte: importar **sem nenhum irmão do Core**. Os outros
@@ -68,7 +68,10 @@ Estas regras foram respeitadas em todas as etapas e são verificadas por testes:
    lista faz 4 testes falharem.
 5. **Nada é inventado.** Nenhum arquivo, job concluído, modelo carregado ou output inexistente
    é afirmado. Quando algo não pôde ser verificado, o relatório diz isso explicitamente.
-6. **Os 22 testes originais continuam passando**, sem modificação.
+6. **Os 22 testes originais continuam passando**, sem modificação. Exceção registrada no
+   PR002: `test_knowledge.py` passou a autenticar, porque o PR exige token em `GET /knowledge`
+   (PII de personas) — os 2 testes do arquivo mantêm as mesmas asserções, agora com o header de
+   identidade.
 
 ---
 
@@ -76,12 +79,12 @@ Estas regras foram respeitadas em todas as etapas e são verificadas por testes:
 
 | Métrica | Valor |
 | --- | --- |
-| Suíte de testes | **1.077** |
+| Suíte de testes | **1.199** |
 | Cobertura `backend/app` | **95%** (gate CI: 90%) |
 | Módulos em 100% | **28** |
-| Rotas HTTP `/api/v1` | **58** — **31** delas `/api/v1/core/*` |
+| Rotas HTTP `/api/v1` | **64** — **31** delas `/api/v1/core/*` |
 | WebSockets | **2** |
-| Componentes do Core | **12** |
+| Componentes do Core | **13** |
 | Arquivos deletados desde `3708784` | **0** |
 
 Estes números são conferidos contra a aplicação em execução por

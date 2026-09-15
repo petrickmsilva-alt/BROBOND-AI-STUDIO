@@ -14,7 +14,8 @@
 export type Job = {
   id: string;
   type: 'image' | 'video';
-  status: 'queued' | 'running' | 'complete' | 'failed' | 'cancelled';
+  // PR002: the wire says `completed` (the internal state stays `complete`).
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
   prompt: string;
   progress: number;
   output_url?: string | null;
@@ -39,6 +40,13 @@ export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
 const DEFAULT_TIMEOUT_MS = 10000;
 const UPLOAD_TIMEOUT_MS = 30000;
 
+import { getAuthToken, setAuthToken } from './memory/project_memory';
+
+// PR002's auth token. Since PR004.1 it is read/written through the Memory
+// Adapter's accessors (`lib/memory/project_memory.ts`) — the only file in
+// the repo allowed to touch `window.localStorage`. The token is a separate
+// contract (auth), not part of `ProjectMemoryState`.
+
 function ok<T>(data: T, status: number): ApiResult<T> {
   return { data, remote: true, status };
 }
@@ -62,13 +70,15 @@ async function readError(response: Response): Promise<string> {
 
 async function request<T>(path: string, init: RequestInit, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<ApiResult<T>> {
   try {
-    const token = typeof window !== 'undefined' ? window.localStorage.getItem('brobond_access_token') : null;
+    const token = getAuthToken();
     const response = await fetch(`${API_URL}${path}`, {
       ...init,
       headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(init.headers ?? {}) },
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) return failed<T>(await readError(response), response.status);
+    // PR003: 204 has no body by design (DELETE) — nothing to parse.
+    if (response.status === 204) return ok<T>(null as T, response.status);
     return ok<T>(await response.json() as T, response.status);
   } catch {
     return failed<T>('offline');
@@ -79,10 +89,17 @@ const get = <T>(path: string) => request<T>(path, { method: 'GET' });
 const post = <T>(path: string, payload: unknown) =>
   request<T>(path, { method: 'POST', body: JSON.stringify(payload ?? {}) });
 
-/** Absolute WebSocket URL for a path, derived from wherever the page is served. */
+/** Absolute WebSocket URL for a path, derived from wherever the page is served.
+
+ * PR002: the backend authenticates WebSockets through the `token` query
+ * parameter — browsers cannot set headers on a WebSocket handshake, so the
+ * bearer token stored by `authenticate` rides along here. Without a token the
+ * URL is unchanged and the server refuses the socket (1008).
+ */
 export function wsUrl(path: string): string {
   const base = API_URL || (typeof window !== 'undefined' ? window.location.origin : '');
-  return `${base.replace(/^http/, 'ws')}${path}`;
+  const token = getAuthToken();
+  return `${base.replace(/^http/, 'ws')}${path}${token ? `${path.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}` : ''}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -96,7 +113,7 @@ export async function authenticate(
   payload: Record<string, unknown>,
 ): Promise<ApiResult<{ access_token: string; user: AuthUser }>> {
   const result = await request<{ access_token: string; user: AuthUser }>(path, { method: 'POST', body: JSON.stringify(payload) });
-  if (result.remote && typeof window !== 'undefined') window.localStorage.setItem('brobond_access_token', result.data.access_token);
+  if (result.remote) setAuthToken(result.data.access_token);
   return result;
 }
 
@@ -145,7 +162,7 @@ export function listPersonaLoras(personaId: string) {
 
 export async function uploadAsset(file: File): Promise<ApiResult<Asset>> {
   try {
-    const token = typeof window !== 'undefined' ? window.localStorage.getItem('brobond_access_token') : null;
+    const token = getAuthToken();
     const form = new FormData();
     form.append('file', file);
     const response = await fetch(`${API_URL}/api/v1/assets/upload`, {
@@ -331,4 +348,71 @@ export function providerAdapters(kind?: 'image' | 'video') {
   return get<{ adapters: ProviderAdapter[]; default_image?: string; default_video?: string }>(
     `/api/v1/core/providers${kind ? `?kind=${kind}` : ''}`,
   );
+}
+
+// ---------------------------------------------------------------------------
+// PR003 — Persona Memory Engine (persistent persona profiles)
+// ---------------------------------------------------------------------------
+
+export type PersonaImageRef = {
+  id: string;
+  asset_id: string;
+  image_type: 'face' | 'body' | 'style' | 'reference';
+  order_index: number;
+  name?: string | null;
+  url?: string | null;
+};
+
+export type PersonaWardrobeItem = { id?: string; name: string; category: string; metadata: Record<string, unknown> };
+export type PersonaRevision = { id: string; revision: number; notes: Record<string, unknown>; created_by: string; created_at: string };
+
+export type PersonaProfile = {
+  id: string;
+  workspace_id: string;
+  name: string;
+  slug: string;
+  age: number;
+  height: number;
+  body_type: string;
+  skin_tone: string;
+  hair: string;
+  beard: string;
+  eyes: string;
+  voice: string;
+  default_style: string;
+  lora_id: string | null;
+  revision: number;
+  created_at: string;
+  updated_at: string;
+  wardrobe: PersonaWardrobeItem[];
+  images: PersonaImageRef[];
+  revisions: PersonaRevision[];
+};
+
+const patch = <T>(path: string, payload: unknown) =>
+  request<T>(path, { method: 'PATCH', body: JSON.stringify(payload ?? {}) });
+const del = <T>(path: string) => request<T>(path, { method: 'DELETE' });
+
+export function listPersonaProfiles() {
+  return get<PersonaProfile[]>('/api/v1/personas');
+}
+
+export function getPersonaProfile(personaId: string) {
+  return get<PersonaProfile>(`/api/v1/personas/${personaId}`);
+}
+
+export function updatePersonaProfile(personaId: string, payload: Record<string, unknown>) {
+  return patch<PersonaProfile>(`/api/v1/personas/${personaId}`, payload);
+}
+
+export function deletePersonaProfile(personaId: string) {
+  return del<Record<string, unknown>>(`/api/v1/personas/${personaId}`);
+}
+
+export function listPersonaImages(personaId: string) {
+  return get<PersonaImageRef[]>(`/api/v1/personas/${personaId}/images`);
+}
+
+export function addPersonaImage(personaId: string, payload: { asset_id: string; image_type?: 'face' | 'body' | 'style' | 'reference'; order_index?: number }) {
+  return post<PersonaImageRef>(`/api/v1/personas/${personaId}/images`, payload);
 }

@@ -308,7 +308,7 @@ BROBOND-AI-STUDIO/
 │   ├── app/services/     # service adapters
 │   ├── app/main.py       # composition root: wires the Core, exposes the routes
 │   ├── app/models.py     # SQLAlchemy models
-│   └── tests/            # pytest suite (1,077 tests)
+│   └── tests/            # pytest suite (1,199 tests)
 ├── docker-compose.yml    # local Postgres, Redis and MinIO
 └── requirements.txt      # Python service dependencies
 ```
@@ -324,14 +324,14 @@ The frontend is ready to consume these future endpoints:
 - `GET /api/v1/assets`
 - `WS /api/v1/queue/events`
 
-Each generation should become a persisted job, be processed by Celery workers, and publish progress through Redis/WebSocket. Files belong in MinIO; PostgreSQL stores metadata; FFmpeg handles transcode/export.
+Each generation is a persisted job (Postgres, via Alembic-managed schema), is processed by Celery workers, and publishes progress through Redis/WebSocket. Files belong in MinIO; PostgreSQL stores metadata; FFmpeg handles transcode/export.
 
 ## Design principles
 
 - Local-first, SaaS-ready boundaries
 - Provider adapters for Flux / Wan / Hunyuan rather than model logic in API routes
-- Explicit job states: `queued`, `running`, `complete`, `failed`, `cancelled`
-- JWT authentication and workspace-scoped resources before exposing network access
+- Explicit job states: `queued`, `running`, `complete`, `failed`, `cancelled` (answered as `completed` on the wire — PR002)
+- JWT authentication (secret validated at boot, ≥32 bytes) and workspace-scoped resources on every protected route, with a configurable rate limit on the credential endpoints and an append-only audit log for critical actions (PR002)
 - Never commit model weights, generated media, secrets or `.env` files
 
 ## What is not built yet
@@ -346,7 +346,7 @@ What genuinely remains is tracked in two places, both kept honest by tests:
 - **`ROADMAP.md`** — the `- [ ]` items: first GPU-validated render, persisted Personas/Styles/
   Shots, Character and Prompt libraries, episode continuity, multi-tenancy, billing.
 - **`docs/LIMITATIONS.md`** — what cannot be verified on a machine without a GPU, the state
-  that still lives in memory, the 48 of 58 routes without authentication, and the four dead
+  that still lives in memory, the 33 of 58 routes without authentication, and the four dead
   modules from `AUDIT.md` P0-1.
 
 ## Validation
@@ -360,7 +360,7 @@ npm run build
 
 The end-to-end backend test covers registration, authenticated upload, generation job creation, storyboard expansion and asset listing.
 
-The backend suite is **1,077 tests** and total backend coverage is **95%**, held by a `--fail-under=90` gate in CI. The whole
+The backend suite is **1,199 tests** and total backend coverage is **95%**, held by a `--fail-under=90` gate in CI. The whole
 `backend/app/core/` directory reads 98%. The remainder of the gap is the pre-existing dead
 cluster from `AUDIT.md` P0-1 — four modules, 100 statements, that do not import at all; see
 `docs/LIMITATIONS.md` §5. `core/persona_memory.py`,

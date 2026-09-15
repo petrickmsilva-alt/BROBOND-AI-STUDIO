@@ -98,6 +98,7 @@ class GenerationSpecBuilder:
         project_id: str | None = None,
         user_id: str | None = None,
         persona_id: str | None = None,
+        wardrobe: list[str] | None = None,
         style: str | None = None,
         shot: str | None = None,
         provider: str = "flux-dev",
@@ -131,6 +132,7 @@ class GenerationSpecBuilder:
             project_id=project_id,
             user_id=user_id,
             persona_id=persona_id,
+            wardrobe=wardrobe,
             style=style,
             shot=shot,
             provider=provider,
@@ -164,6 +166,11 @@ class GenerationSpecBuilder:
         persona_id = _opt_str(kwargs.get("persona_id"))
         requested_style = _opt_str(kwargs.get("style"))
         requested_shot = _opt_str(kwargs.get("shot"))
+        # PR004: the persona wardrobe block narrows to the project's selected
+        # items when (and only when) the request carries a selection.
+        wardrobe_selection = kwargs.get("wardrobe")
+        if wardrobe_selection is not None:
+            wardrobe_selection = [str(name) for name in wardrobe_selection if str(name).strip()]
 
         persona: PersonaMemory | None = self.memory.resolve(persona_id)
         persona_applied = persona is not None and bool(self.memory.identity_phrase(persona))
@@ -227,7 +234,7 @@ class GenerationSpecBuilder:
         compiled = self.compiler.compile(
             PromptBlocks(
                 subject=self.compiler.normalize(prompt),
-                persona=self.memory.identity_phrase(persona) if persona_applied else "",
+                persona=self.memory.identity_phrase(persona, wardrobe=wardrobe_selection) if persona_applied else "",
                 environment=_opt_str(kwargs.get("environment")) or self.styles.environment_phrase(style),
                 style=self.styles.style_phrase(style),
                 camera=camera,
