@@ -16,8 +16,22 @@ class MemoryStore:
         self.jobs[job.id] = job
         return job
 
-    def get_job(self, job_id: UUID) -> Job | None:
-        return self.jobs.get(job_id)
+    def get_job(self, job_id: UUID | str) -> Job | None:
+        """Look a job up by `UUID` or by its string form.
+
+        Jobs are stored under `UUID` keys but cross a process boundary as
+        strings (Celery serialises the task argument), so `store.get_job("…")`
+        used to miss every job and the worker reported `cancelled` without ever
+        running. Accepting both keeps the existing UUID callers working.
+        """
+
+        job = self.jobs.get(job_id)
+        if job is None and isinstance(job_id, str):
+            try:
+                job = self.jobs.get(UUID(job_id))
+            except ValueError:
+                return None
+        return job
 
     def add_persona(self, persona: Persona) -> Persona:
         self.personas[persona.id] = persona

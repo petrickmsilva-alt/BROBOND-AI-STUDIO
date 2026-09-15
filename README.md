@@ -16,17 +16,24 @@ These files are versioned design knowledge today. The next Core milestone is mig
 
 ## Current slice
 
-The first vertical slice is a polished Next.js dashboard with independent module views:
+A Next.js studio whose front door is the **Director**: the user states an intention in plain
+language and receives direction — concept, logline, script, beats, cameras, music, pacing and
+duration — instead of being handed a prompt field.
 
-- Overview dashboard with creative tools, recent projects and GPU status
-- Image generation controls (prompt, negative prompt, model, ratio, resolution, seed, guidance, steps and LoRA/reference actions)
-- Video generation (text/image-to-video tabs, duration, format, camera motion, native audio)
-- Motion control preset browser and keyframe controls
-- Persona Lab with identity profile and LoRA training status
-- Storyboard with brief expansion and four scene cards
-- Asset library with filters and visual previews
+- **Director** — `POST /api/v1/core/direct`, the default view
+- Overview dashboard with creative tools and **live** system state from `/api/v1/system/*`
+- Image generation (model, ratio, resolution, LoRA, ControlNet and reference), wired to what it renders
+- Video generation (model, duration, format, native audio, cinematic mode)
+- Persona Lab with identity profile and LoRA training status over WebSocket
+- Storyboard cast through `/api/v1/core/storyboard`, showing the shots chosen **and** the findings
+- Asset library with counts read from the API
 
-The generation result is intentionally a local UI simulation. Model inference should be connected through the backend contract described below rather than hidden behind fake network calls.
+The canvas shows the **real** `output_url` of the job, or says plainly that the render failed.
+ETAPA 15 removed the CSS figure that used to stand in for a generated image — a `failed` and a
+`complete` job no longer look the same.
+
+Nothing is simulated any more, and nothing is invented: when a dependency is missing the UI
+says which one. See `docs/LIMITATIONS.md` for what still cannot run on a machine without a GPU.
 
 ## Run locally
 
@@ -122,6 +129,171 @@ Pré-requisito: repositório público no GitHub conectado ao seu plano Render
   `BROBOND_INFERENCE_ENABLED=false` e ligue os providers por adapter quando
   houver um worker GPU próprio (ver `ROADMAP.md`).
 
+## BROBOND CORE
+
+The decision layer lives in `backend/app/core/` and is the only place where creative
+decisions are made. Six components, each importing nothing but `core/contracts.py`:
+
+| Component | What it owns |
+| --- | --- |
+| `MemoryResolver` | Permanent character identity, identity phrase, versioned revisions |
+| `StyleResolver` | Style → lens, LUT, lighting, contrast, grain, camera motion, particles, fps |
+| `ShotResolver` | Stable `SH###` codes → camera path, speed, lens, focus, shake, depth |
+| `PromptCompiler` | The only place prompt text is produced: ordered blocks + negative prompt |
+| `DirectorAgent` | Plain-language intention → concept, script, scenes, cameras, music, duration |
+| `GenerationSpecBuilder` | The composition root: combines the four above into a `GenerationSpec` |
+
+Two rules the test suite enforces:
+
+- **No route contains generation logic.** `POST /api/v1/storyboards/expand` and
+  `POST /api/v1/prompts/enhance` keep their exact previous contracts; only the
+  composition moved out of the route and into the Core.
+- **No component imports a peer.** `backend/tests/test_core_independence.py` imports each
+  module in a fresh interpreter with `app.core.__init__` stubbed out and fails if a
+  sibling is pulled in. `GenerationSpecBuilder` is the single declared composition root.
+
+New endpoints:
+
+- `POST /api/v1/core/direct` — send an intention such as `"Quero vender uma camiseta"`,
+  receive concept, script, scenes, cameras, music and duration. No technical prompt is
+  ever returned. When the intention could follow more than one language, the response
+  carries one short `clarification` question instead of a guess.
+- `POST /api/v1/core/compile` — dry run that returns the compiled `GenerationSpec` plus
+  the resolution trace (which source won each contested field). Generates no media.
+
+`GenerationSpec` declares 19 mandatory fields in one place
+(`core/contracts.py:GENERATION_SPEC_FIELDS`): `project_id`, `user_id`, `persona_id`,
+`style_id`, `prompt_original`, `prompt_compiled`, `negative_prompt`, `camera`, `lens`,
+`lighting`, `motion`, `weather`, `aspect_ratio`, `fps`, `duration`, `provider`, `seed`,
+`lora`, `controlnet`.
+
+**Every provider receives only this object.** `ImageProvider` and `VideoProvider` are
+abstract classes whose single entry point is `generate(spec, output_dir)` — there is no
+signature through which a loose prompt string or a `parameters` dict can reach a model.
+Sampling parameters ride inside the spec as typed extras rather than beside it in a dict.
+`app/spec_adapter.py` translates a queued `Job` into a spec and is the only module that
+knows both the API schemas and the Core.
+
+## Provider adapters
+
+`SYSTEM_PROMPT.md` calls the providers *swappable adapters*. A registry makes that literally
+true: it is the single source of truth for which adapter runs, keyed on the provider the job
+asked for rather than on the job type.
+
+```text
+GET /api/v1/core/providers
+
+  flux-dev            image  local-provider   black-forest-labs/FLUX.1-dev
+  flux-1.1-pro-ultra  image  remote-provider
+  wan-2.1-t2v         video  local-provider   Wan-AI/Wan2.1-T2V-1.3B-Diffusers
+  hunyuan-video       video  local-provider   hunyuanvideo-community/HunyuanVideo
+```
+
+A provider that cannot run is **refused**, not silently replaced — asking for a remote-only
+or planned provider fails with a reason instead of quietly rendering with a different model.
+`GET /api/v1/core/providers/health` reports whether each local adapter could run on the
+current machine, and never raises.
+
+Adding a provider is one registration, not another branch in the worker:
+
+```python
+registry.register(ProviderEntry(
+    provider_id="acme-image", label="Acme", kind=GenerationKind.IMAGE,
+    status=STATUS_LOCAL, model_id="acme/v1",
+    module="app.providers.image", attribute="FluxDiffusersProvider",
+))
+```
+
+## Prompt compiler
+
+`SYSTEM_PROMPT.md` declares thirteen internal blocks. The compiler emits twelve of them in
+that order and keeps `NEGATIVE` separate, because diffusion providers take it as its own
+argument:
+
+```text
+SUBJECT · CHARACTER · ENVIRONMENT · ACTION · CAMERA · LENS · LIGHT · COLOR
+        · MOTION · STYLE · CONTINUITY · OUTPUT
+```
+
+Blocks are deduplicated on join, so a shot preset no longer makes the focal length appear
+twice. Colour is its own block rather than part of `STYLE`, which means a prompt over budget
+drops an adjective before it drops the grade. The budget itself belongs to the provider
+(`flux-dev` 1000, `wan-video` 1200), and anything trimmed is reported in `dropped` — never
+silently.
+
+`POST /api/v1/core/storyboard/compile` puts the two together: it casts a brief into shots and
+returns one compiled prompt per scene.
+
+```text
+POST /api/v1/core/storyboard/compile  { "brief": "...", "scene_count": 3 }
+
+  scenes[0].shot_code  SH002
+  scenes[0].prompt     "..., the world before the story, slow crane reveal descending to
+                        street level, 24mm, blue hour ambience, ..."
+  scenes[0].dropped    []
+```
+
+## Storyboard engine
+
+A storyboard is a **cast**, not a list of camera phrases. `POST /api/v1/core/storyboard`
+takes a brief and returns a shot sequence where every scene names a real preset from the
+300-shot library, with its own lens, lighting, movement and continuity note:
+
+```text
+POST /api/v1/core/storyboard  { "brief": "...", "scene_count": 5 }
+
+  COMMERCIAL — 5 scenes, 25.0s
+  01. SH002 City Wakes        [establishing]  24mm
+  02. SH028 First Silhouette  [introduction]  50mm
+  03. SH157 Hero Product Reveal [product]     85mm
+  04. SH158 Material Macro    [product]      135mm
+  05. SH253 Walk Into Distance [resolution]   24mm
+```
+
+The narrative arc follows the detected format, opens on geography and closes on a resolution,
+and the sequence is validated against the cinematic grammar — the response carries
+`valid`, `violations` and `attention` so a director sees *what* is wrong with a cut rather
+than just that it failed. `POST /api/v1/storyboards/expand` is untouched and still returns
+prompt text; this endpoint casts shots and never produces a prompt.
+
+## Shot library
+
+300 direction presets across 12 narrative families — establishing, introduction, dialogue,
+action, tension, intimacy, product, fashion, transition, atmosphere, resolution and
+documentary. A shot is a reusable direction preset, not a prompt blob.
+
+Every one of the 300 is validated against the `CINEMATIC_BIBLE` grammar: declared focal
+length, motivated movement, known shot size, declared intention. The report is available at
+`GET /api/v1/core/shots/audit`.
+
+The ten originally published presets are untouched and keep their stable codes. See
+`ETAPA6_REPORT.md` for the full breakdown, including the honest finding that `transformation`
+motivation is covered by only 2 of the 300.
+
+## Cinematic library
+
+`knowledge_base/CINEMATIC_BIBLE.md` is queryable grammar plus enforceable rules. What each
+focal length means, what each light does, which motivations justify moving the camera, and
+whether a grade obeys the Bible — all of it is now data the code can check, not prose only a
+human reads.
+
+The library describes and judges. It never composes prompts and never picks a style: those
+stay with `PromptCompiler` and `DirectorAgent`.
+
+Running the rules over the published presets reports the library's own exceptions instead of
+hiding them — see `ETAPA5_REPORT.md` for the findings.
+
+## Persona memory
+
+Character identity is permanent, versioned and attributed. Every edit records who made it
+and why; an identity change without explicit authorisation is rejected and **nothing is
+written**; a published episode keeps the identity snapshot it was made with.
+
+A character with no defined attributes cannot be approved — approval certifies an identity,
+it never invents one. `CHAR_JEFFERSON` remains `planned` for exactly that reason.
+
+See `ETAPA4_REPORT.md` for the technical report and `ARCHITECTURE.md` for the model.
+
 ## Architecture target
 
 ```text
@@ -129,13 +301,16 @@ BROBOND-AI-STUDIO/
 ├── app/                  # Next.js App Router UI
 │   ├── page.tsx          # workspace shell and module slices
 │   └── globals.css       # design system
-├── backend/              # planned FastAPI service boundary
-│   ├── app/api/          # REST + WebSocket endpoints
-│   ├── app/core/         # settings, auth, queue
-│   ├── app/models/       # SQLAlchemy models
-│   └── app/services/     # inference providers and storage adapters
-├── docker-compose.yml    # local Postgres, Redis and MinIO (next integration)
-└── requirements.txt      # Python service dependencies (next integration)
+├── backend/              # FastAPI service boundary
+│   ├── app/core/         # BROBOND CORE: director, memory, prompt, style, shot, spec
+│   ├── app/api/          # versioned route package (see AUDIT.md: currently unused)
+│   ├── app/providers/    # FLUX and Wan adapters
+│   ├── app/services/     # service adapters
+│   ├── app/main.py       # composition root: wires the Core, exposes the routes
+│   ├── app/models.py     # SQLAlchemy models
+│   └── tests/            # pytest suite (1,077 tests)
+├── docker-compose.yml    # local Postgres, Redis and MinIO
+└── requirements.txt      # Python service dependencies
 ```
 
 ## Inference boundary
@@ -159,14 +334,20 @@ Each generation should become a persisted job, be processed by Celery workers, a
 - JWT authentication and workspace-scoped resources before exposing network access
 - Never commit model weights, generated media, secrets or `.env` files
 
-## Next implementation milestones
+## What is not built yet
 
-1. Add FastAPI service and typed OpenAPI client.
-2. Add Postgres migrations for workspaces, projects, assets, generations and personas.
-3. Add Redis/Celery queue with GPU worker capability detection.
-4. Add MinIO signed upload/download URLs and FFmpeg export pipeline.
-5. Replace local UI simulation with WebSocket job updates and real provider adapters.
-6. Add unit/API tests and local Docker profiles.
+The six items that used to live here as "next milestones" — FastAPI service, Postgres models,
+Redis/Celery queue, MinIO signed URLs, WebSocket job updates and a test suite — were all
+delivered by ETAPA 12 and removed from this list in ETAPA 17 rather than left as a to-do list
+of finished work.
+
+What genuinely remains is tracked in two places, both kept honest by tests:
+
+- **`ROADMAP.md`** — the `- [ ]` items: first GPU-validated render, persisted Personas/Styles/
+  Shots, Character and Prompt libraries, episode continuity, multi-tenancy, billing.
+- **`docs/LIMITATIONS.md`** — what cannot be verified on a machine without a GPU, the state
+  that still lives in memory, the 48 of 58 routes without authentication, and the four dead
+  modules from `AUDIT.md` P0-1.
 
 ## Validation
 
@@ -178,3 +359,23 @@ npm run build
 ```
 
 The end-to-end backend test covers registration, authenticated upload, generation job creation, storyboard expansion and asset listing.
+
+The backend suite is **1,077 tests** and total backend coverage is **95%**, held by a `--fail-under=90` gate in CI. The whole
+`backend/app/core/` directory reads 98%. The remainder of the gap is the pre-existing dead
+cluster from `AUDIT.md` P0-1 — four modules, 100 statements, that do not import at all; see
+`docs/LIMITATIONS.md` §5. `core/persona_memory.py`,
+`core/cinematic_library.py`, `core/shot_library.py` and `core/storyboard_engine.py` are all
+at 100%.
+
+Suites by area: `test_core_contracts.py`, `test_core_memory_resolver.py`,
+`test_core_style_resolver.py`, `test_core_shot_resolver.py`,
+`test_core_prompt_compiler.py`, `test_core_director_agent.py`,
+`test_core_spec_builder.py`, `test_core_api.py`, `test_core_independence.py`,
+`test_spec_adapter.py`, `test_generation_spec_providers.py`,
+`test_core_persona_memory.py`, `test_core_persona_api.py`,
+`test_core_cinematic_library.py`, `test_core_cinematic_api.py`,
+`test_core_shot_library.py`, `test_core_shot_api.py`,
+`test_core_storyboard_engine.py`, `test_core_storyboard_api.py`,
+`test_core_prompt_blocks.py`, `test_core_storyboard_compile_api.py` and
+`test_provider_adapters.py`. The independence tests
+spawn subprocesses, so the suite takes a few seconds longer than a pure in-process run.

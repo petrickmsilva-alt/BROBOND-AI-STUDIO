@@ -10,6 +10,11 @@ __pycache__/
 .pytest_cache/
 *.db
 
+# Coverage artifacts (ETAPA 16 added the gate; the data file is generated)
+.coverage
+.coverage.*
+htmlcov/
+
 # Generated media and model weights
 media/
 weights/

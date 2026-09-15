@@ -7,8 +7,15 @@ sqlalchemy==2.0.36
 asyncpg==0.30.0
 redis==5.2.1
 celery==5.4.0
+# backend/app/storage.py drives S3/MinIO through the AWS SDK; the `minio` client
+# below is not imported anywhere in the live code path.
+boto3==1.43.94
 minio==7.2.15
 python-multipart==0.0.20
+# backend/app/auth.py imports `jwt` and catches `jwt.PyJWTError`; python-jose
+# below is used only by the unused backend/app/core/security.py. Both are pinned
+# because the live module needs PyJWT specifically.
+PyJWT==2.14.0
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
 pytest==8.3.4
