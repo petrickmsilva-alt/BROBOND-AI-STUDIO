@@ -4,6 +4,11 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY backend ./backend
+# PR002: the schema is applied by Alembic at startup
+# (`app.main._bootstrap_database` runs `alembic upgrade head`), so the
+# migration history and its config must ship with the image.
+COPY alembic ./alembic
+COPY alembic.ini .
 
 ENV PYTHONPATH=/app/backend
 # Render injects PORT (default 10000) and forwards traffic to it; the 8000

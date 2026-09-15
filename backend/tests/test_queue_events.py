@@ -11,11 +11,14 @@ import ast
 import pathlib
 import threading
 import time
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 
 from app.core.config import settings
+from app.db import SessionLocal
 from app.events import (
     EVENT_BUFFER_SIZE,
     EVENT_COMPLETE,
@@ -28,6 +31,7 @@ from app.events import (
     job_event,
 )
 from app.main import app
+from app.models import User, Workspace
 from app.schemas import GenerationType, Job, JobStatus
 from app.store import store
 
@@ -55,6 +59,37 @@ def orchestration_only(monkeypatch):
     monkeypatch.setattr(settings, "inference_enabled", False)
     monkeypatch.setattr(settings, "storage_enabled", False)
     return settings
+
+
+def _register(client: TestClient) -> str:
+    """Create a real user (and their workspace) and return the bearer token.
+
+    PR002: the queue events socket authenticates through the `token` query
+    parameter and only streams jobs the caller's workspace owns, so the socket
+    tests need a genuine tenant rather than a bare job.
+    """
+
+    response = client.post(
+        "/api/v1/auth/register",
+        json={"email": f"queue-{uuid4()}@example.com", "name": "Queue Test", "password": "correct-horse-battery-staple"},
+    )
+    assert response.status_code == 201, response.text
+    return response.json()["access_token"]
+
+
+def _job_for_token(token: str, prompt: str = "x") -> Job:
+    """A job owned by the tenant that issued `token`."""
+
+    import jwt as pyjwt
+
+    from app.core.config import settings as _settings
+
+    with SessionLocal() as db:
+        user_id = pyjwt.decode(token, _settings.jwt_secret, algorithms=[_settings.jwt_algorithm])["sub"]
+        user = db.get(User, user_id)
+        workspace = db.scalar(select(Workspace).where(Workspace.owner_id == user.id))
+        job = store.add_job(Job(type=GenerationType.IMAGE, prompt=prompt, parameters={"workspace_id": workspace.id}))
+    return job
 
 
 class _Reader:
@@ -352,7 +387,9 @@ def test_a_failing_job_emits_failed_with_the_reason(client, monkeypatch) -> None
 
 def test_a_cancelled_job_emits_cancelled(client, orchestration_only) -> None:
     job = store.add_job(Job(type=GenerationType.IMAGE, prompt="x", parameters={}))
-    job.status = JobStatus.CANCELLED
+    # PR002: state lives in the row now, so the test cancels through the store
+    # exactly like the cancel route does — not by mutating a stale copy.
+    store.set_job_state(job.id, status=JobStatus.CANCELLED)
     from app.queue import process_generation
 
     assert process_generation(str(job.id))["status"] == "cancelled"
@@ -374,8 +411,9 @@ def test_an_unknown_job_does_not_emit_anything(client, orchestration_only) -> No
 def test_a_connected_client_sees_the_job_finish(client, orchestration_only) -> None:
     """The defect, end to end: this used to receive one snapshot and hang."""
 
-    job = store.add_job(Job(type=GenerationType.IMAGE, prompt="x", parameters={}))
-    with client.websocket_connect(f"/api/v1/queue/events/{job.id}") as websocket:
+    token = _register(client)
+    job = _job_for_token(token)
+    with client.websocket_connect(f"/api/v1/queue/events/{job.id}?token={token}") as websocket:
         reader = _Reader(websocket)
         from app.queue import process_generation
 
@@ -385,15 +423,17 @@ def test_a_connected_client_sees_the_job_finish(client, orchestration_only) -> N
     assert reader.labels()[0] == "snapshot"
     assert "started" in reader.labels()
     assert "complete" in reader.labels()
-    assert reader.messages[-1]["status"] == "complete"
+    # PR002: the wire says `completed`; the internal state stays `complete`.
+    assert reader.messages[-1]["status"] == "completed"
     assert reader.messages[-1]["progress"] == 100
 
 
 def test_the_terminal_event_is_sent_once(client, orchestration_only) -> None:
     """A first draft drained the buffer and then re-sent `complete`."""
 
-    job = store.add_job(Job(type=GenerationType.IMAGE, prompt="x", parameters={}))
-    with client.websocket_connect(f"/api/v1/queue/events/{job.id}") as websocket:
+    token = _register(client)
+    job = _job_for_token(token)
+    with client.websocket_connect(f"/api/v1/queue/events/{job.id}?token={token}") as websocket:
         reader = _Reader(websocket)
         from app.queue import process_generation
 
@@ -404,17 +444,18 @@ def test_the_terminal_event_is_sent_once(client, orchestration_only) -> None:
 
 
 def test_a_client_that_connects_late_gets_the_history(client, orchestration_only) -> None:
-    job = store.add_job(Job(type=GenerationType.IMAGE, prompt="x", parameters={}))
+    token = _register(client)
+    job = _job_for_token(token)
     from app.queue import process_generation
 
     process_generation(str(job.id))
     assert hub.history(job.id), "the transitions were recorded"
 
-    with client.websocket_connect(f"/api/v1/queue/events/{job.id}") as websocket:
+    with client.websocket_connect(f"/api/v1/queue/events/{job.id}?token={token}") as websocket:
         reader = _Reader(websocket).settle()
 
     assert reader.labels()[0] == "snapshot"
-    assert reader.messages[0]["status"] == "complete", "the client learns the current state first"
+    assert reader.messages[0]["status"] == "completed", "the client learns the current state first"
     assert "started" in reader.labels()
     assert "complete" in reader.labels()
 
@@ -428,8 +469,9 @@ def test_the_route_exits_after_a_terminal_event(client, orchestration_only) -> N
     disconnecting and freeing the buffer is the observable proof it returned.
     """
 
-    job = store.add_job(Job(type=GenerationType.IMAGE, prompt="x", parameters={}))
-    with client.websocket_connect(f"/api/v1/queue/events/{job.id}") as websocket:
+    token = _register(client)
+    job = _job_for_token(token)
+    with client.websocket_connect(f"/api/v1/queue/events/{job.id}?token={token}") as websocket:
         _Reader(websocket)
         time.sleep(0.1)
         assert hub.stats()["connections"] == 1, "the client was never registered"
@@ -447,8 +489,9 @@ def test_the_route_exits_after_a_terminal_event(client, orchestration_only) -> N
 
 
 def test_the_buffer_is_freed_once_a_client_is_done(client, orchestration_only) -> None:
-    job = store.add_job(Job(type=GenerationType.IMAGE, prompt="x", parameters={}))
-    with client.websocket_connect(f"/api/v1/queue/events/{job.id}") as websocket:
+    token = _register(client)
+    job = _job_for_token(token)
+    with client.websocket_connect(f"/api/v1/queue/events/{job.id}?token={token}") as websocket:
         reader = _Reader(websocket)
         from app.queue import process_generation
 
@@ -459,6 +502,18 @@ def test_the_buffer_is_freed_once_a_client_is_done(client, orchestration_only) -
 
 
 def test_an_unknown_job_is_refused_with_a_policy_violation(client) -> None:
+    from starlette.websockets import WebSocketDisconnect
+
+    token = _register(client)
+    with pytest.raises(WebSocketDisconnect) as raised:
+        with client.websocket_connect(f"/api/v1/queue/events/00000000-0000-0000-0000-000000000000?token={token}"):
+            pass
+    assert raised.value.code == 1008
+
+
+def test_an_unauthenticated_socket_is_refused_before_accept(client) -> None:
+    """PR002: the token rides the query string; without it there is no stream."""
+
     from starlette.websockets import WebSocketDisconnect
 
     with pytest.raises(WebSocketDisconnect) as raised:
@@ -481,8 +536,9 @@ def test_a_failure_reaches_the_client_with_its_reason(client, monkeypatch) -> No
     monkeypatch.setattr(settings, "inference_enabled", True)
     monkeypatch.setattr(settings, "storage_enabled", False)
 
-    job = store.add_job(Job(type=GenerationType.IMAGE, prompt="x", parameters={}))
-    with client.websocket_connect(f"/api/v1/queue/events/{job.id}") as websocket:
+    token = _register(client)
+    job = _job_for_token(token)
+    with client.websocket_connect(f"/api/v1/queue/events/{job.id}?token={token}") as websocket:
         reader = _Reader(websocket)
         from app.queue import process_generation
 

@@ -295,10 +295,15 @@ def _identity_dependency(route) -> str | None:
 
 
 def test_the_authorisation_count_is_the_real_one(inventory) -> None:
-    """10 of 58 routes touch identity — 6 require it, 4 do not.
+    """25 of 58 routes touch identity — 22 require it, 3 do not (PR002).
 
+    Before PR002 the numbers were 10 (6 required, 4 optional); the security
+    pass closed the P0-2 exposure, so the prose and the guard moved together.
     All three numbers are measured here and compared against the prose, because
-    they drift independently of each other.
+    they drift independently of each other. The two WebSockets are also
+    authenticated, through the `token` query parameter (see
+    test_security_authorization.py) — they are not routes, so they are not in
+    the count.
     """
 
     kinds = [_identity_dependency(r) for r in inventory["http"]]
@@ -306,8 +311,8 @@ def test_the_authorisation_count_is_the_real_one(inventory) -> None:
     optional = len([k for k in kinds if k == "optional_user"])
     touching = required + optional
 
-    assert required == 6, f"rotas exigindo token mudaram: {required}"
-    assert optional == 4, f"rotas com identidade opcional mudaram: {optional}"
+    assert required == 22, f"rotas exigindo token mudaram: {required}"
+    assert optional == 3, f"rotas com identidade opcional mudaram: {optional}"
 
     text = _read(LIMITATIONS)
     assert f"**{touching} de {inventory['http_count']} rotas**" in text

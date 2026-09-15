@@ -6,6 +6,94 @@ versões de produto do `ROADMAP.md`.
 
 ---
 
+## [Unreleased] — PR002: SEGURANÇA E PERSISTÊNCIA
+
+O backend passa a ser um ambiente de produção sem alterar a arquitetura
+(Bible §2/§18): a auditoria `SPRINT1_AUDIT_REPORT.md` (P0-2 e P0-4) foi
+executada e os dois achados de segurança mais graves foram fechados.
+
+### Segurança
+
+- **JWT ≥ 32 bytes**: default de desenvolvimento agora tem 70 bytes e um
+  `field_validator` **recusa iniciar** a aplicação com `BROBOND_JWT_SECRET`
+  menor que 32 bytes (mínimo do RFC 7518 para HS256). `docker-compose.yml` e
+  `.env.example` atualizados para segredos válidos.
+- **Autorização em todas as rotas protegidas**: 22 de 58 rotas exigem token
+  (`/queue`, `/jobs/*`, `/assets/download/*`, `/knowledge`, as 4 rotas de
+  `/personas/*` e as 8 de `/core/personas/*`); 3 aceitam sem exigir
+  (`/generations/*`, `/core/compile` — mantido o contrato original); 33
+  permanecem públicas por desenho (dados de referência e Core read-only).
+- **Proteção de download/cancel/jobs por tenant**: `/jobs/{id}`,
+  `/jobs/{id}/cancel`, `/queue` e `/assets/download/{key}` checam posse pelo
+  workspace do caller — resposta **404** (não 403), para o id de outro tenant
+  não ser enumerável.
+- **PII removida do acesso público**: `GET /api/v1/knowledge` (perfis de
+  personagens, ex. CHAR_PETRICK) agora exige identidade.
+- **Rate limit configurável**: `BROBOND_RATE_LIMIT_AUTH_PER_MINUTE`
+  (default 20/min/IP, `0` desliga) em `/auth/login` e `/auth/register`, com
+  `Retry-After` no 429. In-memory por processo; o passo seguinte declarado é
+  store compartilhado (Redis), documentado em `docs/LIMITATIONS.md` §2.
+- **Audit log**: `app/audit.py` + tabela `audit_log` append-only. Ações
+  críticas (login bem-sucedido/falhado, registro, criação/cancelamento de
+  job, download de asset, criação de persona, treino, revisões/aprovações de
+  identidade) escrevem a linha + uma linha estruturada no logger
+  `brobond.audit`.
+- **WebSockets autenticados**: os 2 sockets aceitam o token pelo query
+  parameter `token` (browsers não definem header em handshake) e verificam
+  posse do job/run — fecham com `1008` **antes** de aceitar. O cliente
+  (`lib/api.ts → wsUrl`) agora anexa o token do `localStorage`.
+
+### Persistência
+
+- **Alembic instalado e usado** (`alembic==1.13.3`, já pinado): `alembic.ini`
+  + `alembic/env.py` (URL lida das settings da aplicação) +
+  `alembic/versions/0001_initial_schema.py` — migration inicial com as 7
+  tabelas existentes + `jobs` + `audit_log`.
+- **Jobs fora da RAM**: `JobRow` (tabela `jobs`) + `JobStore` em
+  `app/store.py` — a API e o worker Celery leem/escrevem a mesma linha;
+  `process_generation(job_id)` é agora o contrato real de outro processo.
+  O cancelamento passa por `transition()` (persiste **e** emite o evento —
+  antes o cancel não emitia nada).
+- **Bootstrap por migration**: `app.main._bootstrap_database` roda
+  `alembic upgrade head` (com retry para o Postgres do Render) em vez de
+  `create_all` + `ALTER TABLE` manual. A migration é idempotente: um banco
+  legado do bootstrap antigo atualiza no lugar (coluna
+  `training_runs.workspace_id` adicionada quando ausente).
+- **`Dockerfile.api`** agora copia `alembic/` e `alembic.ini` para o
+  `upgrade head` funcionar no container.
+
+### Compatibilidade (nada quebrado)
+
+- `complete` continua sendo o estado **interno** (`JobStatus`, eventos,
+  worker); a borda responde **`completed`** via `events.external_status()` /
+  `schemas.JobResponse` — uma única função, um único lugar. `TERMINAL_STATUSES`
+  e os nomes de evento são inalterados.
+- `/generations/*` continua aceitando anônimo (202); consequência documentada:
+  job anônimo não tem tenant e não pode ser lido de volta (fixado por teste;
+  a UI avisa "sign in to track it").
+- Zero arquivos deletados; `MemoryStore` segue existindo para personas
+  (persistência delas é o PR004); `docs/API.md` regenerado pelo script.
+
+### Testes e validação
+
+- **1.125 testes** (era 1.077): 4 arquivos novos —
+  `test_security_authorization.py` (matriz 401, isolamento de tenant, rate
+  limit, validador de JWT, WS), `test_job_persistence.py` (job visível para
+  outro processo, worker por id, cancel persistido, fila por tenant),
+  `test_audit_log.py` (ações com linha e logger estruturado, append-only por
+  AST) e `test_migrations.py` (upgrade em banco novo, idempotência, upgrade
+  de banco legado, downgrade).
+- Testes existentes atualizados apenas onde o PR muda o contrato:
+  `test_knowledge.py` e `test_core_api.py` (`/knowledge` com token),
+  `test_queue_events.py` (WS com `?token=`, snapshot `completed`),
+  `test_core_persona_api.py` (rotas protegidas), `test_lora.py`,
+  `test_asset_export_routes.py` (socket de training agora exige token),
+  `test_queue_training_paths.py` (leitura de volta via store),
+  `test_docs_accuracy.py` (contagem 22/3 e docs).
+- Cobertura `backend/app`: **95%** (gate CI: 90%). `npm run build` OK.
+
+---
+
 ## [Unreleased] — ETAPA 17: DOCUMENTAÇÃO
 
 Relatório técnico completo em `ETAPA17_REPORT.md`.

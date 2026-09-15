@@ -13,6 +13,17 @@ from app.main import app
 
 client = TestClient(app)
 
+# PR002: the persona memory routes are protected; one tenant answers for all
+# the tests in this file (the ledger they touch is isolated per test).
+from uuid import uuid4  # noqa: E402
+
+_REGISTER = client.post(
+    "/api/v1/auth/register",
+    json={"email": f"core-persona-{uuid4()}@example.com", "name": "Core Persona API", "password": "strong-pass-123"},
+)
+assert _REGISTER.status_code == 201, _REGISTER.text
+HEADERS = {"Authorization": f"Bearer {_REGISTER.json()['access_token']}"}
+
 
 @pytest.fixture(autouse=True)
 def isolated_persona_memory(monkeypatch):
@@ -28,7 +39,7 @@ def isolated_persona_memory(monkeypatch):
 
 
 def test_the_library_lists_both_canonical_characters() -> None:
-    body = client.get("/api/v1/core/personas").json()
+    body = client.get("/api/v1/core/personas", headers=HEADERS).json()
     assert {entry["persona_id"]: entry for entry in body}["CHAR_PETRICK"]["generable"] is True
     jefferson = {entry["persona_id"]: entry for entry in body}["CHAR_JEFFERSON"]
     assert jefferson["status"] == "planned"
@@ -37,20 +48,20 @@ def test_the_library_lists_both_canonical_characters() -> None:
 
 
 def test_the_library_can_be_filtered() -> None:
-    assert len(client.get("/api/v1/core/personas", params={"query": "petrick"}).json()) == 1
+    assert len(client.get("/api/v1/core/personas", headers=HEADERS, params={"query": "petrick"}).json()) == 1
 
 
 def test_an_unknown_persona_is_404() -> None:
-    assert client.get("/api/v1/core/personas/CHAR_NOBODY").status_code == 404
+    assert client.get("/api/v1/core/personas/CHAR_NOBODY", headers=HEADERS).status_code == 404
     assert client.post(
-        "/api/v1/core/personas/CHAR_NOBODY/revise", json={"actor": "x", "reason": "y", "hair": "z"}
+        "/api/v1/core/personas/CHAR_NOBODY/revise", headers=HEADERS, json={"actor": "x", "reason": "y", "hair": "z"}
     ).status_code == 404
-    assert client.post("/api/v1/core/personas/CHAR_NOBODY/approve", json={"actor": "x"}).status_code == 404
+    assert client.post("/api/v1/core/personas/CHAR_NOBODY/approve", headers=HEADERS, json={"actor": "x"}).status_code == 404
 
 
 def test_an_identity_change_without_authorization_is_409() -> None:
     response = client.post(
-        "/api/v1/core/personas/CHAR_PETRICK/revise",
+        "/api/v1/core/personas/CHAR_PETRICK/revise", headers=HEADERS,
         json={"actor": "estagiario", "reason": "achei melhor", "eyes": "green eyes"},
     )
     assert response.status_code == 409
@@ -59,7 +70,7 @@ def test_an_identity_change_without_authorization_is_409() -> None:
 
 def test_an_authorized_identity_change_is_recorded() -> None:
     response = client.post(
-        "/api/v1/core/personas/CHAR_PETRICK/revise",
+        "/api/v1/core/personas/CHAR_PETRICK/revise", headers=HEADERS,
         json={"actor": "diretor", "reason": "novo arco em EP2", "authorized": True, "eyes": "green eyes"},
     )
     assert response.status_code == 200
@@ -71,7 +82,7 @@ def test_an_authorized_identity_change_is_recorded() -> None:
 
 def test_a_revision_without_any_field_is_422_not_a_silent_noop() -> None:
     response = client.post(
-        "/api/v1/core/personas/CHAR_PETRICK/revise", json={"actor": "diretor", "reason": "nada", "authorized": True}
+        "/api/v1/core/personas/CHAR_PETRICK/revise", headers=HEADERS, json={"actor": "diretor", "reason": "nada", "authorized": True}
     )
     assert response.status_code == 409
     assert "changes nothing" in response.json()["detail"]
@@ -80,14 +91,14 @@ def test_a_revision_without_any_field_is_422_not_a_silent_noop() -> None:
 def test_revision_fields_are_validated() -> None:
     assert (
         client.post(
-            "/api/v1/core/personas/CHAR_PETRICK/revise",
+            "/api/v1/core/personas/CHAR_PETRICK/revise", headers=HEADERS,
             json={"actor": "x", "reason": "y", "authorized": True, "age": 500},
         ).status_code
         == 422
     )
     assert (
         client.post(
-            "/api/v1/core/personas/CHAR_PETRICK/revise",
+            "/api/v1/core/personas/CHAR_PETRICK/revise", headers=HEADERS,
             json={"actor": "x", "reason": "y", "authorized": True, "height_m": 0.1},
         ).status_code
         == 422
@@ -97,23 +108,23 @@ def test_revision_fields_are_validated() -> None:
 def test_actor_and_reason_are_mandatory_on_every_write() -> None:
     assert (
         client.post(
-            "/api/v1/core/personas/CHAR_PETRICK/revise", json={"reason": "sem autor", "hair": "shaved"}
+            "/api/v1/core/personas/CHAR_PETRICK/revise", headers=HEADERS, json={"reason": "sem autor", "hair": "shaved"}
         ).status_code
         == 422
     )
-    assert client.post("/api/v1/core/personas/CHAR_PETRICK/approve", json={"reason": "sem autor"}).status_code == 422
+    assert client.post("/api/v1/core/personas/CHAR_PETRICK/approve", headers=HEADERS, json={"reason": "sem autor"}).status_code == 422
 
 
 def test_history_grows_and_is_attributed() -> None:
     client.post(
-        "/api/v1/core/personas/CHAR_PETRICK/revise",
+        "/api/v1/core/personas/CHAR_PETRICK/revise", headers=HEADERS,
         json={"actor": "diretor", "reason": "ep2", "authorized": True, "eyes": "green eyes"},
     )
     client.post(
-        "/api/v1/core/personas/CHAR_PETRICK/revise",
+        "/api/v1/core/personas/CHAR_PETRICK/revise", headers=HEADERS,
         json={"actor": "ml", "reason": "publicado", "lora_path": "weights/v2.safetensors"},
     )
-    body = client.get("/api/v1/core/personas/CHAR_PETRICK").json()
+    body = client.get("/api/v1/core/personas/CHAR_PETRICK", headers=HEADERS).json()
     assert [(entry["revision"], entry["version"], entry["action"]) for entry in body["history"]] == [
         (1, 1, "registered"),
         (2, 2, "revised"),
@@ -126,19 +137,19 @@ def test_history_grows_and_is_attributed() -> None:
 
 def test_an_administrative_edit_does_not_bump_the_identity_version() -> None:
     client.post(
-        "/api/v1/core/personas/CHAR_PETRICK/revise",
+        "/api/v1/core/personas/CHAR_PETRICK/revise", headers=HEADERS,
         json={"actor": "ml", "reason": "publicado", "lora_path": "weights/v2.safetensors"},
     )
-    body = client.get("/api/v1/core/personas/CHAR_PETRICK").json()
+    body = client.get("/api/v1/core/personas/CHAR_PETRICK", headers=HEADERS).json()
     assert body["version"] == 1
     assert body["persona"]["lora_path"] == "weights/v2.safetensors"
 
 
 def test_approval_is_refused_for_an_undefined_identity() -> None:
-    response = client.post("/api/v1/core/personas/CHAR_JEFFERSON/approve", json={"actor": "cto"})
+    response = client.post("/api/v1/core/personas/CHAR_JEFFERSON/approve", headers=HEADERS, json={"actor": "cto"})
     assert response.status_code == 409
     assert "approval requires definition" in response.json()["detail"]
-    assert client.get("/api/v1/core/personas", params={"query": "jefferson"}).json()[0]["generable"] is False
+    assert client.get("/api/v1/core/personas", headers=HEADERS, params={"query": "jefferson"}).json()[0]["generable"] is False
 
 
 def test_a_full_lifecycle_over_http() -> None:
@@ -147,68 +158,68 @@ def test_a_full_lifecycle_over_http() -> None:
     from app.main import persona_engine
 
     persona_engine.create(persona_id="CHAR_NOVA", name="Nova", actor="produtor")
-    assert client.get("/api/v1/core/personas/CHAR_NOVA").json()["generable"] is False
+    assert client.get("/api/v1/core/personas/CHAR_NOVA", headers=HEADERS).json()["generable"] is False
 
     client.post(
-        "/api/v1/core/personas/CHAR_NOVA/revise",
+        "/api/v1/core/personas/CHAR_NOVA/revise", headers=HEADERS,
         json={"actor": "diretor", "reason": "identidade", "authorized": True, "age": 32, "eyes": "amber eyes"},
     )
-    approved = client.post("/api/v1/core/personas/CHAR_NOVA/approve", json={"actor": "cto", "reason": "EP1"})
+    approved = client.post("/api/v1/core/personas/CHAR_NOVA/approve", headers=HEADERS, json={"actor": "cto", "reason": "EP1"})
     assert approved.status_code == 200
     assert approved.json()["generable"] is True
     assert "Nova" in approved.json()["identity_phrase"]
 
-    retired = client.post("/api/v1/core/personas/CHAR_NOVA/retire", json={"actor": "produtor", "reason": "fim"})
+    retired = client.post("/api/v1/core/personas/CHAR_NOVA/retire", headers=HEADERS, json={"actor": "produtor", "reason": "fim"})
     assert retired.json()["generable"] is False
-    assert client.post("/api/v1/core/personas/CHAR_NOVA/retire", json={"actor": "produtor"}).status_code == 409
+    assert client.post("/api/v1/core/personas/CHAR_NOVA/retire", headers=HEADERS, json={"actor": "produtor"}).status_code == 409
 
 
 def test_an_episode_snapshot_survives_later_revisions() -> None:
-    client.post("/api/v1/core/personas/CHAR_PETRICK/episodes/EP01/snapshot")
+    client.post("/api/v1/core/personas/CHAR_PETRICK/episodes/EP01/snapshot", headers=HEADERS)
     client.post(
-        "/api/v1/core/personas/CHAR_PETRICK/revise",
+        "/api/v1/core/personas/CHAR_PETRICK/revise", headers=HEADERS,
         json={"actor": "diretor", "reason": "novo look", "authorized": True, "eyes": "green eyes"},
     )
-    client.post("/api/v1/core/personas/CHAR_PETRICK/episodes/EP02/snapshot")
+    client.post("/api/v1/core/personas/CHAR_PETRICK/episodes/EP02/snapshot", headers=HEADERS)
 
-    assert client.get("/api/v1/core/personas/CHAR_PETRICK/episodes/EP01/memory").json()["persona"]["eyes"] == (
+    assert client.get("/api/v1/core/personas/CHAR_PETRICK/episodes/EP01/memory", headers=HEADERS).json()["persona"]["eyes"] == (
         "dark brown eyes"
     )
-    assert client.get("/api/v1/core/personas/CHAR_PETRICK/episodes/EP02/memory").json()["persona"]["eyes"] == (
+    assert client.get("/api/v1/core/personas/CHAR_PETRICK/episodes/EP02/memory", headers=HEADERS).json()["persona"]["eyes"] == (
         "green eyes"
     )
-    assert client.get("/api/v1/core/personas/CHAR_PETRICK").json()["persona"]["eyes"] == "green eyes"
+    assert client.get("/api/v1/core/personas/CHAR_PETRICK", headers=HEADERS).json()["persona"]["eyes"] == "green eyes"
 
 
 def test_snapshot_payload_carries_the_version_it_was_taken_at() -> None:
-    body = client.post("/api/v1/core/personas/CHAR_PETRICK/episodes/EP01/snapshot").json()
+    body = client.post("/api/v1/core/personas/CHAR_PETRICK/episodes/EP01/snapshot", headers=HEADERS).json()
     assert body["snapshot_of_version"] == 1
     assert body["persona_id"] == "CHAR_PETRICK"
 
 
 def test_recall_without_a_snapshot_is_404_not_a_guess() -> None:
-    response = client.get("/api/v1/core/personas/CHAR_PETRICK/episodes/EP99/memory")
+    response = client.get("/api/v1/core/personas/CHAR_PETRICK/episodes/EP99/memory", headers=HEADERS)
     assert response.status_code == 404
     assert "no memory snapshot" in response.json()["detail"]
 
 
 def test_continuity_reports_drift() -> None:
-    client.post("/api/v1/core/personas/CHAR_PETRICK/episodes/EP01/snapshot")
+    client.post("/api/v1/core/personas/CHAR_PETRICK/episodes/EP01/snapshot", headers=HEADERS)
     client.post(
-        "/api/v1/core/personas/CHAR_PETRICK/revise",
+        "/api/v1/core/personas/CHAR_PETRICK/revise", headers=HEADERS,
         json={"actor": "diretor", "reason": "novo look", "authorized": True, "eyes": "green eyes"},
     )
-    client.post("/api/v1/core/personas/CHAR_PETRICK/episodes/EP02/snapshot")
+    client.post("/api/v1/core/personas/CHAR_PETRICK/episodes/EP02/snapshot", headers=HEADERS)
 
     body = client.get(
-        "/api/v1/core/personas/CHAR_PETRICK/continuity", params={"episodes": ["EP01", "EP02"]}
+        "/api/v1/core/personas/CHAR_PETRICK/continuity", headers=HEADERS, params={"episodes": ["EP01", "EP02"]}
     ).json()
     assert body["consistent"] is False
     assert body["distinct_identities"] == 2
 
 
 def test_continuity_with_no_episodes_is_consistent_and_empty() -> None:
-    body = client.get("/api/v1/core/personas/CHAR_PETRICK/continuity").json()
+    body = client.get("/api/v1/core/personas/CHAR_PETRICK/continuity", headers=HEADERS).json()
     assert body["consistent"] is True
     assert body["episodes_without_snapshot"] == []
 

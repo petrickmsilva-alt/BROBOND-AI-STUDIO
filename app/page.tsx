@@ -301,7 +301,8 @@ function ImageStudio({ prompt, setPrompt, generated, setGenerated }: { prompt: s
       const next = JSON.parse(event.data) as Job;
       setJob(next); setProgress(next.progress);
       setConnection(`Job ${next.status} · ${next.progress}%`);
-      if (next.status === 'complete' || next.status === 'failed' || next.status === 'cancelled') setLoading(false);
+      // PR002: the wire says `completed` (the internal state stays `complete`).
+      if (next.status === 'completed' || next.status === 'failed' || next.status === 'cancelled') setLoading(false);
     };
     socket.onerror = () => setConnection('Job queued · WebSocket unavailable');
     return () => socket.close();
@@ -310,13 +311,20 @@ function ImageStudio({ prompt, setPrompt, generated, setGenerated }: { prompt: s
   const generate = async () => {
     setLoading(true); setError(undefined); setGenerated(true);
     // Every control on this panel feeds the request. They used to render while
-    // the payload carried hard-coded literals, so picking 9:16 produced 16:9.
+    // the payload carries hard-coded literals, so picking 9:16 produced 16:9.
     const result = await createImageJob({
       prompt, model, aspect_ratio: aspectRatio, resolution, guidance_scale: 7.5, steps: 28,
       lora_id: selectedLora || undefined, controlnet, controlnet_scale: controlScale,
       ip_adapter_scale: ipScale, reference_asset_id: referenceAssetId || undefined,
     });
-    if (result.remote) { setJob(result.data); setProgress(result.data.progress); setConnection(`Job ${result.data.id.slice(0, 8)} queued`); }
+    if (result.remote) {
+      setJob(result.data); setProgress(result.data.progress);
+      // PR002: job tracking is authenticated. A job created without a token
+      // exists, but its stream is tenant-scoped — say so instead of implying
+      // it will update.
+      const signedIn = typeof window !== 'undefined' && !!window.localStorage.getItem('brobond_access_token');
+      setConnection(signedIn ? `Job ${result.data.id.slice(0, 8)} queued` : 'Job created — sign in to track it');
+    }
     else { setJob(null); setConnection(result.error === 'offline' ? 'API offline' : 'Request rejected'); }
     setError(result.error); setStatus(result.status);
     setLoading(false);
@@ -360,7 +368,12 @@ function VideoStudio() {
   const generate = async () => {
     setConnection('Submitting video job...'); setError(undefined);
     const result = await createVideoJob({ prompt: brief, model, mode: 'text-to-video', duration_seconds: duration, fps: 24, aspect_ratio: aspect, cinematic_mode: cinematicMode, native_audio: nativeAudio, lora_id: selectedLora || undefined });
-    if (result.remote) { setJob(result.data); setProgress(result.data.progress); setConnection(`Job ${result.data.id.slice(0, 8)} queued`); }
+    if (result.remote) {
+      setJob(result.data); setProgress(result.data.progress);
+      // PR002: job tracking is authenticated; a tokenless job is not trackable.
+      const signedIn = typeof window !== 'undefined' && !!window.localStorage.getItem('brobond_access_token');
+      setConnection(signedIn ? `Job ${result.data.id.slice(0, 8)} queued` : 'Job created — sign in to track it');
+    }
     else { setJob(null); setConnection(result.error === 'offline' ? 'API offline' : 'Request rejected'); }
     setError(result.error); setStatus(result.status);
   };

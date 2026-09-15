@@ -352,6 +352,9 @@ def test_a_job_in_a_workspace_is_saved_as_an_asset(inference, monkeypatch, db, t
 
     assert saved["workspace_id"] == workspace
     assert saved["content_type"] == "image/png"
+    # PR002: the worker updates the row, so "what the user gets" is read back
+    # through the store instead of trusting the pre-process copy.
+    job = queue.store.get_job(job.id)
     assert job.output_url == f"/media/{workspace}/out.png", "the workspace URL is what the user gets"
     assert ("add", "Asset", "") in log or any(entry[0] == "add" for entry in log)
     assert ("commit",) in log
@@ -399,6 +402,8 @@ def test_a_job_without_a_workspace_keeps_the_local_path(inference, monkeypatch, 
     _honest_provider(monkeypatch, tmp_path)
     job = _job(queue.store, {})
     assert queue.process_generation(str(job.id))["status"] == "complete"
+    # PR002: the worker writes the row, so read the result back through the store.
+    job = queue.store.get_job(job.id)
     assert job.output_url == str(tmp_path / "render.png")
 
 

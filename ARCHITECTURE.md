@@ -355,10 +355,18 @@ teste.
 
 ---
 
-## Fila de jobs e eventos (ETAPA 11)
+## Fila de jobs e eventos (ETAPA 11, persistência no PR002)
 
-O fluxo de um job é: `POST /api/v1/queue` grava no `MemoryStore` → `process_generation`
-(Celery) executa → o cliente acompanha por `/api/v1/queue/events/{job_id}`.
+O fluxo de um job é: `POST /api/v1/generations/*` grava a **linha** `jobs` (repositório
+`JobStore` sobre Postgres/SQLite) → `process_generation(job_id)` (Celery) executa a partir
+do id — lê a linha num processo diferente → o cliente acompanha por
+`/api/v1/queue/events/{job_id}` autenticado.
+
+PR002 mudou a base do fluxo: jobs deixaram o `dict` em memória (`MemoryStore`, que segue no
+repositório para personas — PR004) e viram `JobRow`. `transition()` persiste **e** emite no
+mesmo passo, e o estado terminal `complete` interno é respondido como `completed` na borda
+(`events.external_status()` / `schemas.JobResponse`) sem renomear o enum — contrato interno
+e clientes existentes intactos.
 
 ### `transition()` é o único ponto de mutação
 
@@ -366,9 +374,10 @@ O fluxo de um job é: `POST /api/v1/queue` grava no `MemoryStore` → `process_g
 transition(job, JobStatus.RUNNING, PROGRESS_RENDERING, event=EVENT_PROGRESS)
 ```
 
-Escreve `job.status` e `job.progress` **e** emite o evento, no mesmo passo. Antes cada call
-site atribuía os dois campos diretamente e nada era emitido — por isso `EventHub.publish`
-não tinha chamador algum: não existia um instante que significasse "o job andou".
+Escreve `job.status` e `job.progress`, **persiste a linha** (`store.set_job_state`)
+**e** emite o evento, no mesmo passo. Antes cada call site atribuía os dois campos
+diretamente e nada era emitido — por isso `EventHub.publish` não tinha chamador algum: não
+existia um instante que significasse "o job andou".
 
 `status` e `progress` são ambos opcionais, para que um tick de progresso não precise
 reafirmar o status. Um teste estrutural varre o AST de `queue.py` e falha se qualquer
@@ -389,6 +398,12 @@ Todo evento tem exatamente `{job_id, event, status, progress, at}`. `output_url`
 aparecem só quando significam algo. Os nomes vêm de `JOB_EVENTS`
 (`queued, started, progress, complete, failed, cancelled`); `TERMINAL_STATUSES` é
 `{complete, failed, cancelled}` e é o que encerra o stream.
+
+PR002: o campo `status` do payload é o nome **externo** — `external_status()` mapeia
+`complete` → `completed` num único lugar (dentro de `job_event`), enquanto o nome do
+**evento** continua `complete` (é um identificador de contrato, não um valor de estado).
+Toda a superfície que cruza a borda (eventos, snapshot do WS, `JobResponse`) passa por essa
+mesma função; o banco e o worker seguem falando `complete`.
 
 ### Por que `publish_sync` e não `publish`
 
@@ -412,6 +427,11 @@ preso sem resposta.
 | `/api/v1/personas/{persona_id}/training/events/{run_id}` | polling com `asyncio.sleep(2)` |
 
 O de treinamento nunca foi migrado — fora do escopo desta etapa, registrado como pendência.
+
+PR002: os dois autenticam pelo query parameter `token` (`auth.ws_identity` — browsers não
+definem header em handshake de WebSocket) e checam a posse do job/run pelo workspace do
+caller. Sem token, ou com token alheio, o socket é fechado com `1008` **antes** do
+`accept`. O cliente (`lib/api.ts → wsUrl`) anexa o token do `localStorage` quando existe.
 
 ### Limitação conhecida: o hub é in-process
 

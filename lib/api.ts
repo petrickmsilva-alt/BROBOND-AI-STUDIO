@@ -14,7 +14,8 @@
 export type Job = {
   id: string;
   type: 'image' | 'video';
-  status: 'queued' | 'running' | 'complete' | 'failed' | 'cancelled';
+  // PR002: the wire says `completed` (the internal state stays `complete`).
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
   prompt: string;
   progress: number;
   output_url?: string | null;
@@ -79,10 +80,17 @@ const get = <T>(path: string) => request<T>(path, { method: 'GET' });
 const post = <T>(path: string, payload: unknown) =>
   request<T>(path, { method: 'POST', body: JSON.stringify(payload ?? {}) });
 
-/** Absolute WebSocket URL for a path, derived from wherever the page is served. */
+/** Absolute WebSocket URL for a path, derived from wherever the page is served.
+
+ * PR002: the backend authenticates WebSockets through the `token` query
+ * parameter — browsers cannot set headers on a WebSocket handshake, so the
+ * bearer token stored by `authenticate` rides along here. Without a token the
+ * URL is unchanged and the server refuses the socket (1008).
+ */
 export function wsUrl(path: string): string {
   const base = API_URL || (typeof window !== 'undefined' ? window.location.origin : '');
-  return `${base.replace(/^http/, 'ws')}${path}`;
+  const token = typeof window !== 'undefined' ? window.localStorage.getItem('brobond_access_token') : null;
+  return `${base.replace(/^http/, 'ws')}${path}${token ? `${path.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}` : ''}`;
 }
 
 // ---------------------------------------------------------------------------

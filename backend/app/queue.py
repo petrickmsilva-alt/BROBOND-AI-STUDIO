@@ -76,6 +76,15 @@ def transition(
         job.status = status
     if progress is not None:
         job.progress = progress
+    # PR002: the row moves with the object. Jobs used to live in a process
+    # dict, so a worker in another process wrote state the API could never
+    # see; the row is the shared truth and the emit stays in the same step.
+    store.set_job_state(
+        job.id,
+        status=job.status,
+        progress=job.progress,
+        output_url=job.output_url,
+    )
     payload = job_event(
         job.id,
         status=job.status.value if hasattr(job.status, "value") else str(job.status),

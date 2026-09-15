@@ -111,6 +111,44 @@ class Persona(BaseModel):
     lora_version: str | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     details: PersonaCreateRequest
+    #: PR002: the workspace that owns this persona, so training and LoRA
+    #: listing can be checked against the acting user's tenant. Optional for
+    #: compatibility with rows and payloads created before PR002.
+    workspace_id: str | None = None
+
+
+class JobResponse(BaseModel):
+    """The external shape of a job (PR002).
+
+    Identical to `Job` except `status`, which is mapped through
+    `events.external_status`: the system keeps `complete` internally and
+    answers `completed` on the wire (Bible §14) without breaking clients and
+    stored state that know `complete` (Bible §2).
+    """
+
+    id: UUID
+    type: str
+    status: str
+    prompt: str
+    created_at: datetime
+    progress: int
+    output_url: str | None = None
+    parameters: dict = Field(default_factory=dict)
+
+    @classmethod
+    def from_job(cls, job: Job) -> "JobResponse":
+        from .events import external_status
+
+        return cls(
+            id=job.id,
+            type=job.type.value,
+            status=external_status(job.status.value),
+            prompt=job.prompt,
+            created_at=job.created_at,
+            progress=job.progress,
+            output_url=job.output_url,
+            parameters=job.parameters,
+        )
 
 
 class AssetResponse(BaseModel):
