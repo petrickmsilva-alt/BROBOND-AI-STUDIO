@@ -355,12 +355,11 @@ teste.
 
 ---
 
-## Fila de jobs e eventos (ETAPA 11, persistência no PR002)
+## Fila de jobs e eventos (ETAPA 11, persistência no PR002, Repository Pattern no PR004-prep)
 
-O fluxo de um job é: `POST /api/v1/generations/*` grava a **linha** `jobs` (repositório
-`JobStore` sobre Postgres/SQLite) → `process_generation(job_id)` (Celery) executa a partir
-do id — lê a linha num processo diferente → o cliente acompanha por
-`/api/v1/queue/events/{job_id}` autenticado.
+O fluxo de um job é: `POST /api/v1/generations/*` cria o job no **repositório** →
+`process_generation(job_id)` (Celery) executa a partir do id — lê o job num processo
+diferente → o cliente acompanha por `/api/v1/queue/events/{job_id}` autenticado.
 
 PR002 mudou a base do fluxo: jobs deixaram o `dict` em memória (`MemoryStore`; o `dict` de
 personas do mesmo store ficou **Legacy** no PR003 — personas agora vivem em
@@ -369,14 +368,35 @@ mesmo passo, e o estado terminal `complete` interno é respondido como `complete
 (`events.external_status()` / `schemas.JobResponse`) sem renomear o enum — contrato interno
 e clientes existentes intactos.
 
+**PR004-prep (Repository Pattern):** o fluxo de jobs não depende mais diretamente do
+PostgreSQL. A separação é em três camadas, com dependência apontando para dentro:
+
+```text
+JobService (core/job_service.py)     regra de negócio: máquina de estados, validação
+        |  conhece SOMENTE a interface — injetada no construtor
+        v
+JobRepository (protocol)             repositories/job_repository.py — 6 operações
+        +-- PostgresJobRepository    (default) tabela jobs — o único job módulo com SQLAlchemy
+        +-- RedisJobRepository       (opt-in)  JSON em hashes + set por workspace
+        +-- MemoryJobRepository      (testes)  dict isolado, sem I/O
+```
+
+A troca de backend é uma linha no composition root (`app/job_service.py`); o Core, as
+rotas e o worker não mudam. O Core troca o `Job` do Pydantic por um value object próprio
+(`core.job_service.Job`) — o mapeamento vive na borda (`app/jobs.py`). O facade
+`app/store.py` (superfície histórica `store.add_job` etc.) permanece, agora **delegando**
+ao `JobService` e sem nenhum import de SQLAlchemy. `queue.store` segue acessível por
+compatibilidade com call sites e testes existentes.
+
 ### `transition()` é o único ponto de mutação
 
 ```python
 transition(job, JobStatus.RUNNING, PROGRESS_RENDERING, event=EVENT_PROGRESS)
 ```
 
-Escreve `job.status` e `job.progress`, **persiste a linha** (`store.set_job_state`)
-**e** emite o evento, no mesmo passo. Antes cada call site atribuía os dois campos
+Escreve `job.status` e `job.progress`, **persiste** via `JobService.transition()` (que
+valida a máquina de estados e delega ao `JobRepository` injetado — default: a tabela
+`jobs`) **e** emite o evento, no mesmo passo. Antes cada call site atribuía os dois campos
 diretamente e nada era emitido — por isso `EventHub.publish` não tinha chamador algum: não
 existia um instante que significasse "o job andou".
 
@@ -791,7 +811,7 @@ Regras adicionais aplicadas desde a ETAPA 2, cada uma com teste que falha se for
 | Rotas não contêm lógica de geração | `test_core_api.py::test_no_route_contains_prompt_or_direction_logic` procura vocabulário de prompt/câmera no trecho de rotas de `main.py`. |
 | Nenhum componente do Core importa um par | `test_core_independence.py` (probe em subprocesso + guarda estática). |
 | O Core não importa FastAPI, SQLAlchemy, Celery ou boto3 | `test_module_does_not_depend_on_the_application_layer`. |
-| O Core não conhece o banco | `MemoryResolver`/`StyleResolver`/`ShotResolver` recebem um `Protocol` (`PersonaSource`, `StyleSource`, `ShotSource`). O adapter persistente entra por injeção. |
+| O Core não conhece o banco | `MemoryResolver`/`StyleResolver`/`ShotResolver` recebem um `Protocol` (`PersonaSource`, `StyleSource`, `ShotSource`); `JobService` recebe `JobRepository` por injeção (PR004-prep). O provider (Postgres/Redis/memória) entra na borda, nunca no Core. |
 | Prompt bruto nunca vai ao modelo | `test_raw_prompt_is_never_emitted_alone`. |
 | Identidade não muda em silêncio | `test_unauthorized_identity_change_is_refused` + versionamento. |
 | O storyboard não produz prompt | `test_the_engine_never_produces_prompt_text` + `test_the_new_endpoint_does_not_produce_prompt_text`. |

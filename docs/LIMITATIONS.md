@@ -39,18 +39,23 @@ uma GPU renderiza.
 
 ## 2. Estado que ainda vive em memória
 
-PR002 fechou a metade de jobs: `JobRow` é a fonte de verdade e `JobStore` é o
-repositório que a API e o worker usam — um processo lê o que o outro escreveu
-(fixado por `test_job_persistence.py`). **PR003 fechou a metade de
-personas**: `Persona` é a fonte de verdade e
+PR002 fechou a metade de jobs: a tabela `jobs` é a fonte de verdade — um
+processo lê o que o outro escreveu (fixado por `test_job_persistence.py`).
+**PR003 fechou a metade de personas**: `Persona` é a fonte de verdade e
 `repositories/persona_repository.py` é o repositório que as rotas e o
-`MemoryResolver` usam (fixado por `test_persona_engine.py`); o `dict` de
-personas em `app/store.py` fica marcado **Legacy** e sem call sites. O que
+`MemoryResolver` usam (fixado por `test_persona_engine.py`). **PR004-prep
+fechou o acoplamento dos jobs ao banco**: o fluxo vai por `core/job_service.py`
+→ interface `JobRepository` → provider injetado
+(`PostgresJobRepository` default · `RedisJobRepository` opt-in ·
+`MemoryJobRepository` para testes) — fixado por `test_job_repository.py`. O
+facade `app/store.py` segue vivo, mas delega (zero import de SQLAlchemy).
+O que
 restou:
 
 | Onde | O que | Consequência |
 | --- | --- | --- |
 | `app/store.py` → personas (Legacy) | `dict` em memória, sem call sites desde o PR003 | Mantido pela Regra de Ouro; a leitura/escrita é 100% SQL via repositório |
+| `app/store.py` → jobs (facade) | delega a `JobService`/`JobRepository` | Superfície histórica mantida para call sites e testes; sem dependência de banco |
 | `app/core/*` seeds | personas, estilos e shots são dados injetáveis via `Protocol` | Sem tabela `Styles`/`Shots` no Postgres; editar pelo produto não persiste |
 | `app/core/memory_resolver.py` ledger | episódios de continuidade em memória | Continuidade entre episódios não sobrevive a restart |
 | `app/auth.py` `_auth_attempts` | janela do rate limit por IP | In-memory e por processo: com múltiplas instâncias da API o orçamento se multiplica. O próximo passo declarado é um store compartilhado (Redis) — não simulado, apenas declarado |

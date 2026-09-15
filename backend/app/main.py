@@ -103,8 +103,9 @@ from .schemas import (
     TimeQualityResponse,
     TrainingStatusResponse,
 )
-from .store import store
 from .repositories import PersonaRepositoryError, persona_repo
+from .job_service import job_service
+from .jobs import to_api_job, to_core_job
 
 #: How often the queue WebSocket checks the event buffer, in seconds. The hub is
 #: in-process and the worker runs synchronously, so the route polls rather than
@@ -366,7 +367,11 @@ def _workspace_for(db: Session, user: User) -> Workspace | None:
 
 
 def _queue_job(kind: GenerationType, prompt: str, parameters: dict | None = None, user: User | None = None, request: Request | None = None) -> Job:
-    job = store.add_job(Job(type=kind, prompt=prompt, parameters=parameters or {}))
+    # PR004-prep: creation goes through the Core's JobService and its
+    # injected JobRepository (default: the jobs table). The API object is
+    # still what the route returns — only the path to persistence changed.
+    job = Job(type=kind, prompt=prompt, parameters=parameters or {})
+    job_service.create(to_core_job(job))
     # PR002: job creation is a critical action and is audited with the acting
     # user (or an anonymous mark) and the client address.
     audit(
@@ -408,7 +413,8 @@ def _job_for_user(job_id: UUID, user: User, db: Session) -> Job:
     tenants' job ids — the same rule the asset routes already apply.
     """
 
-    job = store.get_job(job_id)
+    core_job = job_service.get(str(job_id))
+    job = to_api_job(core_job) if core_job is not None else None
     if not job:
         raise HTTPException(status_code=404, detail="Generation job not found")
     workspace = _workspace_for(db, user)
@@ -496,7 +502,8 @@ async def queue_events(websocket: WebSocket, job_id: UUID) -> None:
         if not workspace:
             await websocket.close(code=1008, reason="Authentication required")
             return
-        job = store.get_job(job_id)
+        _ws_core = job_service.get(str(job_id))
+        job = to_api_job(_ws_core) if _ws_core is not None else None
         if not job or job.parameters.get("workspace_id") != workspace.id:
             await websocket.close(code=1008, reason="Generation job not found")
             return
@@ -518,7 +525,8 @@ async def queue_events(websocket: WebSocket, job_id: UUID) -> None:
                     sent_terminal = True
             cursor += len(events)
 
-            current = store.get_job(job_id)
+            _current_core = job_service.get(str(job_id))
+            current = to_api_job(_current_core) if _current_core is not None else None
             status = current.status.value if current else job.status.value
             if status in TERMINAL_STATUSES:
                 # Only synthesise a closing event if the buffer did not already
@@ -1074,8 +1082,12 @@ def compile_generation_spec(
 def list_queue(user: User = Depends(current_user), db: Session = Depends(get_db)) -> list[JobResponse]:
     """List the caller's generation queue (PR001: real data, no seed; PR002: identity required)."""
     workspace = _workspace_for(db, user)
-    workspace_id = workspace.id if workspace else None
-    return [JobResponse.from_job(job) for job in store.list_jobs(workspace_id) if job.parameters.get("workspace_id") == workspace_id]
+    # PR004-prep: the listing comes from the JobRepository (workspace-scoped
+    # by construction). A user without a workspace lists nothing — before the
+    # refactor that edge case fell back to an unscoped query.
+    if not workspace:
+        return []
+    return [JobResponse.from_job(to_api_job(core_job)) for core_job in job_service.list_by_workspace(workspace.id)]
 
 
 # ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 """Alembic environment (PR002).
 
-The schema is owned by `backend/app/models.py`; this file only connects the
+The schema is owned by the `backend/app/models/` package; this file only connects the
 migration history to that metadata so autogenerate and `upgrade head` stay in
 sync with the ORM. The database URL comes from the application settings
 (`BROBOND_DATABASE_URL`), never from this file, so the CLI and the API

@@ -28,7 +28,13 @@ from .providers.registry import DEFAULTS as PROVIDER_DEFAULTS
 from .schemas import GenerationType, JobStatus
 from .spec_adapter import compile_job, resolve_model_id
 from .core.quality import QualityGate
+from .job_service import job_service
+from .jobs import to_api_job
 from .storage import storage
+# PR004-prep compatibility: the job flow itself goes through `job_service`
+# (Core + injected JobRepository). The `store` name stays reachable here
+# because existing call sites (and the ETAPA 12-14 test suite) address it as
+# `queue.store`; the facade no longer touches PostgreSQL directly.
 from .store import store
 from .training import execute_training, prepare_dataset
 
@@ -70,18 +76,22 @@ def transition(
     Writing state and emitting together makes it impossible to move a job
     silently. `status` and `progress` are both optional so a pure progress tick
     does not have to restate the status.
+
+    PR004-prep: the persistence step goes through the Core's `JobService`
+    (state machine) and its injected `JobRepository` — the queue no longer
+    knows whether jobs live in PostgreSQL, Redis or memory. The emit stays
+    in the same step, as before.
     """
 
     if status is not None:
         job.status = status
     if progress is not None:
         job.progress = progress
-    # PR002: the row moves with the object. Jobs used to live in a process
-    # dict, so a worker in another process wrote state the API could never
-    # see; the row is the shared truth and the emit stays in the same step.
-    store.set_job_state(
-        job.id,
-        status=job.status,
+    # The row/document moves with the object; a vanished job is a no-op,
+    # exactly as the pre-refactor `set_job_state` behaved.
+    job_service.transition(
+        str(job.id),
+        status=status.value if status is not None else None,
         progress=job.progress,
         output_url=job.output_url,
     )
@@ -119,7 +129,8 @@ def _resolve_model_id_for(entry, kind: GenerationKind, spec) -> str:
 @celery_app.task(bind=True, name="brobond.process_generation")
 def process_generation(self, job_id: str) -> dict[str, str]:
     """Placeholder worker lifecycle; replace the body with model provider calls."""
-    job = store.get_job(job_id)
+    core_job = job_service.get(job_id)
+    job = to_api_job(core_job) if core_job else None
     if not job:
         return {"job_id": job_id, "status": "cancelled"}
     if job.status == JobStatus.CANCELLED:

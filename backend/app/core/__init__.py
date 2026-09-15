@@ -2,7 +2,7 @@
 
 BROBOND CORE — the decision layer.
 
-Twelve independent components live here. Each one imports `contracts` and nothing
+Thirteen components live here; eight of them import only `contracts`. Each one imports `contracts` and nothing
 else, so any of them can be instantiated and tested alone:
 
     MemoryResolver          permanent character identity + versioning
@@ -17,6 +17,7 @@ else, so any of them can be instantiated and tested alone:
     VideoTimeline           assembles a storyboard into one cut (ETAPA 13)
     QualityGate             structural assessment of a rendered artifact (ETAPA 14)
     GenerationSpecBuilder   the composition root -> GenerationSpec
+    JobService              job lifecycle state machine over a JobRepository (PR004-prep)
 
 Wiring lives at the application boundary (`app.main`), never between the
 components: GenerationSpecBuilder receives the other four by injection.
@@ -58,6 +59,7 @@ from .contracts import (
 )
 from .director_agent import DirectorAgent
 from .generation_spec_builder import BuildResult, GenerationSpecBuilder, ResolutionTrace
+from .job_service import InvalidJobTransition, JOB_STATUSES, JOB_TERMINAL_STATUSES, JOB_TRANSITIONS, Job, JobService
 from .memory_resolver import MemoryError_, MemoryResolver, SeedPersonaSource
 from .persona_memory import (
     IDENTITY_DEFINITION_FIELDS,
@@ -145,6 +147,12 @@ __all__ = [
     "GenerationKind",
     "GenerationSpec",
     "GenerationSpecBuilder",
+    "InvalidJobTransition",
+    "JOB_STATUSES",
+    "JOB_TERMINAL_STATUSES",
+    "JOB_TRANSITIONS",
+    "Job",
+    "JobService",
     "VideoTimeline",
     "WARN",
     "IDENTITY_DEFINITION_FIELDS",

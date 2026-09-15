@@ -1,11 +1,21 @@
-"""Core persistence models. Media binaries stay in MinIO; DB stores metadata."""
+"""Core persistence models. Media binaries stay in MinIO; DB stores metadata.
+
+PR004-prep (Repository Pattern directive): the package form lets each model
+live in its own module. `JobRow` moved to `models/job.py` — the job table is
+owned by the job persistence layer (`repositories/*_job_repository.py`).
+Every name is re-exported here, so `from app.models import X` is unchanged
+for all existing call sites.
+"""
 from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from .db import Base
+from ..db import Base
+
+from .job import JobRow  # noqa: F401  (re-export, owned by models/job.py)
+  # noqa: F401  (re-export, owned by models/job.py)
 
 
 class User(Base):
@@ -58,29 +68,6 @@ class TrainingRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
-class JobRow(Base):
-    """PR002: a persisted generation job.
-
-    Jobs used to live in a process-local dict (`MemoryStore`), so a Celery
-    worker in another process could never see the job the API created, and
-    every deploy silently dropped the queue. The row is the single source of
-    truth now; `app.store.JobStore` is the repository over it. `parameters`
-    stays a JSON document because `Job.parameters` is a free-form dict and the
-    spec adapter reads it field by field — no schema migration is needed when
-    the UI grows a new generation option.
-    """
-
-    __tablename__ = "jobs"
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)
-    workspace_id: Mapped[str | None] = mapped_column(String(36), index=True, nullable=True)
-    type: Mapped[str] = mapped_column(String(16))
-    prompt: Mapped[str] = mapped_column(Text)
-    parameters: Mapped[str] = mapped_column(Text, default="{}")
-    status: Mapped[str] = mapped_column(String(16), index=True, default="queued")
-    progress: Mapped[int] = mapped_column(default=0)
-    output_url: Mapped[str | None] = mapped_column(Text, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class AuditLog(Base):

@@ -6,6 +6,55 @@ versões de produto do `ROADMAP.md`.
 
 ---
 
+## [Unreleased] — PR004-prep: ARQUITETURA DE JOBS — REPOSITORY PATTERN
+
+O fluxo de jobs foi desacoplado do PostgreSQL por injeção de dependência,
+sem alterar nenhuma API, nenhum comportamento externo e sem apagar
+nenhum arquivo (Bible §2/§3). O Core ganha o 13º componente.
+
+### Arquitetura (camadas em dependência)
+
+- **`backend/app/core/job_service.py`** (novo, 13º componente): `JobService`
+  — máquina de estados do job (`queued → running → complete/failed/cancelled`;
+  terminais imutáveis; tick de progresso sempre permitido), validação de
+  status e o value object `Job` puro (zero framework, zero SQLAlchemy; a
+  interface é conhecida só por hint de tipo, sem import em runtime).
+- **`backend/app/repositories/job_repository.py`** (novo): a interface
+  `JobRepository` — exatamente as seis operações: `create`, `get`, `update`,
+  `transition`, `list_by_workspace`, `delete`.
+- **`backend/app/repositories/postgres_job_repository.py`** (novo,
+  **default**): `JobRow`/tabela `jobs` (Alembic `0001`, inalterada). Único
+  módulo de job com SQLAlchemy (guarda AST).
+- **`backend/app/repositories/redis_job_repository.py`** (novo, opt-in):
+  JSON em hashes `brobond:job:{id}` + set por workspace; conexão lazy.
+- **`backend/app/repositories/memory_job_repository.py`** (novo, testes):
+  dict isolado, thread-safe, sem I/O.
+- **`backend/app/models/`** (agora pacote): `JobRow` vive em `models/job.py`
+  (git registra como rename; `app.models` re-exporta — nenhum call site
+  mudou).
+- **`backend/app/jobs.py`** (novo): mapeamento `Job` (API/Pydantic) ↔ `Job`
+  (Core) — único ponto onde os dois vocabulários se encontram.
+- **`backend/app/job_service.py`** (novo): composition root do serviço —
+  `job_service = JobService(PostgresJobRepository())`; trocar de backend é
+  uma linha aqui.
+
+### Compatibilidade (comportamento externo idêntico)
+
+- Rotas, worker e eventos inalterados; `transition()` continua sendo o único
+  ponto onde o job anda (persiste via `JobService` **e** emite).
+- `app/store.py`: `JobStore`/`Store` permanecem, agora **delegando** ao
+  `JobService` — zero import de SQLAlchemy no módulo (guarda AST); `queue.store`
+  segue acessível para call sites e testes históricos.
+- `queue.list_jobs` sem workspace: antes caía numa query sem escopo; agora
+  lista vazio (a edge case de usuário sem workspace era vetor de enumeração
+  cross-tenant — endurecimento intencional, documentado).
+- Novos testes: `test_job_repository.py` (20) — interface nos 3 providers,
+  mesmo ciclo de vida em Postgres/Redis/memória, máquina de estados idêntica,
+  guards de pureza DI (Core não importa provider; store sem SQLAlchemy;
+  Postgres é o único job módulo com SQLAlchemy) e facade legado funcional.
+
+---
+
 ## [Unreleased] — PR003: PERSONA MEMORY ENGINE
 
 As personas deixam a memória do processo e ganham persistência em PostgreSQL

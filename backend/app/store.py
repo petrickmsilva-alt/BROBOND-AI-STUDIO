@@ -1,90 +1,56 @@
-"""Job and persona repositories.
+"""Job and persona facade (Legacy surface, alive by delegation).
 
 PR002. Jobs used to live in a process-local dict: a Celery worker in another
 process could never find the job the API had just created, and every deploy
-silently dropped the queue (AUDIT.md P0-2b). Jobs now persist as `JobRow`s —
-this module is the repository the API and the worker both go through, so
-there is exactly one way to read or write job state.
+silently dropped the queue (AUDIT.md P0-2b). Jobs now persist as `JobRow`s.
 
-Personas intentionally remain in memory: persisting them is PR004's scope,
-and the Core's `PersonaSource` protocol already makes that swap a one-line
-injection. The `store` singleton keeps its pre-PR002 surface
-(`store.add_job`, `store.get_job`, `store.add_persona`) so no call site or
-test needed a rename — only the backend behind the name changed.
+PR004-prep (Repository Pattern directive): this module no longer depends on
+PostgreSQL directly. `JobStore` keeps its historical surface
+(`store.add_job`, `store.get_job`, `store.set_job_state`, `store.list_jobs`)
+for the call sites that still use it — the backend behind the name is now
+the Core's `JobService` and its injected `JobRepository`. The PostgreSQL
+dependency lives in `repositories.postgres_job_repository`, the only job
+module that imports SQLAlchemy.
+
+Personas: the in-memory dict is Legacy since PR003 (the Persona Memory
+Engine persists through `repositories.persona_repository`).
 """
 from __future__ import annotations
 
-import json
 from uuid import UUID
 
-from sqlalchemy import select
-
-from .db import SessionLocal
-from .models import JobRow
-from .schemas import GenerationType, Job, JobStatus, Persona
-
-
-def _row_to_job(row: JobRow) -> Job:
-    """Rebuild the API object from its row.
-
-    `parameters` crosses the boundary as a JSON document; the spec adapter
-    reads it field by field, so a new generation option added by the UI needs
-    no schema change — only a reader in `spec_adapter`.
-    """
-
-    try:
-        parameters = json.loads(row.parameters or "{}")
-    except json.JSONDecodeError:  # pragma: no cover — rows are only written here
-        parameters = {}
-    return Job(
-        id=UUID(row.id),
-        type=GenerationType(row.type),
-        status=JobStatus(row.status),
-        prompt=row.prompt,
-        parameters=parameters,
-        progress=row.progress,
-        output_url=row.output_url,
-        created_at=row.created_at,
-    )
+from .job_service import job_service
+from .jobs import to_api_job, to_core_job
+from .schemas import Job, JobStatus, Persona
 
 
 class JobStore:
-    """SQL-backed repository for jobs.
+    """Legacy job facade — delegates to the Core's `JobService` (PR004-prep).
 
-    Methods take and return the API's `Job` object; the row is an
-    implementation detail. All writes go through `SessionLocal` so a worker
-    process and an API process — the two processes that used to be blind to
-    each other — now read and write the same table.
+    The historical surface is preserved (tests and call sites from earlier
+    PRs use it), but the PostgreSQL dependency is gone from this module:
+    every call goes through `JobService` and its injected `JobRepository`
+    (default: `PostgresJobRepository`, the `jobs` table). All writes still
+    reach the shared table, so a worker process and an API process read and
+    write the same truth.
     """
 
     def add_job(self, job: Job) -> Job:
-        with SessionLocal() as db:
-            db.add(
-                JobRow(
-                    id=str(job.id),
-                    workspace_id=job.parameters.get("workspace_id"),
-                    type=job.type.value,
-                    prompt=job.prompt,
-                    parameters=json.dumps(job.parameters, ensure_ascii=False),
-                    status=job.status.value,
-                    progress=job.progress,
-                    output_url=job.output_url,
-                )
-            )
-            db.commit()
+        job_service.create(to_core_job(job))
         return job
 
     def get_job(self, job_id: UUID | str) -> Job | None:
-        with SessionLocal() as db:
-            row = db.get(JobRow, str(job_id))
-            return _row_to_job(row) if row else None
+        core_job = job_service.get(str(job_id))
+        return to_api_job(core_job) if core_job is not None else None
 
     def list_jobs(self, workspace_id: str | None = None) -> list[Job]:
-        with SessionLocal() as db:
-            statement = select(JobRow).order_by(JobRow.created_at.desc())
-            if workspace_id is not None:
-                statement = statement.where(JobRow.workspace_id == workspace_id)
-            return [_row_to_job(row) for row in db.scalars(statement).all()]
+        if workspace_id is not None:
+            return [to_api_job(core_job) for core_job in job_service.list_by_workspace(workspace_id)]
+        # The unscoped listing is not part of the JobRepository interface:
+        # an unfiltered job list is a cross-tenant enumeration vector. The
+        # pre-refactor call site that used to reach this case (a user without
+        # a workspace) now lists nothing, on purpose.
+        return []
 
     def set_state(self, job_id: UUID | str, *, status: JobStatus | None = None, progress: int | None = None, output_url: str | None = None) -> None:
         """Persist a state change for an existing job.
@@ -95,17 +61,12 @@ class JobStore:
         transitions and the next transition is what carries it.
         """
 
-        with SessionLocal() as db:
-            row = db.get(JobRow, str(job_id))
-            if row is None:
-                return
-            if status is not None:
-                row.status = status.value
-            if progress is not None:
-                row.progress = progress
-            if output_url is not None:
-                row.output_url = output_url
-            db.commit()
+        job_service.transition(
+            str(job_id),
+            status=status.value if status is not None else None,
+            progress=progress,
+            output_url=output_url,
+        )
 
 
 #: Persona state that PR004 will move into a table. Kept in memory on purpose:

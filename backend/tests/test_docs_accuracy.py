@@ -224,19 +224,20 @@ def test_the_roadmap_says_twelve_components_not_six() -> None:
 CORE_BANNED = {"fastapi", "starlette", "sqlalchemy", "celery", "boto3", "pydantic_settings"}
 
 CORE_COMPONENTS = [
-    "cinematic_library", "director_agent", "generation_spec_builder", "memory_resolver",
-    "persona_memory", "prompt_compiler", "quality", "shot_library", "shot_resolver",
-    "storyboard_engine", "style_resolver", "timeline",
+    "cinematic_library", "director_agent", "generation_spec_builder", "job_service",
+    "memory_resolver", "persona_memory", "prompt_compiler", "quality", "shot_library",
+    "shot_resolver", "storyboard_engine", "style_resolver", "timeline",
 ]
 
 
 @pytest.mark.parametrize("component", CORE_COMPONENTS)
 def test_every_core_component_is_framework_free(component: str) -> None:
-    """Twelve components, none importing a framework. Measured by AST.
+    """Thirteen components, none importing a framework. Measured by AST.
 
     This is a weaker property than `INDEPENDENT_MODULES`, which also requires
-    importing with no Core sibling. Five of the twelve compose their siblings by
-    design, so they satisfy this and not that — see docs/ETAPAS.md.
+    importing with no Core sibling. Six of the thirteen compose their
+    siblings (or an injected interface) by design, so they satisfy this and
+    not that — see docs/ETAPAS.md.
     """
 
     tree = ast.parse((ROOT / "backend" / "app" / "core" / f"{component}.py").read_text(encoding="utf-8"))
@@ -249,9 +250,9 @@ def test_every_core_component_is_framework_free(component: str) -> None:
     assert not (imported & CORE_BANNED), sorted(imported & CORE_BANNED)
 
 
-def test_the_documentation_counts_twelve_components() -> None:
-    assert len(CORE_COMPONENTS) == 12
-    assert "**12**" in _read(ETAPAS_DOC) or "**12**" in _read(ARCHITECTURE)
+def test_the_documentation_counts_thirteen_components() -> None:
+    assert len(CORE_COMPONENTS) == 13
+    assert "**13**" in _read(ETAPAS_DOC) or "**13**" in _read(ARCHITECTURE)
 
 
 # ---------------------------------------------------------------------------

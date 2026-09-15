@@ -308,7 +308,7 @@ BROBOND-AI-STUDIO/
 │   ├── app/services/     # service adapters
 │   ├── app/main.py       # composition root: wires the Core, exposes the routes
 │   ├── app/models.py     # SQLAlchemy models
-│   └── tests/            # pytest suite (1,144 tests)
+│   └── tests/            # pytest suite (1,165 tests)
 ├── docker-compose.yml    # local Postgres, Redis and MinIO
 └── requirements.txt      # Python service dependencies
 ```
@@ -360,7 +360,7 @@ npm run build
 
 The end-to-end backend test covers registration, authenticated upload, generation job creation, storyboard expansion and asset listing.
 
-The backend suite is **1,144 tests** and total backend coverage is **95%**, held by a `--fail-under=90` gate in CI. The whole
+The backend suite is **1,165 tests** and total backend coverage is **95%**, held by a `--fail-under=90` gate in CI. The whole
 `backend/app/core/` directory reads 98%. The remainder of the gap is the pre-existing dead
 cluster from `AUDIT.md` P0-1 — four modules, 100 statements, that do not import at all; see
 `docs/LIMITATIONS.md` §5. `core/persona_memory.py`,

@@ -58,7 +58,7 @@ Estas regras foram respeitadas em todas as etapas e são verificadas por testes:
    Verificado por análise AST em `test_core_api.py`.
 3. **Todo provider recebe apenas `GenerationSpec`** — nunca prompt solto, nunca `dict` de
    parâmetros.
-4. **O Core não importa framework.** Os **12** componentes são livres de `fastapi`,
+4. **O Core não importa framework.** Os **13** componentes são livres de `fastapi`,
    `starlette`, `sqlalchemy`, `celery`, `boto3` e `pydantic_settings` — verificado por análise
    AST. A guarda `test_core_independence.py` lista **8** deles em `INDEPENDENT_MODULES`, porque
    ela afirma uma propriedade mais forte: importar **sem nenhum irmão do Core**. Os outros
@@ -79,12 +79,12 @@ Estas regras foram respeitadas em todas as etapas e são verificadas por testes:
 
 | Métrica | Valor |
 | --- | --- |
-| Suíte de testes | **1.144** |
+| Suíte de testes | **1.165** |
 | Cobertura `backend/app` | **95%** (gate CI: 90%) |
 | Módulos em 100% | **28** |
 | Rotas HTTP `/api/v1` | **64** — **31** delas `/api/v1/core/*` |
 | WebSockets | **2** |
-| Componentes do Core | **12** |
+| Componentes do Core | **13** |
 | Arquivos deletados desde `3708784` | **0** |
 
 Estes números são conferidos contra a aplicação em execução por

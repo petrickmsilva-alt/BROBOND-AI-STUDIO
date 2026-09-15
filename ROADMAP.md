@@ -20,17 +20,22 @@ Nenhum call site passa prompt solto ou `dict` de parâmetros. O bug de chave que
 worker devolver `cancelled` sem executar nada (P0-2a) foi corrigido.
 
 **Atualização PR002/PR003 (segurança e persistência):** os P0s pendentes foram
-fechados. **P0-2b** (jobs em memória): `JobRow` + `JobStore` — API e worker
-compartilham a tabela `jobs` (Alembic `0001`). **P0-4** (endpoints sem token):
-28 de 64 rotas exigem identidade, 3 a aceitam sem exigir e 33 são públicas por
-desenho; os 2 WebSockets autenticam por `?token=`. **P0-3** foi fechado na
-ETAPA 11 com `publish_sync`. **P0-1** permanece por decisão: quatro módulos
-mortos e quebrados, não apagados nem ressuscitados. E as **personas**
-deixaram a memória no PR003 (Persona Memory Engine): tabelas `personas` /
-`persona_images` / `persona_wardrobe` / `persona_identity_revision`
+fechados. **P0-2b** (jobs em memória): `JobRow` + repositório SQL — API e
+worker compartilham a tabela `jobs` (Alembic `0001`). **P0-4** (endpoints
+sem token): 28 de 64 rotas exigem identidade, 3 a aceitam sem exigir e 33 são
+públicas por desenho; os 2 WebSockets autenticam por `?token=`. **P0-3** foi
+fechado na ETAPA 11 com `publish_sync`. **P0-1** permanece por decisão:
+quatro módulos mortos e quebrados, não apagados nem ressuscitados. E as
+**personas** deixaram a memória no PR003 (Persona Memory Engine): tabelas
+`personas` / `persona_images` / `persona_wardrobe` / `persona_identity_revision`
 (Alembic `0002`), `repositories/persona_repository.py` como única fronteira
 com o SQLAlchemy e `MemoryResolver.resolve_persona` injetado no Core por
-adapters — ver `docs/PERSONA_ENGINE.md`. O que ainda impede geração real
+adapters — ver `docs/PERSONA_ENGINE.md`. **PR004-prep (Repository Pattern):**
+o fluxo de jobs foi desacoplado do PostgreSQL — `core/job_service.py`
+(13º componente, máquina de estados) conhece apenas a interface
+`JobRepository`; providers `PostgresJobRepository` (default),
+`RedisJobRepository` (opt-in) e `MemoryJobRepository` (testes) trocáveis por
+injeção sem tocar Core, rotas ou worker. O que ainda impede geração real
 ponta a ponta: GPU, pesos e providers instalados. Ver `docs/LIMITATIONS.md`.
 
 ## v1.0 — Workspace local
