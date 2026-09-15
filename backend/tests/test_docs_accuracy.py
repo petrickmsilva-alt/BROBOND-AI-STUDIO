@@ -275,16 +275,71 @@ def test_every_existing_report_is_in_the_index() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_the_authorisation_count_is_the_real_one(inventory) -> None:
-    """10 of 58 routes check identity. If that changes, the doc must change."""
+def _identity_dependency(route) -> str | None:
+    """Which identity dependency a route actually declares, if any.
+
+    Counting routes that merely have a `user` parameter is not enough: a route
+    on `Depends(optional_user)` accepts an anonymous caller. The limitations doc
+    once said "10 de 58 rotas usam `Depends(current_user)`" while only 6 did —
+    the other 4 were optional. The total was right and the claim was wrong, and
+    a test that only checked the total let it through.
+    """
 
     import inspect
 
-    authenticated = len(
-        [r for r in inventory["http"] if "user" in inspect.signature(r.endpoint).parameters]
-    )
+    parameters = inspect.signature(route.endpoint).parameters
+    if "user" not in parameters:
+        return None
+    dependency = getattr(parameters["user"].default, "dependency", None)
+    return getattr(dependency, "__name__", None)
+
+
+def test_the_authorisation_count_is_the_real_one(inventory) -> None:
+    """10 of 58 routes touch identity — 6 require it, 4 do not.
+
+    All three numbers are measured here and compared against the prose, because
+    they drift independently of each other.
+    """
+
+    kinds = [_identity_dependency(r) for r in inventory["http"]]
+    required = len([k for k in kinds if k == "current_user"])
+    optional = len([k for k in kinds if k == "optional_user"])
+    touching = required + optional
+
+    assert required == 6, f"rotas exigindo token mudaram: {required}"
+    assert optional == 4, f"rotas com identidade opcional mudaram: {optional}"
+
     text = _read(LIMITATIONS)
-    assert f"**{authenticated} de {inventory['http_count']} rotas**" in text
+    assert f"**{touching} de {inventory['http_count']} rotas**" in text
+    assert f"**{required}** exigem token" in text
+    assert f"**{optional}** aceitam token mas **não exigem**" in text
+
+
+def test_the_anonymous_training_route_is_documented() -> None:
+    """`/personas/{id}/train` accepts an anonymous caller. The doc must say so.
+
+    This is the sharpest of the four optional routes: it starts a training run
+    that can consume a GPU. It is a known open finding, not a fixed one, so the
+    guard here is that it stays written down rather than that it disappears.
+    """
+
+    import inspect
+
+    from app.main import app
+    from fastapi.routing import APIRoute
+
+    route = next(
+        (r for r in app.routes if isinstance(r, APIRoute) and r.path == "/api/v1/personas/{persona_id}/train"),
+        None,
+    )
+    assert route is not None, "a rota de treinamento sumiu; a doc fala dela"
+    dependency = getattr(
+        inspect.signature(route.endpoint).parameters["user"].default, "dependency", None
+    )
+    if getattr(dependency, "__name__", None) == "current_user":
+        pytest.skip("a rota passou a exigir token; a limitacao foi fechada")
+
+    assert "`/personas/{id}/train`" in _read(LIMITATIONS)
 
 
 def test_the_dead_cluster_still_does_not_import() -> None:

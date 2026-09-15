@@ -44,7 +44,7 @@ antes de o formato de relatório ser estabelecido na ETAPA 4. O que entregaram e
 | **P0-2a** | `process_generation` devolvia sempre `cancelled` | **Corrigido na ETAPA 3** |
 | **P0-2b** | `MemoryStore` em memória | **Aberto** — um worker Celery em outro processo não enxerga o job. Ver `docs/LIMITATIONS.md` §2 |
 | **P0-3** | `EventHub.publish` sem chamadores | **Corrigido na ETAPA 11** — `publish_sync`, porque o worker Celery é síncrono e o hub era asyncio-only |
-| **P0-4** | Endpoints sem token; vazamento cross-tenant em `GET /api/v1/queue`; PII em `GET /api/v1/knowledge` | **Parcial** — o vazamento e a PII foram tratados; **10 de 58 rotas** exigem autenticação. Ver `docs/LIMITATIONS.md` §3 |
+| **P0-4** | Endpoints sem token; vazamento cross-tenant em `GET /api/v1/queue`; PII em `GET /api/v1/knowledge` | **Parcial** — o vazamento e a PII foram tratados; **6 de 58 rotas** exigem token; outras 4 o aceitam sem exigir. Ver `docs/LIMITATIONS.md` §3 |
 
 ---
 
@@ -76,7 +76,7 @@ Estas regras foram respeitadas em todas as etapas e são verificadas por testes:
 
 | Métrica | Valor |
 | --- | --- |
-| Suíte de testes | **1.076** |
+| Suíte de testes | **1.077** |
 | Cobertura `backend/app` | **95%** (gate CI: 90%) |
 | Módulos em 100% | **28** |
 | Rotas HTTP `/api/v1` | **58** — **31** delas `/api/v1/core/*` |

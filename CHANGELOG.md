@@ -29,7 +29,7 @@ Doze afirmações que eram verdadeiras quando escritas e ficaram falsas sem ning
 - **`docs/API.md`** — inventário das 58 rotas + 2 WebSockets, **gerado** da aplicação por
   `scripts/gen_api_doc.py`, com a primeira linha do docstring de cada endpoint.
 - **`docs/LIMITATIONS.md`** — o que não está pronto num lugar só, com o comando que reproduz
-  cada estado: dependências ausentes, estado em memória, 10 de 58 rotas autenticadas, os dois
+  cada estado: dependências ausentes, estado em memória, 10 de 58 rotas tocam identidade (6 exigem token, 4 não), os dois
   achados da ETAPA 16, o cluster morto, o frontend, as dependências mortas.
 - **`docs/ETAPAS.md`** — índice das 17 etapas, estado dos cinco P0, invariantes e números.
 - **`backend/tests/test_docs_accuracy.py`** — 35 guardas anti-drift, incluindo um teste por

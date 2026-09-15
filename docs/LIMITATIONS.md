@@ -51,9 +51,17 @@ uma GPU renderiza.
 
 ## 3. Autorização incompleta (P0-4, aberto)
 
-**10 de 58 rotas** usam `Depends(current_user)`. As outras **48** não verificam identidade —
-incluindo `POST /api/v1/core/direct`, todo o bloco `/api/v1/core/personas/*` e
-`GET /api/v1/assets/download/{object_key:path}`.
+**10 de 58 rotas** tocam identidade, e a diferença entre elas importa:
+
+- **6** exigem token — `Depends(current_user)`: `/auth/me`, `/assets/upload`, `/assets`,
+  `/assets/{id}/conditioning`, `/assets/{id}/export`, `/personas/{id}/loras`.
+- **4** aceitam token mas **não exigem** — `Depends(optional_user)`: `/generations/images`,
+  `/generations/videos`, `/personas/{id}/train`, `/core/compile`. Uma chamada anônima passa.
+- As outras **48** não verificam identidade — incluindo `POST /api/v1/core/direct`, todo o
+  bloco `/api/v1/core/personas/*` e `GET /api/v1/assets/download/{object_key:path}`.
+
+`/personas/{id}/train` com identidade opcional é o ponto mais sensível dos quatro: dispara um
+treinamento que pode consumir GPU sem exigir quem pediu.
 
 O vazamento cross-tenant de `GET /api/v1/queue` apontado na auditoria original foi corrigido,
 mas a superfície continua majoritariamente aberta.
