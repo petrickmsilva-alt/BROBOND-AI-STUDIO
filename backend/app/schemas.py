@@ -49,6 +49,9 @@ class ImageGenerationRequest(BaseModel):
     #: persistent Persona Memory Engine. Optional — requests without it
     #: behave exactly as before.
     persona_id: str | None = Field(default=None, max_length=36)
+    #: PR004: optionally narrow the persona wardrobe block to the items the
+    #: project selected (names exactly as stored on the persona).
+    wardrobe: list[str] | None = None
 
 
 class VideoGenerationRequest(BaseModel):
@@ -66,6 +69,8 @@ class VideoGenerationRequest(BaseModel):
     #: PR003: resolve the persona's identity, default style and LoRA from the
     #: persistent Persona Memory Engine (same optional rule as images).
     persona_id: str | None = Field(default=None, max_length=36)
+    #: PR004: optionally narrow the persona wardrobe block (same rule as images).
+    wardrobe: list[str] | None = None
 
 
 class PersonaCreateRequest(BaseModel):
@@ -370,6 +375,8 @@ class GenerationSpecRequest(BaseModel):
     kind: Literal["image", "video"] = "image"
     project_id: str | None = Field(default=None, max_length=36)
     persona_id: str | None = Field(default=None, max_length=80)
+    #: PR004: optionally narrow the persona wardrobe block to selected items.
+    wardrobe: list[str] | None = None
     style: str | None = Field(default=None, max_length=120)
     shot: str | None = Field(default=None, max_length=80)
     provider: str = Field(default="flux-dev", max_length=80)

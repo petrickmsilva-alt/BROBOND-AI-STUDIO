@@ -91,6 +91,10 @@ class PersonaRepository:
         """
 
         images = self._images(persona.id)
+        # PR004: the identity now carries the wardrobe names (comma joined).
+        # The PERSONA prompt block renders them; the project-level selection
+        # filters them afterwards (see `identity_phrase(wardrobe=...)`).
+        wardrobe = ", ".join(item.name for item in self._wardrobe(persona.id))
         return PersonaMemory(
             persona_id=persona.id,
             name=persona.name,
@@ -102,7 +106,7 @@ class PersonaRepository:
             beard=persona.beard,
             eyes=persona.eyes,
             voice=persona.voice,
-            wardrobe="",
+            wardrobe=wardrobe,
             default_style=persona.default_style,
             lora_path=None,
             reference_images=tuple(image.asset_id for image in images),
@@ -167,9 +171,13 @@ class PersonaRepository:
 
     def wardrobe(self, persona_id: str) -> list[PersonaWardrobe]:
         with SessionLocal() as db:
+            # The row id is a random uuid and there is no order column, so
+            # ordering by id would be non-deterministic across backends and
+            # restarts. Name order is the stable, predictable rule the
+            # identity phrase and the API share (PR004).
             rows = db.scalars(
                 select(PersonaWardrobe).where(PersonaWardrobe.persona_id == persona_id).order_by(
-                    PersonaWardrobe.id
+                    func.lower(PersonaWardrobe.name)
                 )
             ).all()
             return [_detach(db, row) for row in rows]

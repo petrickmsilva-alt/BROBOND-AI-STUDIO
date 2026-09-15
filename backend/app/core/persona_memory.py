@@ -232,8 +232,8 @@ class PersonaMemoryEngine:
     # ------------------------------------------------------- delegated vocabulary
     # Composition, not reimplementation: these are the ETAPA 2 definitions.
 
-    def identity_phrase(self, persona_id: str | None, *, version: int | None = None) -> str:
-        return self.memory.identity_phrase(self.resolve(persona_id, version=version))
+    def identity_phrase(self, persona_id: str | None, *, version: int | None = None, wardrobe: list[str] | None = None) -> str:
+        return self.memory.identity_phrase(self.resolve(persona_id, version=version), wardrobe=wardrobe)
 
     def voice_phrase(self, persona_id: str | None, *, version: int | None = None) -> str:
         return self.memory.voice_phrase(self.resolve(persona_id, version=version))

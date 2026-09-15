@@ -365,4 +365,6 @@ def test_the_service_no_longer_refuses_object_storage() -> None:
     assert "is not enabled for exports" not in main
     assert "download adapter is required" not in queue
     assert main.count("storage.download(") == 2
-    assert queue.count("storage.download(") == 2
+    # Three call sites: the user-selected LoRA, the explicit reference image,
+    # and the persona's own identity image (PR004 auto-reference).
+    assert queue.count("storage.download(") == 3

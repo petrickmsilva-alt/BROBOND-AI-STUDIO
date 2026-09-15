@@ -53,3 +53,45 @@
 .finding.violation{border-color:#5a3038;background:#231a1e}
 .finding.violation b{color:#f0a9b4}
 @media(max-width:1000px){.director-layout{grid-template-columns:1fr}.state-grid{grid-template-columns:1fr}}
+/* PR004 — Studio Persona Pipeline: identity chip, selector and preview */
+.active-identity{display:flex;align-items:center;gap:9px;border:1px solid #4c3b72;background:#221b33;border-radius:9px;padding:6px 11px 6px 7px;max-width:250px}
+.active-identity-avatar{width:28px;height:28px;border-radius:8px;overflow:hidden;display:grid;place-items:center;background:#322a4f;color:#bfafff;flex:none}
+.active-identity-avatar img{width:100%;height:100%;object-fit:cover}
+.active-identity-meta{overflow:hidden}
+.active-identity-meta strong{display:block;font-size:11px;color:#e4dcff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.active-identity-meta small{display:block;font:9px 'DM Mono';color:#9c8fd0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+.studio-label{margin-top:22px}
+.identity-panel{border:1px solid #2b2930;background:#17161a;border-radius:8px;padding:13px;margin-bottom:17px}
+.identity-panel .panel-heading{margin-bottom:9px}
+.identity-panel .style-button{margin:0 0 11px}
+.persona-selector-search{display:flex;align-items:center;gap:7px;background:#1a191c;border:1px solid #2b292e;border-radius:6px;padding:0 9px;height:30px;color:#6f6d74;margin-bottom:8px}
+.persona-selector-search input{border:0;background:none;outline:0;font-size:10px;width:100%;color:#d6d3da}
+.persona-selector-list{display:grid;gap:3px;max-height:172px;overflow-y:auto;margin:0 -4px;padding:0 4px}
+.persona-selector-list button{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:7px;text-align:left;color:#9b98a0}
+.persona-selector-list button:hover{background:#1e1c22;color:#e6e2ec}
+.persona-selector-list button.selected{background:#27212f;color:#e9e2ff}
+.persona-avatar{width:26px;height:26px;border-radius:7px;overflow:hidden;display:grid;place-items:center;background:#322a4f;color:#bfaffa;flex:none}
+.persona-avatar img{width:100%;height:100%;object-fit:cover}
+.persona-line{flex:1;min-width:0}
+.persona-line strong{display:block;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.persona-line small{display:block;font-size:9px;color:#77747c;margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.persona-lora-badge{display:inline-flex;align-items:center;gap:4px;font:8px 'DM Mono';color:#c1aaff;border:1px solid #4c3b72;background:#2a2140;padding:3px 5px;border-radius:4px;flex:none}
+.persona-lora-none{color:#4d4b52;font:10px 'DM Mono';flex:none}
+.persona-empty{color:#6f6c75;font-size:10px;padding:9px 4px}
+.persona-preview{border:1px solid #2b2930;background:#141317;border-radius:8px;padding:13px;margin-top:11px;animation:persona-in .25s ease}
+@keyframes persona-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+.persona-preview.empty{text-align:center;padding:22px 13px}
+.persona-preview.empty h3{font-size:11px;color:#b3b0b8;margin:0 0 6px}
+.persona-preview.empty p{font-size:10px;color:#6f6c75;line-height:1.6;margin:0}
+.persona-preview-cover{position:relative;height:118px;border-radius:7px;overflow:hidden;background:radial-gradient(circle at 70% 30%,#4c3b72,#1d1830 60%,#121116);display:grid;place-items:center}
+.persona-preview-cover img{width:100%;height:100%;object-fit:cover}
+.persona-preview-initials{font:800 26px Manrope;color:#c9b8ff;letter-spacing:.06em}
+.persona-preview-revision{position:absolute;right:8px;bottom:7px;font:8px 'DM Mono';color:#cfc2f5;background:#000a;padding:3px 6px;border-radius:4px}
+.persona-preview-name{font-size:12px;margin:10px 0 8px;letter-spacing:-.01em}
+.persona-preview-facts{display:grid;grid-template-columns:1fr 1fr;gap:5px 12px;margin:0 0 11px}
+.persona-preview-facts div{min-width:0}
+.persona-preview-facts dt{font:8px 'DM Mono';letter-spacing:.1em;color:#6f6c75;text-transform:uppercase}
+.persona-preview-facts dd{margin:1px 0 0;font-size:10px;color:#d0cdd6;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.persona-preview-label{display:flex;justify-content:space-between;font-size:9px;letter-spacing:.08em;color:#8a8790;text-transform:uppercase;margin-bottom:6px}
+.persona-preview-label em{font-style:normal;color:#5f5d64;letter-spacing:.02em}
+.persona-lora-foot{display:flex;align-items:center;gap:6px;margin-top:10px;font-size:9px;color:#b6a5ea}

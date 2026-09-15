@@ -7,6 +7,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from celery import Celery
+from sqlalchemy import select
 
 from .core.config import settings
 from .core.contracts import GenerationKind
@@ -21,7 +22,7 @@ from .events import (
     job_event,
 )
 from .db import SessionLocal
-from .models import Asset, TrainingRun
+from .models import Asset, PersonaImage, TrainingRun
 from .preprocessing import preprocessor
 from .providers import registry as provider_registry
 from .providers.registry import DEFAULTS as PROVIDER_DEFAULTS
@@ -126,6 +127,45 @@ def _resolve_model_id_for(entry, kind: GenerationKind, spec) -> str:
     return resolve_model_id(spec.provider, entry.model_id)
 
 
+def _persona_reference_object_key(persona_id: str, workspace_id: str, db=None) -> str | None:
+    """PR004: pick the persona's identity image object key for a job.
+
+    `db` is a SQLAlchemy `Session` (the worker passes `SessionLocal()`);
+    it is injectable so the resolution rules are unit-testable in memory.
+
+    Face shots win, then display order. The referenced asset must be an
+    image owned by the job's workspace — the same ownership rule the
+    explicit reference path uses. Returns `None` when nothing suitable
+    exists, in which case the job runs without a reference (best effort:
+    a missing identity image must never fail the generation).
+    """
+    session = db if db is not None else SessionLocal()
+    try:
+        rows = session.execute(
+            select(PersonaImage)
+            .where(PersonaImage.persona_id == persona_id)
+            .order_by(PersonaImage.order_index.asc(), PersonaImage.id.asc())
+        ).scalars().all()
+        ranked = sorted(
+            rows,
+            key=lambda image: (
+                0 if image.image_type == "face" else 1,
+                image.order_index or 0,
+                image.id or 0,
+            ),
+        )
+        for image in ranked:
+            if not image.asset_id:
+                continue
+            asset = session.execute(select(Asset).where(Asset.id == str(image.asset_id))).scalar_one_or_none()
+            if asset and asset.kind == "image" and asset.workspace_id == workspace_id:
+                return asset.object_key
+        return None
+    finally:
+        if db is None:
+            session.close()
+
+
 @celery_app.task(bind=True, name="brobond.process_generation")
 def process_generation(self, job_id: str) -> dict[str, str]:
     """Placeholder worker lifecycle; replace the body with model provider calls."""
@@ -168,6 +208,20 @@ def process_generation(self, job_id: str) -> dict[str, str]:
             reference_path = str(storage.download(reference_asset.object_key, destination))
             if not Path(reference_path).is_file():
                 raise RuntimeError("Reference image file is missing")
+
+        # PR004 (ETAPA 3): when the job carries a persona and no explicit
+        # reference, the persona's own identity image feeds the generation —
+        # the compiler resolves the identity; the worker resolves the pixels.
+        if not reference_path and not reference_id:
+            persona_id = job.parameters.get("persona_id")
+            if persona_id and workspace_id:
+                with SessionLocal() as db:
+                    persona_object_key = _persona_reference_object_key(str(persona_id), str(workspace_id), db)
+                if persona_object_key:
+                    destination = storage.local_path(persona_object_key)
+                    candidate = str(storage.download(persona_object_key, destination))
+                    if Path(candidate).is_file():
+                        reference_path = candidate
 
         # ETAPA 3: the Core makes every creative decision and the provider
         # receives *only* the resulting spec — no prompt string, no parameters

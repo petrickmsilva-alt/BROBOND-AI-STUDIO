@@ -101,6 +101,9 @@ def _shared_kwargs(job, parameters: dict) -> dict:
         # falls back to its own defaults, which is the documented precedence.
         "style": parameters.get("style"),
         "persona_id": parameters.get("persona_id"),
+        # PR004: the studio may narrow the persona wardrobe block to the
+        # items the project selected (names as stored on the persona).
+        "wardrobe": parameters.get("wardrobe"),
         "shot": parameters.get("shot"),
         "weather": parameters.get("weather") or "",
         "camera": _camera(parameters),

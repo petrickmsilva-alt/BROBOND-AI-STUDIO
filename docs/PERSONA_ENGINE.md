@@ -89,11 +89,17 @@ bump): `default_style`, `lora_id`, `wardrobe`.
    (LoRA explícito no request vence). O worker já resolve asset → path com
    checagem de workspace — o mesmo caminho dos LoRAs selecionados no UI,
    então `spec.lora` nunca carrega id cru.
-3. `spec_adapter` passa `persona_id` ao `GenerationSpecBuilder`, que resolve
-   via `MemoryResolver` → `PersonaMemory` (identidade aprovada) → a frase de
-   identidade e o `default_style` entram no prompt compilado.
+3. `spec_adapter` passa `persona_id` (+ `style`/`wardrobe`, quando o
+   request traz) ao `GenerationSpecBuilder`, que resolve via
+   `MemoryResolver` → `PersonaMemory` (identidade aprovada) → a frase de
+   identidade — com o bloco `wardrobe: …` (PR004) — e o `default_style`
+   entram no prompt compilado.
 4. `persona_repo.to_memory` mapeia a linha para o Core: `lora_path` fica
-   `None` de propósito (LoRA via parâmetro, acima); `version` = `revision`.
+   `None` de propósito (LoRA via parâmetro, acima); `version` = `revision`;
+   `wardrobe` carrega os nomes das roupas (PR004 — antes fixo em `""`).
+5. Sem referência explícita no job, o worker resolve a **imagem da própria
+   persona** (face primeiro, depois ordem; asset `image` do workspace do
+   job). Nada adequado → o job segue sem referência, nunca falha por isso.
 
 ## Privacy
 
@@ -110,14 +116,57 @@ em todas as rotas e 404 (não 403) para ids externos. O catálogo global
   **personagens** do produto (revisar/aprovar/retratar + episódios) — as
   personas do perfil são um caminho separado e mais simples, por desenho.
 
+## PR004 — Studio Persona Pipeline (fechado)
+
+A persona agora atravessa o produto inteiro. Em uma frase: **o usuário
+escolhe a Persona; o compiler decide o resto.**
+
+### Fluxo Persona → Prompt → Compile → GenerationSpec → Provider
+
+1. O Image/Video Studio expõe o **PersonaSelector** (reutilizável) e o
+   **PersonaPreview** (cartão de identidade em tempo real, wardrobe
+   selecionável).
+2. Gerar envia `persona_id` (+ `style`/`wardrobe`/`camera_motion`) no job.
+3. `spec_adapter` → `GenerationSpecBuilder` → `MemoryResolver` resolve
+   identidade, `default_style`, LoRA (via `parameters["lora_id"]`), o
+   wardrobe (estritável pela seleção do projeto) e a referência — a frase
+   de identidade **com `wardrobe: …`** entra no prompt compilado.
+4. Sem referência explícita, o worker usa a **imagem da própria persona**
+   (face primeiro, depois ordem; posse de workspace validada).
+5. O provider recebe apenas o `GenerationSpec` final (§6 inalterado).
+
+### Contrato `GenerationSpec` intacto
+
+`persona_id`/`style`/`wardrobe`/`camera_motion` são **inputs de resolução**
+no request/parâmetros do job — o objeto `GenerationSpec` entregue ao
+provider **não ganhou nenhum campo**. O banco não mudou (apenas entidades
+existentes; `wardrobe`/`reference_images`/`lora_id` já existiam no PR003).
+
+### Project Memory (ETAPA 6)
+
+Cada projeto persiste `persona_id`, `default_style`, `last_lora` e
+`selected_wardrobe` e os **restaura ao reabrir**. Como o schema não tem
+coluna de estado de projeto (e o PR proíbe alterar o banco), a persistência
+é em `localStorage` (`lib/projectMemory.ts`), com o formato espelhando os
+nomes dos campos do backend — uma entidade server-side futura adota o
+payload 1:1, sem migração de cliente.
+
+### O que não mudou
+
+- Nenhuma API mudou de comportamento (tudo **opcional**; request sem
+  `persona_id` se comporta exatamente como antes).
+- O Persona Lab (`PersonaStudio`) e as rotas `/personas/*` do PR003 ficaram
+  intactos. A busca legacy `brobond_persona_id` foi **superada** (marcada),
+  não deletada — o campo continua sendo escrito pelo Lab.
+- Sem browser no ambiente de build: **sem screenshots/GIFs** gerados aqui; a
+  regressão é coberta pelo build + pelos guards estruturais do frontend.
+
 ## Próximos passos sugeridos
 
-- **PR004 — Personas no pipeline de geração do estúdio:** campo "persona" na
-  tela de Image/Video Studio que preenche `persona_id` (o backend já suporta),
-  pré-visualização da identidade compilada via `/core/compile` e seleção do
-  LoRA treinado do perfil (`/personas/{id}/loras`).
 - `Skin tone`/`height` já persistem; o prompt de identidade pode evoluir para
   usá-los explicitamente (hoje a frase usa idade/altura/corpo/cabelo/barba/
   olhos — a foto de referência carrega o resto).
 - Exclusão de imagem individual (`DELETE /personas/{id}/images/{image_id}`)
   para gerenciar o acervo sem reanexar tudo.
+- Project Memory server-side (uma entidade de projeto com estado JSON) para
+  sincronizar a seleção entre máquinas — o cliente já fala o formato.

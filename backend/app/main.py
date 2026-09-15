@@ -1046,6 +1046,10 @@ def compile_generation_spec(
         project_id=request.project_id,
         user_id=workspace_id,
         persona_id=request.persona_id,
+        # PR004: the compiler resolves identity, default style, LoRA and the
+        # wardrobe automatically from the persona; `wardrobe` only narrows
+        # the wardrobe block to the project's selection.
+        wardrobe=request.wardrobe,
         style=request.style,
         shot=request.shot,
         provider=request.provider,

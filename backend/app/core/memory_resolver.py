@@ -145,8 +145,11 @@ class MemoryResolver:
 
     # -------------------------------------------------------------- vocabulary
 
-    def identity_phrase(self, persona: PersonaMemory | None) -> str:
+    def identity_phrase(self, persona: PersonaMemory | None, wardrobe: list[str] | None = None) -> str:
         """Build the PERSONA prompt block for a persona.
+
+        `wardrobe` optionally narrows the wardrobe part of the identity to
+        the items a project selected (PR004); `None` keeps them all.
 
         Returns an empty string when there is no usable identity, so the
         PromptCompiler drops the block entirely instead of emitting a stub.
@@ -160,6 +163,11 @@ class MemoryResolver:
         if persona.height_m is not None:
             traits.append(f"{persona.height_m:.2f}m tall")
         traits.extend(part for part in (persona.body_type, persona.hair, persona.beard, persona.eyes) if part)
+        wardrobe_names = [part.strip() for part in str(persona.wardrobe).split(",") if part.strip()]
+        if wardrobe is not None:
+            wardrobe_names = [name for name in wardrobe_names if name in wardrobe]
+        if wardrobe_names:
+            traits.append(f"wardrobe: {', '.join(wardrobe_names)}")
         if not traits:
             return persona.name
         return f"{persona.name}, {', '.join(traits)}"

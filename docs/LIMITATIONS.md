@@ -175,7 +175,9 @@ fronteira: se algum passar a importar, um teste falha.
 | Jobs anônimos não são rastreáveis na UI | PR002: a criação anônima continua valida (`optional_user`), mas o acompanhamento (WS e `/jobs/{id}`) é autenticado. O cliente avisa "Job created — sign in to track it" em vez de sugerir que o job vai atualizar. Rastreamento de job anônimo é decisão de UX futura, não bug |
 | 4 rotas Core no cliente sem painel | `timeline`, `quality/assess`, `quality/rules` e `providers` estão tipadas em `lib/api.ts` mas nenhuma tela as mostra |
 | `components/studio-shell.tsx` (644 l) | não está montado em `app/layout.tsx`; a página renderiza `app/page.tsx`. Mantido intacto |
-| Nenhum teste JavaScript | o repositório não tem runner de front. As 31 guardas de `test_frontend_honesty.py` leem o fonte — cobrem presença e ausência, não comportamento em runtime |
+| Nenhum teste JavaScript | o repositório não tem runner de front. As guardas de `test_frontend_honesty.py` + `test_studio_persona_pipeline.py` leem o fonte — cobrem presença e ausência, não comportamento em runtime |
+| Project Memory em `localStorage` (PR004) | `persona_id`/`default_style`/`last_lora`/`selected_wardrobe` persistem por browser, não por conta: o schema não tem coluna de estado de projeto e o PR proíbe alterá-lo. O formato espelha os campos do backend — uma entidade server-side futura adota o payload 1:1 |
+| Sem screenshots/GIFs do Studio (PR004) | o ambiente de build não tem browser (nenhum Chromium/Playwright): as telas do pipeline de persona são verificadas por build + guards estruturais, não por captura de tela. Nada foi inventado para substituir isso |
 | `next@14.2.32` | vulnerabilidade conhecida sinalizada pelo npm durante a instalação |
 | Render real nunca visto | o caminho `<img src={job.output_url}>` foi verificado por guarda estrutural e pelo contrato do WebSocket, não por uma imagem na tela |
 
