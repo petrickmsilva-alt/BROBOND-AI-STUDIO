@@ -4,7 +4,28 @@ Este documento é a fonte estratégica do produto. Toda nova feature deve ser cl
 
 ## Status atual
 
-A fundação visual, API, autenticação, jobs, storage, providers, prompt engine, storyboard, personas, LoRA contracts, conditioning e readiness operacional já estão estruturados. A execução de modelos reais depende de hardware GPU, pesos e providers instalados.
+A fundação visual, API, autenticação, jobs, storage, providers, storyboard, personas, LoRA contracts, conditioning e readiness operacional já estão estruturados. A execução de modelos reais depende de hardware GPU, pesos e providers instalados.
+
+**Atualização da ETAPA 2 (BROBOND CORE):** a camada de decisão agora existe em
+`backend/app/core/`. Começou com seis componentes (`DirectorAgent`, `MemoryResolver`,
+`PromptCompiler`, `StyleResolver`, `ShotResolver`, `GenerationSpecBuilder`) e chegou a **doze**
+na ETAPA 14, com `PersonaMemory`, `CinematicLibrary`, `ShotLibrary`, `StoryboardEngine`,
+`VideoTimeline` e `QualityGate` — mais o contrato `GenerationSpec` e seus 19 campos
+obrigatórios. Nenhuma rota FastAPI contém lógica de geração. Ver `AUDIT.md` para o ponto de
+partida, `CHANGELOG.md` para o que mudou e `docs/ETAPAS.md` para o índice das 17 etapas.
+
+**Atualização da ETAPA 3 (GENERATION SPEC):** `GenerationSpec` é agora a única entrada de
+todo provider — `generate(spec, output_dir)`, com `ImageProvider`/`VideoProvider` como ABC.
+Nenhum call site passa prompt solto ou `dict` de parâmetros. O bug de chave que fazia o
+worker devolver `cancelled` sem executar nada (P0-2a) foi corrigido.
+
+Pendências herdadas da auditoria que continuam abertas e bloqueiam geração real ponta a
+ponto: jobs ainda vivem em memória (`store`), então um worker Celery **em outro processo**
+ainda não enxerga o job da API (**P0-2b**). Endpoints sem autorização seguem abertos
+(**P0-4**: 10 de 58 rotas verificam identidade). **P0-3 foi fechado na ETAPA 11** com
+`publish_sync`, porque o worker Celery é síncrono e o hub era asyncio-only. **P0-1** permanece
+por decisão: quatro módulos mortos e quebrados que não foram apagados nem ressuscitados.
+Ver `docs/LIMITATIONS.md`.
 
 ## v1.0 — Workspace local
 
@@ -22,24 +43,43 @@ A fundação visual, API, autenticação, jobs, storage, providers, prompt engin
 - [x] Storyboard continuity
 - [x] Prompt Engine
 - [x] ControlNet/IP Adapter contracts
-- [ ] Shot Library completa com 300+ presets
-- [ ] Cinematic presets persistidos e editáveis
+- [ ] Shot Library completa com 300+ presets *(resolver pronto com os 10 códigos publicados e `catalog(query)` para o browser visual; falta o volume e a persistência)*
+- [ ] Cinematic presets persistidos e editáveis *(7 estilos no `StyleResolver` com fonte injetável; falta a tabela Styles)*
 
 ## v2.0 — BROBOND CORE
 
 - [x] Persona LoRA contracts
 - [x] Character memory foundation
+- [x] **Persona Memory Engine** (ETAPA 4: histórico versionado, governança atribuída, snapshots de episódio, relatório de drift)
+- [x] **Cinematic Library** (ETAPA 5: CINEMATIC_BIBLE como gramática consultável + 8 regras verificáveis + auditoria da própria biblioteca)
+- [x] **Shot Library 300 presets** (ETAPA 6: 290 novos em 12 famílias, todos validados contra a Bíblia, navegador visual na API)
+- [x] **Storyboard Engine** (ETAPA 8: beats escalados em shots reais, arco por formato, encadeamento de continuidade e validação da sequência contra a Bíblia)
 - [x] Versioned LoRA assets
 - [x] Knowledge Base persistente no PostgreSQL
 - [x] Memory Resolver API inicial
-- [ ] Memory Resolver em cada GenerationSpec
+- [x] **BROBOND CORE implementado** (`core/`: 6 componentes independentes + `GenerationSpec`)
+- [x] **Memory Resolver em cada GenerationSpec** (`persona_id` → frase de identidade no prompt)
+- [x] **Testes 90%** (ETAPA 16: cobertura 89% → 95%, 28 módulos em 100%, gate `--fail-under=90` no CI, fronteira do cluster morto fixada por teste, 3 achados registrados)
+- [x] **UX Premium** (ETAPA 15: Diretor como porta de entrada consumindo `/core/direct`, as 31 rotas Core alcançáveis, casca sem fatos inventados, resultado real em vez de desenho, erros distinguindo offline de rejeição, proxy relativo)
+- [x] **Quality AI** (ETAPA 14: `QualityGate` como 12º componente independente, output conferido contra o spec antes de persistir, job que não produziu arquivo deixa de ser `complete`, limites da avaliação declarados em vez de fingidos)
+- [x] **Video Timeline** (ETAPA 13: `VideoTimeline` como 11º componente independente, `media.concat` para montagem, `probe` finalmente parseado, dissolve por continuação de família, plano nunca fingindo arquivo renderizado)
+- [x] **Director AI** (ETAPA 7: arco `documentary` restaurado, escolha de formato por especificidade em vez de ordem de dicionário, empate declarado em vez de decidido em silêncio, ritmo declarado igual ao entregue, oito beats distintos)
+- [x] **Storage MinIO/S3** (ETAPA 12: `download`/`exists`/`delete`/`upload_path`/`ensure_bucket`, os quatro 501 religados, ramo S3 e guard de traversal cobertos, `storage.py` a 100%)
+- [x] **Queue & WebSocket** (ETAPA 11: `transition()` como único ponto de mutação, `EventHub.publish` finalmente com chamador, seis marcos de progresso, buffer de replay, socket push em vez de loop de leitura)
+- [x] **Provider Adapters** (ETAPA 10: registry como fonte única, Hunyuan adicionado, ControlNet/IP-Adapter como objetos, quatro duplicações removidas, provider indisponível recusado em vez de substituído)
+- [x] **Prompt Compiler estruturado** (ETAPA 9: os 13 blocos de `SYSTEM_PROMPT.md`, dedupe entre blocos, cor separada de estilo, orçamento por provider, storyboard compilado cena a cena)
+- [x] **Director Agent determinístico** (intenção → conceito, roteiro, cenas, câmeras, música, duração)
+- [x] **Style Resolver** com 5 estilos nomeados + padrão + neutro
+- [x] **Shot Resolver** com os 10 códigos publicados
+- [ ] Personas, Styles e Shots persistidos no PostgreSQL (hoje são seeds injetáveis via `Protocol`)
 - [ ] Character Library completa
 - [ ] Prompt Library classificada
 - [ ] Continuidade entre episódios
+- [x] **Providers recebendo apenas `GenerationSpec`** (ETAPA 3: `generate(spec, output_dir)`, ABC, zero strings soltas)
 
 ## v3.0 — AI Director
 
-- [ ] Conversa de direção: trailer, luxo, fashion film, documental
+- [~] Conversa de direção: trailer, luxo, fashion film, documental *(ETAPA 2 entregou o `DirectorAgent` determinístico e `POST /api/v1/core/direct`, com detecção de formato, paleta e pergunta curta de esclarecimento; falta a conversa multi-turno e o enriquecimento por LLM, cujo hook `LanguageModel` já existe)*
 - [ ] Roteirista automático
 - [ ] Diretor de câmera IA
 - [ ] Ritmo, montagem, música e iluminação por intenção

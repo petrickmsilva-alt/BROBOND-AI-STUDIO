@@ -14,6 +14,14 @@ jobs:
           python-version: '3.12'
       - run: pip install -r requirements.txt
       - run: PYTHONPATH=backend pytest backend/tests -q
+      # ETAPA 16: the 90% floor is enforced, not just reported. The denominator
+      # includes the four dead modules from AUDIT.md P0-1 (100 statements, 0%),
+      # so this number is conservative by construction — see
+      # backend/tests/test_dead_module_boundary.py.
+      - name: Coverage gate (90%)
+        run: |
+          PYTHONPATH=backend coverage run --source=backend/app -m pytest backend/tests -q
+          coverage report --include='backend/app/*' --skip-empty --fail-under=90
   frontend:
     runs-on: ubuntu-latest
     steps:

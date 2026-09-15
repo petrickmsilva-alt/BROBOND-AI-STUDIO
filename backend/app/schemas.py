@@ -182,3 +182,603 @@ class StoryboardResponse(BaseModel):
     id: UUID = Field(default_factory=uuid4)
     brief: str
     scenes: list[StoryboardScene]
+
+
+# ---------------------------------------------------------------------------
+# BROBOND CORE (ETAPA 2)
+#
+# These are API contracts, deliberately separate from the domain objects in
+# `app.core.contracts`. The Core owns decisions; these models own transport.
+# ---------------------------------------------------------------------------
+
+
+class SceneBeatResponse(BaseModel):
+    number: int
+    objective: str
+    emotion: str
+    camera: str
+    lighting: str
+    motion: str
+    duration_seconds: float = 5.0
+    shot_code: str | None = None
+    reference: str = ""
+
+
+class DirectorRequest(BaseModel):
+    """A plain-language intention. No technical vocabulary is required."""
+
+    intent: str = Field(min_length=1, max_length=1000)
+    scene_count: int | None = Field(default=None, ge=1, le=12)
+    style: str | None = Field(default=None, max_length=120)
+    camera_language: str | None = Field(default=None, max_length=200)
+    duration_per_scene: float = Field(default=5.0, gt=0, le=60)
+
+
+class DirectorBriefResponse(BaseModel):
+    concept: str
+    format: str
+    logline: str
+    script: str
+    beats: list[SceneBeatResponse]
+    camera_language: str
+    lighting_language: str
+    music: str
+    pacing: str
+    style_hint: str
+    duration_seconds: float
+    scene_count: int
+    #: Non-empty when the intention could follow more than one language and the
+    #: director needs one short answer before committing.
+    clarification: str = ""
+
+
+class GenerationSpecRequest(BaseModel):
+    prompt: str = Field(min_length=1, max_length=2000)
+    kind: Literal["image", "video"] = "image"
+    project_id: str | None = Field(default=None, max_length=36)
+    persona_id: str | None = Field(default=None, max_length=80)
+    style: str | None = Field(default=None, max_length=120)
+    shot: str | None = Field(default=None, max_length=80)
+    provider: str = Field(default="flux-dev", max_length=80)
+    aspect_ratio: Literal["16:9", "1:1", "9:16", "4:3", "3:4"] = "16:9"
+    fps: int | None = Field(default=None, ge=1, le=120)
+    duration: float = Field(default=5.0, gt=0, le=60)
+    seed: int | None = Field(default=None, ge=0)
+    lora: str | None = Field(default=None, max_length=300)
+    controlnet: Literal["none", "pose", "depth", "canny", "tile"] = "none"
+    camera: str | None = Field(default=None, max_length=200)
+    lens: str | None = Field(default=None, max_length=200)
+    lighting: str | None = Field(default=None, max_length=200)
+    motion: str | None = Field(default=None, max_length=200)
+    weather: str = Field(default="", max_length=120)
+    negative_prompt: str = Field(default="", max_length=2000)
+    # Sampling extras. A provider receives only the GenerationSpec, so these
+    # travel inside it and must be settable (and visible) here too.
+    resolution: Literal["1024", "2048", "4096"] | None = None
+    guidance_scale: float | None = Field(default=None, ge=1, le=30)
+    steps: int | None = Field(default=None, ge=1, le=100)
+    ip_adapter_scale: float | None = Field(default=None, ge=0, le=1)
+    mode: Literal["text-to-video", "image-to-video", "start-end-frame"] | None = None
+    cinematic_mode: bool = True
+    slow_motion: bool = False
+    native_audio: bool = False
+
+
+# ---------------------------------------------------------------------------
+# ETAPA 4 — persona memory (versioned, governed identity)
+# ---------------------------------------------------------------------------
+
+
+class PersonaRevisionRequest(BaseModel):
+    """An identity or administrative edit. Every write is attributed."""
+
+    actor: str = Field(min_length=1, max_length=120)
+    reason: str = Field(min_length=1, max_length=500)
+    authorized: bool = Field(
+        default=False,
+        description="Identity changes (name, age, height, body, hair, beard, eyes, voice, wardrobe) are rejected without it.",
+    )
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    age: int | None = Field(default=None, ge=1, le=120)
+    height_m: float | None = Field(default=None, gt=0.4, lt=3)
+    body_type: str | None = Field(default=None, max_length=120)
+    hair: str | None = Field(default=None, max_length=120)
+    beard: str | None = Field(default=None, max_length=120)
+    eyes: str | None = Field(default=None, max_length=120)
+    voice: str | None = Field(default=None, max_length=160)
+    wardrobe: str | None = Field(default=None, max_length=200)
+    default_style: str | None = Field(default=None, max_length=120)
+    lora_path: str | None = Field(default=None, max_length=500)
+
+
+class PersonaTransitionRequest(BaseModel):
+    """Approval or retirement. Requires an actor and a reason: these are audit events."""
+
+    actor: str = Field(min_length=1, max_length=120)
+    reason: str = Field(default="", max_length=500)
+
+
+class PersonaVersionResponse(BaseModel):
+    revision: int
+    version: int
+    action: str
+    actor: str
+    reason: str
+    changed: list[str] = Field(default_factory=list)
+    created_at: str
+    persona: dict[str, object] = Field(default_factory=dict)
+
+
+class PersonaMemoryResponse(BaseModel):
+    persona_id: str
+    name: str
+    status: str
+    version: int
+    generable: bool = Field(description="Only an approved identity may drive a generation.")
+    identity_phrase: str = Field(default="", description="The PERSONA prompt block this identity produces.")
+    default_style: str = ""
+    lora_path: str | None = None
+    persona: dict[str, object] = Field(default_factory=dict)
+
+
+class PersonaHistoryResponse(BaseModel):
+    persona_id: str
+    name: str
+    status: str
+    version: int
+    generable: bool
+    identity_versions: list[int] = Field(default_factory=list)
+    changed_fields: dict[str, list[int]] = Field(default_factory=dict)
+    identity_changed: bool = False
+    persona: dict[str, object] = Field(
+        default_factory=dict,
+        description="The current identity in full, so a client reading history does not need a second call.",
+    )
+    history: list[PersonaVersionResponse] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# ETAPA 5 — cinematic library (grammar + rules from knowledge_base/CINEMATIC_BIBLE.md)
+# ---------------------------------------------------------------------------
+
+
+class LensProfileResponse(BaseModel):
+    focal_mm: int
+    semantics: list[str] = Field(default_factory=list)
+
+
+class FrameProfileResponse(BaseModel):
+    name: str
+    carries: str
+    keywords: list[str] = Field(default_factory=list)
+
+
+class LightingProfileResponse(BaseModel):
+    name: str
+    role: str
+    constraint: str = ""
+    keywords: list[str] = Field(default_factory=list)
+
+
+class TimeQualityResponse(BaseModel):
+    """A light quality and the tone it supports — a different shape from a light role."""
+
+    name: str
+    supports: str
+    keywords: list[str] = Field(default_factory=list)
+
+
+class AngleProfileResponse(BaseModel):
+    """An angle and the effect it creates — a different shape from a shot size."""
+
+    name: str
+    creates: str
+    keywords: list[str] = Field(default_factory=list)
+
+
+class MotivationResponse(BaseModel):
+    name: str
+    description: str
+    keywords: list[str] = Field(default_factory=list)
+
+
+class FramingResponse(BaseModel):
+    frames: list[FrameProfileResponse] = Field(default_factory=list)
+    angles: list[AngleProfileResponse] = Field(default_factory=list)
+
+
+class LightingResponse(BaseModel):
+    lights: list[LightingProfileResponse] = Field(default_factory=list)
+    time_qualities: list[TimeQualityResponse] = Field(default_factory=list)
+
+
+class RuleFindingResponse(BaseModel):
+    rule: str
+    status: str = Field(description="ok | attention | violation")
+    detail: str
+    source: str = "knowledge_base/CINEMATIC_BIBLE.md"
+
+
+class LibraryAuditResponse(BaseModel):
+    styles_audited: int
+    shots_audited: int
+    rules: list[str] = Field(default_factory=list)
+    compliant: list[str] = Field(default_factory=list)
+    flagged: dict[str, list[RuleFindingResponse]] = Field(default_factory=dict)
+
+
+class EpisodeConsistencyResponse(BaseModel):
+    scenes: int
+    consistent: bool
+    grain: list[str] = Field(default_factory=list)
+    lut: list[str] = Field(default_factory=list)
+    palette: list[str] = Field(default_factory=list)
+    findings: list[RuleFindingResponse] = Field(default_factory=list)
+
+
+class StyleExplanationResponse(BaseModel):
+    style_id: str
+    name: str
+    explanation: str
+    motivations: list[str] = Field(default_factory=list)
+    lens_mm: int | None = None
+    findings: list[RuleFindingResponse] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# ETAPA 6 — shot library (300 direction presets)
+# ---------------------------------------------------------------------------
+
+
+class ShotPresetResponse(BaseModel):
+    code: str
+    name: str
+    family: str = ""
+    frame: str = ""
+    lens: str = ""
+    lens_mm: int | None = Field(default=None, description="Focal length read by the cinematic grammar.")
+    camera_path: str = ""
+    speed: str = ""
+    focus: str = ""
+    shake: str = ""
+    depth: str = ""
+    lighting: str = ""
+    intention: str = ""
+    continuity: str = ""
+    motivations: list[str] = Field(
+        default_factory=list,
+        description="Which CINEMATIC_BIBLE motivations this movement claims.",
+    )
+
+
+class ShotFamilyResponse(BaseModel):
+    family: str
+    label: str
+    count: int
+
+
+class ShotLibraryAuditResponse(BaseModel):
+    total: int
+    target: int
+    meets_target: bool
+    published: int
+    expanded: int
+    families: dict[str, int] = Field(default_factory=dict)
+    violations: dict[str, list[str]] = Field(default_factory=dict)
+    duplicates: list[str] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# ETAPA 8 — storyboard engine (a brief cast into real shots)
+#
+# Named CoreStoryboard* to avoid colliding with the pre-existing
+# StoryboardRequest/StoryboardScene/StoryboardResponse used by
+# /api/v1/storyboards/expand, which is preserved unchanged.
+# ---------------------------------------------------------------------------
+
+
+class CoreStoryboardRequest(BaseModel):
+    brief: str = Field(min_length=1, max_length=4000)
+    scene_count: int = Field(default=5, ge=2, le=12)
+    persona: str | None = Field(default=None, max_length=200)
+    style: str | None = Field(default=None, max_length=120)
+    camera_language: str | None = Field(default=None, max_length=200)
+    duration_per_scene: float = Field(default=5.0, gt=0, le=30)
+
+
+class CoreStoryboardShotResponse(BaseModel):
+    number: int
+    shot_code: str
+    shot_name: str
+    family: str
+    frame: str
+    lens: str
+    camera_path: str
+    lighting: str
+    motion: str
+    motivation: str = Field(description="Which CINEMATIC_BIBLE motivation the move claims.")
+    intention: str
+    continuity: str = Field(description="What the next scene has to match.")
+    objective: str
+    emotion: str
+    duration_seconds: float
+
+
+class CoreStoryboardFindingResponse(BaseModel):
+    rule: str
+    status: str = Field(description="violation | attention")
+    detail: str
+
+
+class CoreStoryboardResponse(BaseModel):
+    brief: str
+    format: str
+    scene_count: int
+    runtime_seconds: float
+    lens_progression: list[str] = Field(default_factory=list)
+    family_sequence: list[str] = Field(default_factory=list)
+    shot_codes: list[str] = Field(default_factory=list)
+    shots: list[CoreStoryboardShotResponse] = Field(default_factory=list)
+    valid: bool = Field(description="False when any sequence rule is violated.")
+    violations: list[CoreStoryboardFindingResponse] = Field(default_factory=list)
+    attention: list[CoreStoryboardFindingResponse] = Field(default_factory=list)
+    beat_sheet: str = Field(default="", description="Director-readable beat sheet, not a prompt.")
+
+
+# ---------------------------------------------------------------------------
+# ETAPA 9 — prompt compiler: a cast storyboard compiled scene by scene
+# ---------------------------------------------------------------------------
+
+
+class CoreStoryboardCompileRequest(BaseModel):
+    brief: str = Field(min_length=1, max_length=4000)
+    scene_count: int = Field(default=5, ge=2, le=12)
+    persona_id: str | None = Field(default=None, max_length=120)
+    style: str | None = Field(default=None, max_length=120)
+    camera_language: str | None = Field(default=None, max_length=200)
+    duration_per_scene: float = Field(default=5.0, gt=0, le=30)
+    provider: str = Field(default="flux-dev", max_length=60)
+    negative_prompt: str = Field(default="", max_length=600)
+
+
+class CompiledSceneResponse(BaseModel):
+    number: int
+    shot_code: str
+    prompt: str
+    negative_prompt: str
+    tokens: list[str] = Field(default_factory=list)
+    dropped: list[str] = Field(
+        default_factory=list,
+        description="Blocks dropped to fit the provider budget. Never silent.",
+    )
+
+
+class CoreStoryboardCompileResponse(BaseModel):
+    brief: str
+    format: str
+    provider: str
+    budget: int = Field(description="Character budget applied, per provider.")
+    scene_count: int
+    runtime_seconds: float
+    valid: bool
+    shot_codes: list[str] = Field(default_factory=list)
+    scenes: list[CompiledSceneResponse] = Field(default_factory=list)
+    violations: list[CoreStoryboardFindingResponse] = Field(default_factory=list)
+    attention: list[CoreStoryboardFindingResponse] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# ETAPA 10 — provider adapters
+# ---------------------------------------------------------------------------
+
+
+class ProviderAdapterResponse(BaseModel):
+    id: str
+    label: str
+    kind: str = Field(description="image | video")
+    status: str = Field(description="local-provider | remote-provider | planned-provider")
+    model_id: str = Field(default="", description="Checkpoint the adapter loads. Empty when there is no local adapter.")
+    conditioning: list[str] = Field(default_factory=list)
+
+
+class ProviderHealthResponse(BaseModel):
+    id: str
+    available: bool
+    reason: str | None = None
+    model_id: str = ""
+    loaded: bool = False
+
+
+class ProviderCatalogueResponse(BaseModel):
+    adapters: list[ProviderAdapterResponse] = Field(default_factory=list)
+    defaults: dict[str, str] = Field(
+        default_factory=dict, description="What runs when a job names no provider, per kind."
+    )
+
+
+class GenerationSpecResponse(BaseModel):
+    """The compiled GenerationSpec. Providers receive exactly this (ETAPA 3)."""
+
+    spec_id: str
+    schema_version: str
+    kind: str
+    project_id: str | None = None
+    user_id: str | None = None
+    persona_id: str | None = None
+    style_id: str | None = None
+    prompt_original: str
+    prompt_compiled: str
+    negative_prompt: str = ""
+    camera: str = ""
+    lens: str = ""
+    lighting: str = ""
+    motion: str = ""
+    weather: str = ""
+    aspect_ratio: str = "16:9"
+    fps: int = 24
+    duration: float = 5.0
+    provider: str = "flux-dev"
+    seed: int | None = None
+    lora: str | None = None
+    controlnet: str = "none"
+    # Sampling extras carried inside the spec (ETAPA 3). Exposed so a dry run
+    # shows exactly what a provider will be handed instead of hiding it.
+    resolution: int = 1024
+    guidance_scale: float = 7.5
+    steps: int = 28
+    ip_adapter_scale: float = 0.7
+    mode: str = "text-to-video"
+    cinematic_mode: bool = True
+    slow_motion: bool = False
+    native_audio: bool = False
+    reference_path: str | None = None
+    tokens: list[str] = Field(default_factory=list)
+    #: Which source won each contested field. Makes a look explainable.
+    trace: dict = Field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# ETAPA 13 — video timeline
+# ---------------------------------------------------------------------------
+
+
+class TimelineRequest(BaseModel):
+    """A brief plus whatever media has already been rendered for it.
+
+    `sources` maps a 1-based scene number to the object key already produced for
+    that scene. Scenes left out stay unrendered, and the response says so —
+    a timeline never claims media exists that does not.
+    """
+
+    brief: str = Field(min_length=1, max_length=4000)
+    scene_count: int = Field(default=5, ge=2, le=12)
+    persona: str | None = Field(default=None, max_length=200)
+    style: str = Field(default="cinematic realism", max_length=120)
+    camera_language: str = Field(default="coherent camera movement", max_length=200)
+    duration_per_scene: float = Field(default=5.0, gt=0, le=60)
+    resolution: Literal["720p", "1080p", "2k", "4k"] = "1080p"
+    fps: int = Field(default=24, ge=1, le=120)
+    sources: dict[int, str] = Field(default_factory=dict)
+
+
+class TimelineClipResponse(BaseModel):
+    index: int
+    shot_code: str
+    family: str
+    start_seconds: float
+    duration_seconds: float
+    end_seconds: float
+    transition: str
+    source: str = ""
+    rendered: bool = False
+
+
+class TimelineAudioResponse(BaseModel):
+    #: The Director's own music language. Not a file: nothing synthesises audio.
+    bed: str = ""
+    fade_in_seconds: float = 1.0
+    fade_out_seconds: float = 2.0
+    declared: bool = False
+
+
+class TimelineFindingResponse(BaseModel):
+    rule: str
+    status: str
+    detail: str
+
+
+class TimelineResponse(BaseModel):
+    format: str
+    clip_count: int
+    duration_seconds: float
+    aspect_ratio: str
+    resolution: str
+    width: int
+    height: int
+    fps: int
+    #: True only when every clip has real media behind it.
+    complete: bool
+    rendered_clips: int
+    unrendered_clips: list[int] = Field(default_factory=list)
+    valid: bool
+    violations: list[TimelineFindingResponse] = Field(default_factory=list)
+    warnings: list[TimelineFindingResponse] = Field(default_factory=list)
+    audio: TimelineAudioResponse
+    clips: list[TimelineClipResponse] = Field(default_factory=list)
+
+
+class TimelineFormatResponse(BaseModel):
+    format: str
+    aspect_ratio: str
+    label: str
+
+
+class TimelineCatalogueResponse(BaseModel):
+    default_aspect_ratio: str
+    default_resolution: str
+    resolutions: dict[str, list[int]]
+    transitions: list[str]
+    formats: list[TimelineFormatResponse]
+
+
+# ---------------------------------------------------------------------------
+# ETAPA 14 — quality gate
+# ---------------------------------------------------------------------------
+
+
+class QualityAssessRequest(BaseModel):
+    """A rendered artifact and the spec it was supposed to satisfy.
+
+    `object_key` is resolved through the storage guard, so this endpoint can
+    never be pointed at an arbitrary path on the worker's filesystem. The
+    geometry is what the producer reported; the gate compares that claim against
+    the spec, and says plainly when the pixels themselves were not read.
+    """
+
+    object_key: str = Field(min_length=1, max_length=1000)
+    kind: Literal["image", "video"] = "image"
+    width: int = Field(default=0, ge=0)
+    height: int = Field(default=0, ge=0)
+    duration_seconds: float = Field(default=0.0, ge=0)
+    fps: int = Field(default=0, ge=0, le=240)
+    #: What the spec asked for.
+    aspect_ratio: Literal["16:9", "1:1", "9:16", "4:3", "3:4"] = "16:9"
+    requested_duration: float = Field(default=5.0, gt=0, le=600)
+    requested_fps: int = Field(default=24, ge=1, le=240)
+
+
+class QualityFindingResponse(BaseModel):
+    rule: str
+    status: str
+    detail: str
+
+
+class QualityReportResponse(BaseModel):
+    spec_id: str = ""
+    kind: str
+    verdict: str
+    #: False when something blocks delivery. Warnings do not block.
+    ok: bool
+    #: Share of applicable structural checks that passed — not an aesthetic score.
+    structural_score: float
+    checks_run: int
+    checks_passed: int
+    violations: list[QualityFindingResponse] = Field(default_factory=list)
+    warnings: list[QualityFindingResponse] = Field(default_factory=list)
+    facts: dict = Field(default_factory=dict)
+
+
+class QualityRuleResponse(BaseModel):
+    rule: str
+    status: str
+    detail: str
+
+
+class QualityCapabilitiesResponse(BaseModel):
+    assesses: list[str]
+    #: Stated explicitly so no client can infer an aesthetic judgement.
+    does_not_assess: list[str]
+    model_loaded: bool
+    note: str
+    spec_fields_known: int
+    rules: list[QualityRuleResponse]

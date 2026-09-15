@@ -3,15 +3,31 @@
 Workers are intentionally provider-agnostic: model adapters can be plugged into
 `process_generation` without changing the HTTP API.
 """
+from dataclasses import replace
 from pathlib import Path
 
 from celery import Celery
 
 from .core.config import settings
+from .core.contracts import GenerationKind
+from .events import (
+    EVENT_CANCELLED,
+    EVENT_COMPLETE,
+    EVENT_FAILED,
+    EVENT_PROGRESS,
+    EVENT_QUEUED,
+    EVENT_STARTED,
+    hub,
+    job_event,
+)
 from .db import SessionLocal
 from .models import Asset, TrainingRun
 from .preprocessing import preprocessor
+from .providers import registry as provider_registry
+from .providers.registry import DEFAULTS as PROVIDER_DEFAULTS
 from .schemas import GenerationType, JobStatus
+from .spec_adapter import compile_job, resolve_model_id
+from .core.quality import QualityGate
 from .storage import storage
 from .store import store
 from .training import execute_training, prepare_dataset
@@ -21,18 +37,89 @@ celery_app = Celery("brobond", broker=redis_url, backend=redis_url)
 celery_app.conf.update(task_track_started=True, task_serializer="json", result_serializer="json", accept_content=["json"])
 
 
+#: ETAPA 14: the gate that checks a rendered artifact against the spec that
+#: produced it. Shared with the API so a manual assessment and the worker's
+#: verdict can never disagree.
+quality_gate = QualityGate()
+
+#: Progress milestones. The worker used to jump from 10 to 100, which gave a
+#: client nothing to render between "it started" and "it finished".
+PROGRESS_STARTED = 10
+PROGRESS_SPEC_COMPILED = 25
+PROGRESS_INPUTS_RESOLVED = 40
+PROGRESS_RENDERING = 55
+PROGRESS_PERSISTED = 90
+PROGRESS_DONE = 100
+
+
+def transition(
+    job,
+    status: JobStatus | None = None,
+    progress: int | None = None,
+    *,
+    event: str = EVENT_PROGRESS,
+    error: str | None = None,
+) -> dict:
+    """Move a job and emit the event, in one step.
+
+    This is the only place a job's status or progress is written. Before ETAPA 11
+    every call site assigned the two fields directly and nothing was emitted,
+    which is why `EventHub.publish` had no callers at all: there was no single
+    moment that meant "the job moved".
+
+    Writing state and emitting together makes it impossible to move a job
+    silently. `status` and `progress` are both optional so a pure progress tick
+    does not have to restate the status.
+    """
+
+    if status is not None:
+        job.status = status
+    if progress is not None:
+        job.progress = progress
+    payload = job_event(
+        job.id,
+        status=job.status.value if hasattr(job.status, "value") else str(job.status),
+        progress=int(job.progress or 0),
+        event=event,
+        output_url=job.output_url,
+        error=error,
+    )
+    return hub.publish_sync(job.id, payload)
+
+
+def _resolve_model_id_for(entry, kind: GenerationKind, spec) -> str:
+    """The checkpoint this entry should load.
+
+    Two pre-existing knobs keep working, and neither is allowed to leak into
+    another provider:
+
+    * `spec.provider` is already resolved by the spec adapter (ETAPA 3), so an
+      image job keeps using it.
+    * `settings.video_model_id` configures the *default* video provider only.
+      Applying it to Hunyuan would load the Wan checkpoint, which is the exact
+      class of mistake the registry exists to prevent.
+    """
+
+    if kind is GenerationKind.VIDEO:
+        if entry.provider_id == PROVIDER_DEFAULTS[GenerationKind.VIDEO]:
+            return settings.video_model_id
+        return entry.model_id
+    return resolve_model_id(spec.provider, entry.model_id)
+
+
 @celery_app.task(bind=True, name="brobond.process_generation")
 def process_generation(self, job_id: str) -> dict[str, str]:
     """Placeholder worker lifecycle; replace the body with model provider calls."""
     job = store.get_job(job_id)
-    if not job or job.status == JobStatus.CANCELLED:
+    if not job:
         return {"job_id": job_id, "status": "cancelled"}
-    job.status = JobStatus.RUNNING
-    job.progress = 10
+    if job.status == JobStatus.CANCELLED:
+        transition(job, event=EVENT_CANCELLED)
+        return {"job_id": job_id, "status": "cancelled"}
+    transition(job, JobStatus.RUNNING, PROGRESS_STARTED, event=EVENT_STARTED)
     if not settings.inference_enabled:
         # Orchestration-only mode is safe for machines without model weights.
-        job.progress = 100
-        job.status = JobStatus.COMPLETE
+        transition(job, JobStatus.COMPLETE, PROGRESS_DONE, event=EVENT_COMPLETE)
         return {"job_id": job_id, "status": job.status.value, "mode": "orchestration-only"}
     try:
         lora_path = None
@@ -44,9 +131,11 @@ def process_generation(self, job_id: str) -> dict[str, str]:
                 lora_asset = db.get(Asset, str(lora_id))
             if not lora_asset or lora_asset.kind != "lora" or lora_asset.workspace_id != workspace_id:
                 raise RuntimeError("Selected LoRA adapter is not available in this workspace")
-            if settings.storage_enabled:
-                raise RuntimeError("MinIO LoRA download adapter is required before GPU inference")
-            lora_path = str(storage.local_path(lora_asset.object_key))
+            # ETAPA 12: `storage.download` covers both backends, so object
+            # storage no longer has to be refused here. It returns the stored
+            # file directly in local mode and fetches to the same path from S3.
+            destination = storage.local_path(lora_asset.object_key)
+            lora_path = str(storage.download(lora_asset.object_key, destination))
             if not Path(lora_path).is_file():
                 raise RuntimeError("Selected LoRA adapter file is missing")
         reference_id = job.parameters.get("reference_asset_id")
@@ -55,21 +144,56 @@ def process_generation(self, job_id: str) -> dict[str, str]:
                 reference_asset = db.get(Asset, str(reference_id))
             if not reference_asset or reference_asset.kind != "image" or reference_asset.workspace_id != workspace_id:
                 raise RuntimeError("Reference image is not available in this workspace")
-            if settings.storage_enabled:
-                raise RuntimeError("MinIO reference download adapter is required before inference")
-            reference_path = str(storage.local_path(reference_asset.object_key))
+            destination = storage.local_path(reference_asset.object_key)
+            reference_path = str(storage.download(reference_asset.object_key, destination))
             if not Path(reference_path).is_file():
                 raise RuntimeError("Reference image file is missing")
-        if job.type == GenerationType.IMAGE:
-            from .providers.image import FluxDiffusersProvider
-            parameters = {**job.parameters, "lora_path": lora_path, "reference_path": reference_path} if lora_path or reference_path else job.parameters
-            result = FluxDiffusersProvider(model_id=job.parameters.get("model", "black-forest-labs/FLUX.1-dev")).generate(job.prompt, parameters, settings.weights_dir)
-            output_type, content_type, extension = "image", "image/png", "png"
-        else:
-            from .providers.video import WanVideoProvider
-            parameters = {**job.parameters, "lora_path": lora_path, "reference_path": reference_path} if lora_path or reference_path else job.parameters
-            result = WanVideoProvider(model_id=settings.video_model_id).generate(job.prompt, parameters, settings.weights_dir)
+
+        # ETAPA 3: the Core makes every creative decision and the provider
+        # receives *only* the resulting spec — no prompt string, no parameters
+        # dict. `lora` and `reference_path` are folded in here as concrete local
+        # paths, after workspace ownership was validated above. A LoRA coming
+        # from persona memory is already a path and is passed through.
+        compiled = compile_job(job)
+        transition(job, progress=PROGRESS_SPEC_COMPILED)
+        spec = replace(
+            compiled.spec,
+            lora=lora_path or compiled.spec.lora,
+            reference_path=reference_path,
+        )
+
+        # ETAPA 10: the adapter is chosen by the *requested provider*, through
+        # the registry, instead of by job type alone. Until now every image job
+        # ran FLUX and every video job ran Wan whatever was asked for, so
+        # requesting Hunyuan returned Wan with no error.
+        kind = GenerationKind.VIDEO if job.type == GenerationType.VIDEO else GenerationKind.IMAGE
+        requested = job.parameters.get("model")
+        entry = provider_registry.resolve(requested, kind)
+        # Refuse an unavailable combination before anything is loaded: a planned
+        # or remote-only provider must fail loudly rather than run a different
+        # model than the one requested.
+        provider_registry.check(entry, kind)
+        transition(job, progress=PROGRESS_INPUTS_RESOLVED)
+        model_id = _resolve_model_id_for(entry, kind, spec)
+        provider = provider_registry.build(entry.provider_id, kind, model_id=model_id)
+
+        transition(job, progress=PROGRESS_RENDERING)
+        result = provider.generate(spec, settings.weights_dir)
+
+        # ETAPA 14: nothing ever looked at what came back. A provider could hand
+        # over a path that did not exist, or a frame whose geometry contradicted
+        # the spec, and the job was still marked complete with that broken
+        # `output_url`. The gate checks the artifact against the spec that
+        # produced it; a violation fails the job instead of shipping it.
+        report = quality_gate.assess(spec, quality_gate.measure(result), kind=kind)
+        if not report.ok:
+            reasons = "; ".join(f"{item['rule']}: {item['detail']}" for item in report.violations)
+            raise RuntimeError(f"Quality gate rejected the render — {reasons}")
+
+        if kind is GenerationKind.VIDEO:
             output_type, content_type, extension = "video", "video/mp4", "mp4"
+        else:
+            output_type, content_type, extension = "image", "image/png", "png"
         workspace_id = job.parameters.get("workspace_id")
         if workspace_id:
             object_key, url = storage.save_path(result.path, workspace_id, content_type)
@@ -80,10 +204,10 @@ def process_generation(self, job_id: str) -> dict[str, str]:
             job.output_url = url
         else:
             job.output_url = result.path
-        job.progress = 100
-        job.status = JobStatus.COMPLETE
+        transition(job, progress=PROGRESS_PERSISTED)
+        transition(job, JobStatus.COMPLETE, PROGRESS_DONE, event=EVENT_COMPLETE)
     except Exception as error:
-        job.status = JobStatus.FAILED
+        transition(job, JobStatus.FAILED, event=EVENT_FAILED, error=str(error))
         return {"job_id": job_id, "status": job.status.value, "error": str(error)}
     return {"job_id": job_id, "status": job.status.value}
 
