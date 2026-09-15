@@ -411,13 +411,17 @@ def test_project_memory_persists_the_four_fields(memory_source: str) -> None:
 
 
 def test_project_memory_restores_and_persists_in_home(page_source: str) -> None:
-    # Restore: the saved persona/style/wardrobe/LoRA come back on load.
-    assert "loadProjectMemory()" in page_source
-    assert "memory.persona_id" in page_source
-    assert "memory.last_lora" in page_source
-    assert "memory.selected_wardrobe" in page_source
-    # Persist: the state is saved on every change.
-    assert "saveProjectMemory({" in page_source
+    # PR004.1: Home consumes the hook (which consumes the adapter) — it never
+    # names the v0 API or the storage key directly.
+    assert "useProjectMemory(PROJECT_ID)" in page_source
+    # Restore: the saved persona/style/wardrobe/LoRA (official field names)
+    # come back on load.
+    assert "memory.personaId" in page_source
+    assert "memory.loraId" in page_source
+    assert "memory.styleId" in page_source
+    assert "memory.wardrobeId" in page_source
+    # Persist: the state is saved on every change via the hook.
+    assert "saveMemory({" in page_source
 
 
 # ETAPA 7 — sidebar Studio group and the active identity in the topbar

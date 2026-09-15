@@ -6,6 +6,63 @@ versões de produto do `ROADMAP.md`.
 
 ---
 
+## [Unreleased] — PR004.1: PROJECT MEMORY CONTRACT
+
+Micro PR de padronização: o contrato de Project Memory foi congelado e toda
+a persistência de memória de projeto agora passa por **um único Memory
+Adapter**. Nenhuma alteração visual.
+
+### O que mudou
+
+- **Contrato oficial** — `ProjectMemoryState` em `lib/memory/project_memory.ts`:
+  `projectId` (único obrigatório), `workspaceId`, `personaId`, `wardrobeId`,
+  `styleId`, `loraId`, `cameraPreset`, `aspectRatio`, `lastPrompt`,
+  `lastPlatform`, `duration`, `updatedAt`. O formato é idêntico no
+  `localStorage` de hoje e no PostgreSQL de amanhã; **só muda com
+  migration** (envelope versionado `v`; versão desconhecida → recusa a
+  leitura, sem perda silenciosa; shape v0 do PR004 migra automaticamente,
+  write-through).
+- **Memory Adapter** — `lib/memory/project_memory.ts`:
+  `loadProjectMemory(projectId)` / `saveProjectMemory(state)` /
+  `clearProjectMemory(projectId)`. Sem acoplamento a React. Uma única
+  chave oficial (`PROJECT_MEMORY_KEY`); desserialização sanitizada (campos
+  desconhecidos descartados, tipos errados ignorados); SSR/bloqueio de
+  storage degradam para `null`, nunca lançam.
+- **Hook** — `useProjectMemory(projectId)` (`lib/memory/use_project_memory.ts`)
+  retorna `{ memory, save, clear }` e somente consome o adapter; `save` é
+  atualização parcial (merge + `updatedAt`).
+- **Frontend** — nenhum componente conhece a chave de armazenamento nem toca
+  `localStorage`: `app/page.tsx` consome o hook; o token de auth (PR002) e a
+  chave legacy `brobond_persona_id` (Persona Lab) passam pelo adapter como
+  seams nominais (`getAuthToken`/`setAuthToken`/`clearAuthToken`,
+  `setLegacyPersonaId`) — contratos separados, fora do
+  `ProjectMemoryState`. `cameraPreset`/`aspectRatio`/`duration` agora são
+  owned pelo Home (mesmos controles, mesmos defaults — zero mudança visual)
+  para que o contrato possa persisti-los.
+- **Legacy** — `lib/projectMemory.ts` (v0) marcado Legacy (Bible §2): sem
+  call sites live, delega ao adapter, não toca storage.
+- **Testes** — suíte comportamental nova (vitest, escopado a `lib/memory/`):
+  persistência, serialização, desserialização, atualização parcial, clear,
+  compatibilidade de versão, seams SSR/bloqueadas e hook — com **gate de
+  cobertura 95%** no CI. Guards estruturais em
+  `backend/tests/test_project_memory_contract.py` (nenhum componente toca
+  `localStorage`; um único arquivo referencia `window.localStorage`; uma
+  chave oficial; contrato = exatamente os campos da spec; hook consome
+  apenas o adapter; CI roda a suíte).
+- **Docs** — `docs/PROJECT_MEMORY.md` (contrato, adapter, hook, migração
+  PostgreSQL); seções novas em `ARCHITECTURE.md`.
+
+### Decisões
+
+- O repo não tinha runner de JS; o vitest foi adicionado **escopado ao
+  contrato** (devDeps + step no CI) — o restante do frontend continua
+  coberto por guards estruturais no backend.
+- `wardrobeId`/`styleId` carregam hoje nomes/join (o produto ainda não tem
+  id por item de wardrobe nem catálogo de estilos versionado); quando o
+  backend introduzir ids reais, a migration é de *valor*, não de *shape*.
+
+---
+
 ## [Unreleased] — PR004: STUDIO PERSONA PIPELINE
 
 O Persona Engine (PR003) agora atravessa o produto: o usuário escolhe a

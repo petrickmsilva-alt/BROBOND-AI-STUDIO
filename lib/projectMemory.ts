@@ -1,15 +1,23 @@
-// PR004 (ETAPA 6) — Project Memory.
+// LEGACY (PR004) — Project Memory v0. Marked Legacy per Developer Bible §2:
+// never deleted, only marked.
 //
-// Each project in the studio persists the creative state that makes the next
-// session continuous: which persona is the identity, which style was in use,
-// the last LoRA version chosen, and the wardrobe items selected.
+// Since PR004.1 there are NO live call sites — the official contract and the
+// only storage boundary live in `lib/memory/project_memory.ts` (the Memory
+// Adapter), consumed by `lib/memory/use_project_memory.ts`. This file is kept
+// so any old import keeps resolving, and it MUST NOT touch
+// `window.localStorage` directly (that is the adapter's job, enforced by
+// `test_project_memory_contract.py`).
 //
-// Where does it live? The database has no project-state column — and the PR
-// explicitly forbids structural changes ("apenas entidades existentes") — so
-// the memory is persisted in the browser (localStorage), keyed per project.
-// The shape mirrors the backend field names (`persona_id`, `default_style`,
-// `last_lora`, `selected_wardrobe`), so a future server-side project entity
-// can adopt the same payload 1:1 without a client migration.
+// The v0 shape is mapped onto the official `ProjectMemoryState`:
+//   persona_id -> personaId      default_style -> styleId
+//   last_lora  -> loraId         selected_wardrobe -> wardrobeId (joined)
+// What has no contract home (none, today) simply stops being read back.
+
+import {
+  loadProjectMemory as loadState,
+  saveProjectMemory as saveState,
+  PROJECT_ID,
+} from './memory/project_memory';
 
 export interface ProjectMemory {
   persona_id: string | null;
@@ -18,14 +26,8 @@ export interface ProjectMemory {
   selected_wardrobe: string[];
 }
 
-const STORAGE_KEY = 'brobond_project_memory';
-
-/**
- * The studio keeps a single active project per browser workspace (the
- * product has no multi-project switching yet; "Projects" in the sidebar is
- * the assets library). The id is stable so the memory survives reloads.
- */
-export const PROJECT_ID = 'brobond-project-01';
+/** Stable project id — re-exported from the adapter (single source). */
+export const PROJECT_MEMORY_ID = PROJECT_ID;
 
 export const emptyProjectMemory: ProjectMemory = {
   persona_id: null,
@@ -34,33 +36,22 @@ export const emptyProjectMemory: ProjectMemory = {
   selected_wardrobe: [],
 };
 
-/**
- * Restore the project's saved state. Corrupt or missing storage degrades to
- * the empty memory — a broken localStorage must never break the studio.
- */
 export function loadProjectMemory(): ProjectMemory {
-  if (typeof window === 'undefined') return { ...emptyProjectMemory };
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { ...emptyProjectMemory };
-    const parsed = JSON.parse(raw) as Partial<ProjectMemory>;
-    return {
-      persona_id: typeof parsed.persona_id === 'string' && parsed.persona_id ? parsed.persona_id : null,
-      default_style: typeof parsed.default_style === 'string' ? parsed.default_style : '',
-      last_lora: typeof parsed.last_lora === 'string' ? parsed.last_lora : '',
-      selected_wardrobe: Array.isArray(parsed.selected_wardrobe) ? parsed.selected_wardrobe.map(String) : [],
-    };
-  } catch {
-    return { ...emptyProjectMemory };
-  }
+  const state = loadState(PROJECT_ID);
+  return {
+    persona_id: state?.personaId ?? null,
+    default_style: state?.styleId ?? '',
+    last_lora: state?.loraId ?? '',
+    selected_wardrobe: state?.wardrobeId ? state.wardrobeId.split(',') : [],
+  };
 }
 
-/** Persist the project's creative state. Best effort: never throws. */
 export function saveProjectMemory(memory: ProjectMemory): void {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(memory));
-  } catch {
-    // Storage full or blocked: the session continues without memory.
-  }
+  saveState({
+    projectId: PROJECT_ID,
+    personaId: memory.persona_id ?? null,
+    styleId: memory.default_style || null,
+    loraId: memory.last_lora || null,
+    wardrobeId: memory.selected_wardrobe.length ? memory.selected_wardrobe.join(',') : null,
+  });
 }

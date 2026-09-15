@@ -40,6 +40,13 @@ export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
 const DEFAULT_TIMEOUT_MS = 10000;
 const UPLOAD_TIMEOUT_MS = 30000;
 
+import { getAuthToken, setAuthToken } from './memory/project_memory';
+
+// PR002's auth token. Since PR004.1 it is read/written through the Memory
+// Adapter's accessors (`lib/memory/project_memory.ts`) — the only file in
+// the repo allowed to touch `window.localStorage`. The token is a separate
+// contract (auth), not part of `ProjectMemoryState`.
+
 function ok<T>(data: T, status: number): ApiResult<T> {
   return { data, remote: true, status };
 }
@@ -63,7 +70,7 @@ async function readError(response: Response): Promise<string> {
 
 async function request<T>(path: string, init: RequestInit, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<ApiResult<T>> {
   try {
-    const token = typeof window !== 'undefined' ? window.localStorage.getItem('brobond_access_token') : null;
+    const token = getAuthToken();
     const response = await fetch(`${API_URL}${path}`, {
       ...init,
       headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(init.headers ?? {}) },
@@ -91,7 +98,7 @@ const post = <T>(path: string, payload: unknown) =>
  */
 export function wsUrl(path: string): string {
   const base = API_URL || (typeof window !== 'undefined' ? window.location.origin : '');
-  const token = typeof window !== 'undefined' ? window.localStorage.getItem('brobond_access_token') : null;
+  const token = getAuthToken();
   return `${base.replace(/^http/, 'ws')}${path}${token ? `${path.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}` : ''}`;
 }
 
@@ -106,7 +113,7 @@ export async function authenticate(
   payload: Record<string, unknown>,
 ): Promise<ApiResult<{ access_token: string; user: AuthUser }>> {
   const result = await request<{ access_token: string; user: AuthUser }>(path, { method: 'POST', body: JSON.stringify(payload) });
-  if (result.remote && typeof window !== 'undefined') window.localStorage.setItem('brobond_access_token', result.data.access_token);
+  if (result.remote) setAuthToken(result.data.access_token);
   return result;
 }
 
@@ -155,7 +162,7 @@ export function listPersonaLoras(personaId: string) {
 
 export async function uploadAsset(file: File): Promise<ApiResult<Asset>> {
   try {
-    const token = typeof window !== 'undefined' ? window.localStorage.getItem('brobond_access_token') : null;
+    const token = getAuthToken();
     const form = new FormData();
     form.append('file', file);
     const response = await fetch(`${API_URL}/api/v1/assets/upload`, {

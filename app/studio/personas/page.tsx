@@ -12,6 +12,7 @@ import {
   PersonaProfile,
   updatePersonaProfile,
 } from '../../../lib/api';
+import { getAuthToken } from '../../../lib/memory/project_memory';
 import {
   ArrowLeft,
   Eye,
@@ -255,7 +256,9 @@ export default function PersonaProfilesPage() {
     }
   };
 
-  const hasToken = typeof window !== 'undefined' && Boolean(localStorage.getItem('brobond_access_token'));
+  // PR004.1: the session check goes through the Memory Adapter's accessor —
+  // components never name the raw token key or touch localStorage directly.
+  const hasToken = getAuthToken() !== null;
   const showEditor = creating || selected !== null;
 
   return (

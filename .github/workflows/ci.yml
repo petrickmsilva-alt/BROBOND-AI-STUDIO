@@ -31,4 +31,8 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # PR004.1: Project Memory contract — behavioral suite (adapter + hook)
+      # with a 95% coverage gate (vitest, scoped to lib/memory/).
+      - name: Frontend contract tests (Project Memory)
+        run: npm run test:frontend:coverage
       - run: npm run build

@@ -733,6 +733,36 @@ Regras fixadas por teste (`test_persona_engine.py`):
 
 Detalhes de schema, contratos e decisões: `docs/PERSONA_ENGINE.md`.
 
+## Project Memory (PR004.1)
+
+A memória de projeto do estúdio (persona ativa, estilo, wardrobe, LoRA,
+câmera, proporção, duração e último prompt) segue um **contrato congelado**
+independente do backend: hoje `localStorage`, amanhã PostgreSQL. O objeto
+(`ProjectMemoryState`) é exatamente o mesmo nos dois mundos; só o
+transporte troca.
+
+- **Contrato** — `ProjectMemoryState` em `lib/memory/project_memory.ts`:
+  `projectId` é o único campo obrigatório, os demais opcionais. O formato
+  só muda com migration (envelope versionado `v`).
+- **Adapter (única fronteira de storage)** — `lib/memory/project_memory.ts`
+  expõe `loadProjectMemory(projectId)`, `saveProjectMemory(state)` e
+  `clearProjectMemory(projectId)`. É o **único arquivo do repositório** que
+  referencia `window.localStorage` (guarda estrutural). Uma única chave
+  oficial (`PROJECT_MEMORY_KEY`); nenhum componente conhece a string.
+- **Hook** — `useProjectMemory(projectId)` (`lib/memory/use_project_memory.ts`)
+  retorna `{ memory, save, clear }` e **somente consome o adapter**: não
+  toca storage, não conhece a chave, não serializa. `save` é atualização
+  parcial (merge).
+- **Regra arquitetural** — nenhum componente (ou `lib`) acessa
+  `localStorage` diretamente; o token de auth (PR002) e a chave legacy do
+  Persona Lab também passam pelo adapter como seams nominais, mas **não**
+  fazem parte do `ProjectMemoryState`.
+- **Migração futura** — uma tabela `project_memory(project_id, workspace_id,
+  state JSONB, version, updated_at)` + endpoint autenticado; o adapter troca
+  o corpo das três funções mantendo a assinatura, o hook não muda.
+
+Contrato, adapter, hook, regras e migração: `docs/PROJECT_MEMORY.md`.
+
 ## Contrato de provider (ETAPA 3)
 
 **Todo provider recebe apenas `GenerationSpec`.** A assinatura é o mecanismo de aplicação
