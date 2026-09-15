@@ -333,7 +333,14 @@ def test_to_dict_is_json_shaped(gate: QualityGate, real_file) -> None:
 
 
 def test_verify_dimensions_says_so_when_no_reader_is_installed(gate: QualityGate, real_file) -> None:
-    """Never report a verification that was not performed."""
+    """Never report a verification that was not performed.
+
+    Three cases, and the middle one is the reason this test exists: `real_file`
+    holds the bytes of a PNG header, not a decodable image. With Pillow present
+    the gate must say the file could not be opened — it must not report a
+    verification it could not carry out. The success path needs a real image,
+    which only Pillow can produce here.
+    """
 
     result = gate.verify_dimensions(str(real_file), 1280, 720)
     try:
@@ -343,8 +350,27 @@ def test_verify_dimensions_says_so_when_no_reader_is_installed(gate: QualityGate
         assert "Pillow" in result["reason"]
         assert result["reported"] == [1280, 720]
     else:
-        assert result["verified"] is True
-        assert result["matches"] is False
+        assert result["verified"] is False
+        assert "could not be opened" in result["reason"], result["reason"]
+        assert result["reported"] == [1280, 720]
+
+
+def test_verify_dimensions_reads_the_pixels_when_a_reader_is_available(gate: QualityGate, tmp_path) -> None:
+    """The success path, reached only where Pillow is installed."""
+
+    pytest.importorskip("PIL", reason="the pixel path cannot be exercised without Pillow")
+    from PIL import Image
+
+    target = tmp_path / "real.png"
+    Image.new("RGB", (640, 360), "black").save(target)
+
+    wrong = gate.verify_dimensions(str(target), 1280, 720)
+    assert wrong["verified"] is True
+    assert wrong["matches"] is False
+    assert wrong["actual"] == [640, 360]
+
+    right = gate.verify_dimensions(str(target), 640, 360)
+    assert right["verified"] is True and right["matches"] is True
 
 
 def test_capabilities_names_what_is_not_assessed(gate: QualityGate) -> None:

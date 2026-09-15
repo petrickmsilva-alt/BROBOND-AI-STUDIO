@@ -76,7 +76,7 @@ Estas regras foram respeitadas em todas as etapas e são verificadas por testes:
 
 | Métrica | Valor |
 | --- | --- |
-| Suíte de testes | **1.075** |
+| Suíte de testes | **1.076** |
 | Cobertura `backend/app` | **95%** (gate CI: 90%) |
 | Módulos em 100% | **28** |
 | Rotas HTTP `/api/v1` | **58** — **31** delas `/api/v1/core/*` |
