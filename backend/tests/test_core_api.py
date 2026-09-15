@@ -257,9 +257,10 @@ def test_route_inventory_only_grew() -> None:
     assert len(websockets) == 2
     # 27 /api/v1 routes before the Core, 29 after ETAPA 2, 37 after ETAPA 4,
     # 46 after ETAPA 5, 50 after ETAPA 6, 51 after ETAPA 8, 52 after ETAPA 9,
-    # 54 after ETAPA 10, 56 after ETAPA 13, 58 after ETAPA 14. The guard is that
-    # the number only grows: nothing was ever removed.
-    assert len([route for route in http if route.path.startswith("/api/v1")]) == 58
+    # 54 after ETAPA 10, 56 after ETAPA 13, 58 after ETAPA 14, 64 after PR003
+    # (six persona-profile routes). The guard is that the number only grows:
+    # nothing was ever removed.
+    assert len([route for route in http if route.path.startswith("/api/v1")]) == 64
 
 
 # ------------------------------------------------- no generation logic in routes

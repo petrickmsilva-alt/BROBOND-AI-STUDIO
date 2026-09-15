@@ -362,8 +362,9 @@ O fluxo de um job é: `POST /api/v1/generations/*` grava a **linha** `jobs` (rep
 do id — lê a linha num processo diferente → o cliente acompanha por
 `/api/v1/queue/events/{job_id}` autenticado.
 
-PR002 mudou a base do fluxo: jobs deixaram o `dict` em memória (`MemoryStore`, que segue no
-repositório para personas — PR004) e viram `JobRow`. `transition()` persiste **e** emite no
+PR002 mudou a base do fluxo: jobs deixaram o `dict` em memória (`MemoryStore`; o `dict` de
+personas do mesmo store ficou **Legacy** no PR003 — personas agora vivem em
+`repositories/persona_repository.py`) e viram `JobRow`. `transition()` persiste **e** emite no
 mesmo passo, e o estado terminal `complete` interno é respondido como `completed` na borda
 (`events.external_status()` / `schemas.JobResponse`) sem renomear o enum — contrato interno
 e clientes existentes intactos.
@@ -667,6 +668,50 @@ Duas regras de produto valem mais que o mecanismo:
 - **Episódio publicado mantém seu snapshot.** `remember()` grava a identidade sob
   `(episode_id, persona_id)`; revisões posteriores não a alcançam. `continuity()` distingue
   "consistente" de "sem registro" — ausência de dado nunca é lida como consistência.
+
+### Persona Memory Engine (PR003)
+
+As personas do produto (perfis persistentes) deixaram a memória do processo
+sem tocar o desenho acima: o `Core` continua dependendo de protocolos, e a
+persistência entrou por injeção no composition root (`main.py`).
+
+```text
+POST /api/v1/personas/*  ──►  repositories/persona_repository.py  ──►  PostgreSQL (migration 0002)
+                                                        │
+        Persona (tabela)  ◄─────────────────────────────┤   o único módulo que fala com o SQLAlchemy
+        │ to_memory() / to_profile()                    │
+        ▼                                                ▼
+_CompositePersonaSource (fetch)      _PersistentPersonaProfileSource (get_profile)
+        └────────────► MemoryResolver ◄────────────────────┘
+                          │ resolve()           → identidade (prompt, estilo, versionamento)
+                          │ resolve_persona()   → perfil completo (wardrobe, LoRA, referências)
+                          ▼
+                 GenerationSpecBuilder  (persona_id do request / do core/compile)
+```
+
+Regras fixadas por teste (`test_persona_engine.py`):
+
+- **O Core não toca SQL.** Os adapters vivem em `main.py`; `memory_resolver.py`
+  só conhece `PersonaMemory`/`PersonaProfile`.
+- **Composite em `fetch`, privado em `search`.** Uma persona persistida resolve
+  no builder por id; mas o catálogo global `/core/personas` segue listando
+  apenas personagens do ledger — o perfil de um tenant não vaza para outro.
+- **`PersonaSource` não mudou.** O protocolo original (`fetch`/`search`) e os
+  seus implementadores continuam válidos; o perfil completo entra pelo
+  protocolo opcional `PersonaProfileSource` (injeção, não acoplamento).
+- **Revisão append-only.** Toda mudança de identidade no `PATCH` incrementa
+  `revision` e appende uma linha em `persona_identity_revision` (nunca
+  reescrita); metadados (estilo, LoRA) não contam como identidade.
+- **Slug único por workspace** (`uq_personas_workspace_slug`), 409 na API.
+- **Persona referencia asset, não armazena.** `persona_images` aponta para
+  assets existentes (upload segue no fluxo de assets); o treino legado pode
+  referenciar id ainda não criado, por isso a coluna não é FK — a validação
+  de existência vive na rota `/images`.
+- **LoRA da persona via parâmetro.** O `lora_id` da persona entra em
+  `job.parameters` (o worker já resolve asset → path com checagem de
+  workspace); o `spec.lora` não carrega id cru, mantendo a regra da ETAPA 16.
+
+Detalhes de schema, contratos e decisões: `docs/PERSONA_ENGINE.md`.
 
 ## Contrato de provider (ETAPA 3)
 

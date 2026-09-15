@@ -41,11 +41,16 @@ uma GPU renderiza.
 
 PR002 fechou a metade de jobs: `JobRow` é a fonte de verdade e `JobStore` é o
 repositório que a API e o worker usam — um processo lê o que o outro escreveu
-(fixado por `test_job_persistence.py`). O que restou:
+(fixado por `test_job_persistence.py`). **PR003 fechou a metade de
+personas**: `Persona` é a fonte de verdade e
+`repositories/persona_repository.py` é o repositório que as rotas e o
+`MemoryResolver` usam (fixado por `test_persona_engine.py`); o `dict` de
+personas em `app/store.py` fica marcado **Legacy** e sem call sites. O que
+restou:
 
 | Onde | O que | Consequência |
 | --- | --- | --- |
-| `app/store.py` → personas | `dict` em memória | **PR004.** O `PersonaSource` do Core já é um `Protocol`; trocar por tabela é injeção de um repositório SQL |
+| `app/store.py` → personas (Legacy) | `dict` em memória, sem call sites desde o PR003 | Mantido pela Regra de Ouro; a leitura/escrita é 100% SQL via repositório |
 | `app/core/*` seeds | personas, estilos e shots são dados injetáveis via `Protocol` | Sem tabela `Styles`/`Shots` no Postgres; editar pelo produto não persiste |
 | `app/core/memory_resolver.py` ledger | episódios de continuidade em memória | Continuidade entre episódios não sobrevive a restart |
 | `app/auth.py` `_auth_attempts` | janela do rate limit por IP | In-memory e por processo: com múltiplas instâncias da API o orçamento se multiplica. O próximo passo declarado é um store compartilhado (Redis) — não simulado, apenas declarado |
@@ -54,15 +59,18 @@ repositório que a API e o worker usam — um processo lê o que o outro escreve
 
 ---
 
-## 3. Autorização (P0-4, fechado no PR002)
+## 3. Autorização (P0-4, fechado no PR002; ampliado no PR003)
 
-**25 de 58 rotas** tocam identidade, e a diferença entre elas importa:
+**31 de 64 rotas** tocam identidade, e a diferença entre elas importa:
 
-- **22** exigem token — `Depends(current_user)`: `/auth/me`, `/knowledge`, `/queue`,
+- **28** exigem token — `Depends(current_user)`: `/auth/me`, `/knowledge`, `/queue`,
   `/jobs/{id}`, `/jobs/{id}/cancel`, `/assets/upload`, `/assets`,
   `/assets/download/{object_key:path}`, `/assets/{id}/conditioning`,
-  `/assets/{id}/export`, `/personas`, `/personas/{id}/train`,
-  `/personas/{id}/training/{run_id}`, `/personas/{id}/loras` e todo o bloco
+  `/assets/{id}/export`, `POST /personas`, `GET /personas` (listagem, PR003),
+  `/personas/{id}` (GET/PATCH/DELETE — perfis persistentes, PR003),
+  `/personas/{id}/train`,
+  `/personas/{id}/training/{run_id}`, `/personas/{id}/loras`,
+  `/personas/{id}/images` (GET/POST — referências, PR003) e todo o bloco
   `/api/v1/core/personas/*` (8 rotas, identidade de personagem = PII).
 - **3** aceitam token mas **não exigem** — `Depends(optional_user)`:
   `/generations/images`, `/generations/videos`, `/core/compile`. Uma chamada
@@ -98,7 +106,7 @@ from app.main import app
 import inspect
 n = sum(1 for r in app.routes if isinstance(r, APIRoute) and r.path.startswith('/api/v1')
         and 'user' in inspect.signature(r.endpoint).parameters)
-print(f'{n} de 58 rotas com identidade')"
+print(f'{n} de 64 rotas com identidade')"
 ```
 
 ---

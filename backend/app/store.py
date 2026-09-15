@@ -140,7 +140,9 @@ class Store:
     def set_job_state(self, job_id: UUID | str, *, status: JobStatus | None = None, progress: int | None = None, output_url: str | None = None) -> None:
         self._jobs.set_state(job_id, status=status, progress=progress, output_url=output_url)
 
-    # personas — in memory until PR004
+    # personas — Legacy since PR003: the Persona Memory Engine persists to
+    # PostgreSQL through `repositories.persona_repository`. Kept (never
+    # deleted, Bible §2) with no call sites; new code must not use it.
     @property
     def personas(self) -> dict[UUID, Persona]:
         return self._personas.personas

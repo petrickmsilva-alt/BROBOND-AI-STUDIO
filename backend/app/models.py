@@ -2,7 +2,7 @@
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import DateTime, ForeignKey, String, Text
+from sqlalchemy import DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -113,4 +113,84 @@ class KnowledgeEntry(Base):
     content: Mapped[str] = mapped_column(Text)
     source: Mapped[str] = mapped_column(String(120), default="core")
     version: Mapped[int] = mapped_column(default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class Persona(Base):
+    """PR003: a persisted persona profile (the product view of a persona).
+
+    The Core's `PersonaMemory` (identity for prompts) is DERIVED from this row
+    at read time (`PersonaRepository.to_memory`); the row is the source of
+    truth and lives in PostgreSQL, never in process memory. `slug` is unique
+    per workspace (a persona may be addressed by name within it). Child rows
+    (images, wardrobe, revisions) are plain indexed `persona_id` references —
+    the repository removes them explicitly, matching this repo's
+    SQLite/Postgres-portable convention (no DB-level foreign keys).
+    """
+
+    __tablename__ = "personas"
+    __table_args__ = (UniqueConstraint("workspace_id", "slug", name="uq_personas_workspace_slug"),)
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    workspace_id: Mapped[str] = mapped_column(String(36), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    slug: Mapped[str] = mapped_column(String(140), index=True)
+    age: Mapped[int] = mapped_column(default=0)
+    height: Mapped[float] = mapped_column(default=0.0)
+    body_type: Mapped[str] = mapped_column(String(80), default="")
+    skin_tone: Mapped[str] = mapped_column(String(80), default="")
+    hair: Mapped[str] = mapped_column(String(120), default="")
+    beard: Mapped[str] = mapped_column(String(120), default="")
+    eyes: Mapped[str] = mapped_column(String(80), default="")
+    voice: Mapped[str] = mapped_column(String(120), default="")
+    default_style: Mapped[str] = mapped_column(String(160), default="")
+    lora_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    revision: Mapped[int] = mapped_column(default=1)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class PersonaImage(Base):
+    """PR003: a persona's reference to a stored asset.
+
+    The persona only REFERENCES existing assets (upload stays in the Asset
+    flow). `asset_id` is intentionally not a DB foreign key: the legacy
+    training flow (ETAPA 16 contract) creates personas whose reference ids
+    are filled in before the assets exist; the dedicated `/images` endpoint
+    validates existence at the API level.
+    """
+
+    __tablename__ = "persona_images"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    persona_id: Mapped[str] = mapped_column(String(36), index=True)
+    asset_id: Mapped[str] = mapped_column(String(36))
+    image_type: Mapped[str] = mapped_column(String(32), default="reference")
+    order_index: Mapped[int] = mapped_column(default=0)
+
+
+class PersonaWardrobe(Base):
+    """PR003: one wardrobe entry. `metadata` is a JSON document (Text, the
+    same SQLite/Postgres-portable convention `audit_log.detail` uses)."""
+
+    __tablename__ = "persona_wardrobe"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    persona_id: Mapped[str] = mapped_column(String(36), index=True)
+    name: Mapped[str] = mapped_column(String(120))
+    category: Mapped[str] = mapped_column(String(80), default="")
+    metadata_json: Mapped[str] = mapped_column("metadata", Text, default="{}")
+
+
+class PersonaIdentityRevision(Base):
+    """PR003: an append-only history row for every identity change.
+
+    Created on creation (revision 1) and on every PATCH that touches the
+    identity fields; `notes` is a JSON document describing what changed.
+    Never updated, never deleted — the persona's continuity story.
+    """
+
+    __tablename__ = "persona_identity_revision"
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    persona_id: Mapped[str] = mapped_column(String(36), index=True)
+    revision: Mapped[int] = mapped_column(default=1)
+    notes: Mapped[str] = mapped_column(Text, default="")
+    created_by: Mapped[str] = mapped_column(String(36), default="")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

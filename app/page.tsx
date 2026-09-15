@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   API_URL, Asset, AuthUser, DirectorBrief, GpuInfo, Job, LoraVersion, ModelOption, Readiness,
   authenticate, buildStoryboard, cancelJob, createImageJob, createPersona, createVideoJob, directIntent,
@@ -45,6 +46,7 @@ function greetingFor(hour: number): string {
 }
 
 export default function Home() {
+  const router = useRouter();
   const [active, setActive] = useState('director');
   const [prompt, setPrompt] = useState('A cinematic portrait of a Brazilian athlete in a brutalist city at blue hour');
   const [generated, setGenerated] = useState(false);
@@ -74,7 +76,7 @@ export default function Home() {
       <div className="nav-label">WORKSPACE</div>
       <nav>{modules.map(item => { const Icon = item.icon; return <button key={item.id} className={active === item.id ? 'selected' : ''} onClick={() => setActive(item.id)}><Icon size={18} /><span>{item.label}</span>{item.id === 'director' && <b className="nav-badge">CORE</b>}</button>; })}</nav>
       <div className="nav-label library-label">LIBRARY</div>
-      <nav><button onClick={() => setActive('assets')}><Folder size={18} /><span>Projects</span></button><button onClick={() => setActive('assets')}><Library size={18} /><span>All assets</span></button></nav>
+      <nav><button onClick={() => router.push('/studio/personas')}><UserRound size={18} /><span>Persona profiles</span><b className="nav-badge">SQL</b></button><button onClick={() => setActive('assets')}><Folder size={18} /><span>Projects</span></button><button onClick={() => setActive('assets')}><Library size={18} /><span>All assets</span></button></nav>
       <div className="sidebar-bottom">
         <div className="gpu-card">
           <div className="gpu-head"><span><span className={`status-dot ${gpu?.available ? '' : 'off'}`} /> {gpu === null ? 'Checking…' : gpu.available ? 'GPU ready' : 'No GPU'}</span><MoreHorizontal size={16} /></div>

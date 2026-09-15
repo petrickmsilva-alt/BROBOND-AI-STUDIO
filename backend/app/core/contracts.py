@@ -404,6 +404,91 @@ class PersonaSource(Protocol):
         ...
 
 
+@dataclass(frozen=True)
+class WardrobeItem:
+    """One entry of a persona's wardrobe (PR003).
+
+    `metadata` is free-form JSON that the product layer owns (fit, era, colour
+    notes...); the Core only carries it, never interprets it.
+    """
+
+    name: str
+    category: str = ""
+    metadata: dict[str, object] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ReferenceImage:
+    """A stored asset a persona points at (PR003).
+
+    The persona *references* an existing asset — it never owns the bytes.
+    `image_type` is the product vocabulary: face / body / style / reference.
+    """
+
+    asset_id: str
+    image_type: str = "reference"
+    order_index: int = 0
+
+
+@dataclass(frozen=True)
+class PersonaProfile:
+    """The full persistent persona as the Core sees it (PR003).
+
+    `identity` is the existing `PersonaMemory` (the prompt-facing identity,
+    versioned as before); the other fields are the product-level data the
+    persistent store carries: wardrobe, the LoRA asset that trains this
+    persona's look, and the reference images. A source that only knows
+    identities (the character ledger) still satisfies this shape with empty
+    collections — `MemoryResolver.resolve_persona` guarantees the profile
+    exists whenever the persona does.
+    """
+
+    identity: PersonaMemory
+    wardrobe: tuple[WardrobeItem, ...] = ()
+    lora_id: str | None = None
+    reference_images: tuple[ReferenceImage, ...] = ()
+
+    @property
+    def persona_id(self) -> str:
+        return self.identity.persona_id
+
+    @property
+    def default_style(self) -> str:
+        return self.identity.default_style
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "persona_id": self.persona_id,
+            "identity": self.identity.to_dict(),
+            "wardrobe": [
+                {"name": item.name, "category": item.category, "metadata": dict(item.metadata)}
+                for item in self.wardrobe
+            ],
+            "lora_id": self.lora_id,
+            "reference_images": [
+                {"asset_id": image.asset_id, "image_type": image.image_type, "order_index": image.order_index}
+                for image in self.reference_images
+            ],
+        }
+
+
+@runtime_checkable
+class PersonaProfileSource(Protocol):
+    """Where the full persona profile is read from (PR003).
+
+    Kept separate from `PersonaSource` on purpose: the identity protocol is
+    ETAPA 4's contract (frozen, implemented by the ledger and the seed
+    source) and this one is the richer product view. A source that only
+    implements it is a profile source; `MemoryResolver` takes it as an
+    optional second injection, so every existing `PersonaSource` keeps
+    working unchanged. The Core still never touches SQL: the API layer plugs
+    the repository-backed source in.
+    """
+
+    def get_profile(self, persona_id: str) -> PersonaProfile | None:
+        ...
+
+
 @runtime_checkable
 class StyleSource(Protocol):
     def fetch(self, style_id: str) -> StylePreset | None:

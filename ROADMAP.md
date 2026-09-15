@@ -19,13 +19,19 @@ todo provider — `generate(spec, output_dir)`, com `ImageProvider`/`VideoProvid
 Nenhum call site passa prompt solto ou `dict` de parâmetros. O bug de chave que fazia o
 worker devolver `cancelled` sem executar nada (P0-2a) foi corrigido.
 
-Pendências herdadas da auditoria que continuam abertas e bloqueiam geração real ponta a
-ponto: jobs ainda vivem em memória (`store`), então um worker Celery **em outro processo**
-ainda não enxerga o job da API (**P0-2b**). Endpoints sem autorização seguem abertos
-(**P0-4**: 10 de 58 rotas verificam identidade). **P0-3 foi fechado na ETAPA 11** com
-`publish_sync`, porque o worker Celery é síncrono e o hub era asyncio-only. **P0-1** permanece
-por decisão: quatro módulos mortos e quebrados que não foram apagados nem ressuscitados.
-Ver `docs/LIMITATIONS.md`.
+**Atualização PR002/PR003 (segurança e persistência):** os P0s pendentes foram
+fechados. **P0-2b** (jobs em memória): `JobRow` + `JobStore` — API e worker
+compartilham a tabela `jobs` (Alembic `0001`). **P0-4** (endpoints sem token):
+28 de 64 rotas exigem identidade, 3 a aceitam sem exigir e 33 são públicas por
+desenho; os 2 WebSockets autenticam por `?token=`. **P0-3** foi fechado na
+ETAPA 11 com `publish_sync`. **P0-1** permanece por decisão: quatro módulos
+mortos e quebrados, não apagados nem ressuscitados. E as **personas**
+deixaram a memória no PR003 (Persona Memory Engine): tabelas `personas` /
+`persona_images` / `persona_wardrobe` / `persona_identity_revision`
+(Alembic `0002`), `repositories/persona_repository.py` como única fronteira
+com o SQLAlchemy e `MemoryResolver.resolve_persona` injetado no Core por
+adapters — ver `docs/PERSONA_ENGINE.md`. O que ainda impede geração real
+ponta a ponta: GPU, pesos e providers instalados. Ver `docs/LIMITATIONS.md`.
 
 ## v1.0 — Workspace local
 

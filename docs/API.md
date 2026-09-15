@@ -13,7 +13,7 @@ mudar e o documento não for regenerado, a suíte falha.
 
 ## Resumo
 
-- **58** rotas HTTP sob `/api/v1`
+- **64** rotas HTTP sob `/api/v1`
 - **31** delas são `/api/v1/core/*` — a camada de decisão
 - **2** WebSockets
 - **12** tags
@@ -101,11 +101,17 @@ OpenAPI interativo em `/docs` (Swagger) e `/redoc` quando o serviço está no ar
 | `GET` | `/api/v1/models/image` | image_models |
 | `GET` | `/api/v1/models/video` | video_models |
 
-## `personas` — 4
+## `personas` — 10
 
 | Método | Rota | Descrição |
 | --- | --- | --- |
-| `POST` | `/api/v1/personas` | Register a persona and reserve a future LoRA training job (PR002: identity required). |
+| `GET` | `/api/v1/personas` | List the caller's persistent persona profiles (PR003). |
+| `POST` | `/api/v1/personas` | Register a persona and reserve a future LoRA training job. |
+| `DELETE` | `/api/v1/personas/{persona_id}` | Delete a persona profile and its children (PR003). |
+| `GET` | `/api/v1/personas/{persona_id}` | Read one of the caller's persona profiles (PR003; foreign ids 404). |
+| `PATCH` | `/api/v1/personas/{persona_id}` | Partially update a persona profile (PR003). |
+| `GET` | `/api/v1/personas/{persona_id}/images` | List a persona's image references (PR003). |
+| `POST` | `/api/v1/personas/{persona_id}/images` | Attach a stored image asset to a persona (PR003). |
 | `GET` | `/api/v1/personas/{persona_id}/loras` | list_persona_loras |
 | `POST` | `/api/v1/personas/{persona_id}/train` | Queue LoRA training for one of the caller's personas (PR002: identity required). |
 | `GET` | `/api/v1/personas/{persona_id}/training/{run_id}` | Read one of the caller's training runs (PR002: identity required). |

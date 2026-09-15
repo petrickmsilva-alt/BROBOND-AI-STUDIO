@@ -6,7 +6,89 @@ versões de produto do `ROADMAP.md`.
 
 ---
 
-## [Unreleased] — PR002: SEGURANÇA E PERSISTÊNCIA
+## [Unreleased] — PR003: PERSONA MEMORY ENGINE
+
+As personas deixam a memória do processo e ganham persistência em PostgreSQL
+(Bible §2: nada recriado, nada deletado, Core sem SQL). A arquitetura é
+preservada: o `Core` continua dependendo só de protocolos, e a nova camada de
+persistência fica entre as rotas e o banco.
+
+### Persistência (Alembic `0002`)
+
+- **4 novas tabelas** na migration idempotente `0002_persona_engine`
+  (`downgrade` é no-op documentado — a Bible proíbe drop de tabelas
+  históricas): `personas` (perfil + `uq_personas_workspace_slug`),
+  `persona_images` (referências a assets existentes), `persona_wardrobe`
+  (metadata JSON) e `persona_identity_revision` (histórico append-only).
+- **`backend/app/repositories/persona_repository.py`** (pacote novo, camada
+  app): `create` / `update` / `delete` / `find_by_id` / `find_by_slug` /
+  `list_workspace` + helpers de imagens/wardrobe/revisões. É o único lugar
+  que fala com os models SQLAlchemy; as rotas e o `MemoryResolver` dependem
+  dele. Sessões curtas por chamada, mesma convenção do `JobStore` (PR002).
+- **`knowledge_entries`** já existia na baseline `0001` (guard
+  idempotente), então o 0002 só cria as tabelas de persona.
+
+### Core evoluído (12 → continua 12 componentes, novos contratos)
+
+- `contracts.py`: `WardrobeItem`, `ReferenceImage`, `PersonaProfile` e o
+  protocolo opcional `PersonaProfileSource` — o `PersonaSource` original
+  (`fetch`/`search`) **não mudou**, todos os implementadores existentes
+  seguem válidos.
+- `MemoryResolver.resolve_persona(persona_id)`: devolve o perfil completo
+  (identidade + wardrobe + LoRA + imagens de referência), preferindo a fonte
+  persistente e derivando o perfil da identidade quando só existe o ledger
+  (personagens seed).
+- `main.py` (composition root): `_CompositePersonaSource` (persona
+  persistente → fallback ledger; o `search` global permanece apenas com
+  personagens — persona de um tenant nunca vaza para o catálogo) e
+  `_PersistentPersonaProfileSource`, injetados no resolver.
+- **Gerações herdaram a persona**: `ImageGenerationRequest`/
+  `VideoGenerationRequest` ganham `persona_id` opcional; a identidade e o
+  estilo padrão da persona persistida passam a chegar no `GenerationSpec`
+  via `MemoryResolver`, e o `lora_id` treinado da persona é herdado nos
+  parâmetros (LoRA explícito no request sempre vence).
+
+### API (6 rotas novas, todas `Depends(current_user)`)
+
+- `GET /api/v1/personas` — lista os perfis do workspace.
+- `GET /api/v1/personas/{id}` — perfil completo (wardrobe, imagens,
+  revisões).
+- `PATCH /api/v1/personas/{id}` — atualização parcial; mudança de
+  identidade incrementa `revision` e appende linha imutável em
+  `persona_identity_revision`; `wardrobe` (quando enviado) substitui o
+  guarda-roupa inteiro.
+- `DELETE /api/v1/personas/{id}` — remove perfil e filhas; assets
+  referenciados e histórico de treino permanecem.
+- `GET /api/v1/personas/{id}/images` — referências de imagem com
+  name/url do asset quando ele ainda existe.
+- `POST /api/v1/personas/{id}/images` — anexa asset **existente** do
+  workspace (só `kind=image`; 404 externo/ausente, 422 não-imagem, 409
+  duplicado). Upload continua apenas no fluxo de assets.
+- `POST /api/v1/personas` (existente) agora **persiste** o perfil no banco;
+  o contrato de request/response é inalterado (PersonaStudio e o fluxo de
+  treino funcionam sem mudança). Slug duplicado no workspace → 409.
+- `/personas/{id}/train` agora lê a persona do banco (sobrevive a restart)
+  e mantém o contrato legado de atualizar o conjunto de referências.
+
+### Frontend
+
+- Nova tela **`/studio/personas`** (Dark Premium): listar, criar, editar
+  identidade/wardrobe/estilo/LoRA, anexar imagens do acervo e excluir —
+  com histórico de revisões visível. `lib/api.ts` ganha as funções de
+  perfil; a página inicial ganha o atalho.
+
+### Testes e docs
+
+- `backend/tests/test_persona_engine.py` (19 testes): CRUD, isolamento de
+  workspace, slug único, revisões append-only, imagens, `resolve_persona`,
+  `/core/compile` consumindo persona persistida, herança de LoRA, catálogo
+  privado e as duas migrations (upgrade + downgrade sem drop).
+- `docs/PERSONA_ENGINE.md` novo; `ARCHITECTURE.md`, `docs/ETAPAS.md`,
+  `docs/LIMITATIONS.md`, `ROADMAP.md` e `docs/API.md` atualizados.
+
+---
+
+## [2026-09-15] — PR002: SEGURANÇA E PERSISTÊNCIA (entregue no PR #6)
 
 O backend passa a ser um ambiente de produção sem alterar a arquitetura
 (Bible §2/§18): a auditoria `SPRINT1_AUDIT_REPORT.md` (P0-2 e P0-4) foi
