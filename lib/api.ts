@@ -684,3 +684,132 @@ export function retryRenderBatch(batchId: string) {
     {},
   );
 }
+
+// ---------------------------------------------------------------------------
+// V3.1 — Cinematic Knowledge Graph
+// ---------------------------------------------------------------------------
+
+export interface GraphNode {
+  id: string;
+  workspace_id: string;
+  entity_type: string;
+  name: string;
+  slug: string;
+  attributes: Record<string, unknown>;
+  aliases: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GraphEdge {
+  id: string;
+  workspace_id: string;
+  source_id: string;
+  target_id: string;
+  relation: string;
+  inverse: string;
+  created_at: string;
+}
+
+export interface GraphNodeList {
+  nodes: GraphNode[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface GraphEdgeList {
+  edges: GraphEdge[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface GraphQueryMatch {
+  node: GraphNode;
+  score: number;
+  matched_fields: string[];
+}
+
+export interface GraphQueryResult {
+  query: string;
+  entity_type: string | null;
+  count: number;
+  matches: GraphQueryMatch[];
+}
+
+export interface GraphNeighborhood {
+  node: GraphNode;
+  depth: number;
+  direction: string;
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
+export interface GraphCharacterRelation {
+  relation: string;
+  direction: 'out' | 'in';
+  peer: GraphNode;
+  phrase: string;
+}
+
+export interface GraphCharacterContext {
+  name: string;
+  found: boolean;
+  persona_id: string | null;
+  node: GraphNode | null;
+  phrases: string[];
+  relations: GraphCharacterRelation[];
+  relation_counts: Record<string, number>;
+}
+
+export interface GraphSeedReport {
+  created_nodes: number;
+  created_edges: number;
+  skipped_nodes: number;
+  skipped_edges: number;
+}
+
+export function listGraphNodes(params?: { entity_type?: string; limit?: number; offset?: number }) {
+  const query = new URLSearchParams();
+  if (params?.entity_type) query.set('entity_type', params.entity_type);
+  if (params?.limit !== undefined) query.set('limit', String(params.limit));
+  if (params?.offset !== undefined) query.set('offset', String(params.offset));
+  const suffix = query.toString();
+  return get<GraphNodeList>(`/api/v1/graph/nodes${suffix ? `?${suffix}` : ''}`);
+}
+
+export function listGraphEdges(params?: { relation?: string; limit?: number; offset?: number }) {
+  const query = new URLSearchParams();
+  if (params?.relation) query.set('relation', params.relation);
+  if (params?.limit !== undefined) query.set('limit', String(params.limit));
+  if (params?.offset !== undefined) query.set('offset', String(params.offset));
+  const suffix = query.toString();
+  return get<GraphEdgeList>(`/api/v1/graph/edges${suffix ? `?${suffix}` : ''}`);
+}
+
+export function queryGraph(q: string, params?: { entity_type?: string; limit?: number }) {
+  const query = new URLSearchParams({ q });
+  if (params?.entity_type) query.set('entity_type', params.entity_type);
+  if (params?.limit !== undefined) query.set('limit', String(params.limit));
+  return get<GraphQueryResult>(`/api/v1/graph/query?${query.toString()}`);
+}
+
+export function graphNeighbors(
+  nodeId: string,
+  params?: { depth?: 1 | 2; direction?: 'out' | 'in' | 'both' },
+) {
+  const query = new URLSearchParams();
+  if (params?.depth !== undefined) query.set('depth', String(params.depth));
+  if (params?.direction) query.set('direction', params.direction);
+  const suffix = query.toString();
+  return get<GraphNeighborhood>(`/api/v1/graph/nodes/${nodeId}/neighbors${suffix ? `?${suffix}` : ''}`);
+}
+
+export function graphCharacterContext(name: string) {
+  return get<GraphCharacterContext>(`/api/v1/graph/characters/${encodeURIComponent(name)}/context`);
+}
+
+export function seedGraphDemo() {
+  return post<GraphSeedReport>('/api/v1/graph/seed', {});
+}

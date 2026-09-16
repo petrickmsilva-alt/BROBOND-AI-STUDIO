@@ -46,8 +46,9 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      # PR004.1 + PR006: Project Memory and StoryboardState behavioral suites
-      # with a 95% coverage gate (vitest, scoped to lib/memory/ and lib/storyboard/).
-      - name: Frontend contract tests (Memory + Storyboard)
+      # PR004.1 + PR006 + V3.1: Project Memory, StoryboardState and Knowledge
+      # Graph layout behavioral suites with a 95% coverage gate (vitest,
+      # scoped to lib/memory/, lib/storyboard/ and lib/graph/).
+      - name: Frontend contract tests (Memory + Storyboard + Graph)
         run: npm run test:frontend:coverage
       - run: npm run build

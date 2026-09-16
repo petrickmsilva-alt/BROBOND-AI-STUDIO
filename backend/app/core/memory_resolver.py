@@ -14,6 +14,7 @@ from dataclasses import replace
 
 from .contracts import (
     PERSONA_IDENTITY_FIELDS,
+    GraphContextSource,
     PersonaMemory,
     PersonaProfile,
     PersonaProfileSource,
@@ -87,11 +88,22 @@ class MemoryResolver:
     injection. When no profile source is present, `resolve_persona` derives
     the profile from the identity alone, so the pre-PR003 call graph behaves
     exactly as it did.
+
+    V3.1: the resolver can also serve Knowledge Graph context through an
+    optional `GraphContextSource` injection (`context_phrases`). With no
+    source the method returns empty, so the pre-V3.1 call graph behaves
+    exactly as it did — enrichment is explicit, never implicit.
     """
 
-    def __init__(self, source: PersonaSource | None = None, profile_source: PersonaProfileSource | None = None) -> None:
+    def __init__(
+        self,
+        source: PersonaSource | None = None,
+        profile_source: PersonaProfileSource | None = None,
+        context_source: GraphContextSource | None = None,
+    ) -> None:
         self._source: PersonaSource = source or SeedPersonaSource()
         self._profile_source: PersonaProfileSource | None = profile_source
+        self._context_source: GraphContextSource | None = context_source
 
     # ------------------------------------------------------------------ lookup
 
@@ -133,6 +145,27 @@ class MemoryResolver:
             return None
         matches = self._source.search(name.strip())
         return matches[0] if matches else None
+
+    def context_phrases(self, persona_id: str | None) -> tuple[str, ...]:
+        """V3.1: Knowledge Graph phrases for a persona, or empty.
+
+        Resolves the persona to its display name and asks the injected
+        graph source. Never raises for a missing persona or a missing
+        source: no graph data simply means no enrichment. The identity
+        phrase — and therefore every `GenerationSpec` — is untouched by
+        this method; enrichment is consumed explicitly by callers that
+        ask for it (the graph context route, future continuity locks).
+        """
+
+        if self._context_source is None or not persona_id:
+            return ()
+        persona = self._source.fetch(persona_id)
+        if persona is None:
+            return ()
+        context = self._context_source.get_context(persona.name)
+        if context is None:
+            return ()
+        return tuple(context.phrases)
 
     def catalog(self) -> list[PersonaMemory]:
         return self._source.search()

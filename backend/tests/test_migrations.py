@@ -61,6 +61,8 @@ def test_fresh_database_gets_the_full_schema(temp_database) -> None:
     for expected in (
         "users", "workspaces", "projects", "assets", "training_runs",
         "knowledge_entries", "jobs", "audit_log", "alembic_version",
+        # V3.1 (migration 0003): the Cinematic Knowledge Graph tables.
+        "graph_nodes", "graph_edges",
     ):
         assert expected in tables, f"{expected} missing from a fresh schema"
 
@@ -119,7 +121,7 @@ def test_a_legacy_database_upgrades_in_place(temp_database) -> None:
         assert "workspace_id" in columns, "the legacy column was not added"
         # And the new tables appeared alongside.
         names = set(inspect(engine).get_table_names())
-        assert {"jobs", "audit_log"} <= names
+        assert {"jobs", "audit_log", "graph_nodes", "graph_edges"} <= names
     finally:
         engine.dispose()
 

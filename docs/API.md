@@ -13,14 +13,14 @@ mudar e o documento não for regenerado, a suíte falha.
 
 ## Resumo
 
-- **74** rotas HTTP sob `/api/v1`
+- **86** rotas HTTP sob `/api/v1`
 - **32** delas são `/api/v1/core/*` — a camada de decisão
 - **3** WebSockets
-- **14** tags
+- **15** tags
 
 OpenAPI interativo em `/docs` (Swagger) e `/redoc` quando o serviço está no ar.
 
-PR006 Storyboard Cinematic Engine não adiciona rotas de render: a UI edita um `StoryboardState` versionado sobre o `ProductionPlan` retornado por `/api/v1/core/director/production-plan`. PR007 adiciona `/api/v1/providers` para health/capabilities do registry universal, sem expor segredos. PR008 adiciona seis rotas `/api/v1/render/*` (lotes de render com identidade) e o WebSocket `/ws/render/{batch_id}` com progresso por push, sem polling.
+PR006 Storyboard Cinematic Engine não adiciona rotas de render: a UI edita um `StoryboardState` versionado sobre o `ProductionPlan` retornado por `/api/v1/core/director/production-plan`. PR007 adiciona `/api/v1/providers` para health/capabilities do registry universal, sem expor segredos. PR008 adiciona seis rotas `/api/v1/render/*` (lotes de render com identidade) e o WebSocket `/ws/render/{batch_id}` com progresso por push, sem polling. V3.1 adiciona doze rotas `/api/v1/graph/*` (Cinematic Knowledge Graph com identidade: CRUD de nós/arestas, busca semântica, vizinhança e contexto de personagem para o Director AI).
 
 ## `assets` — 4
 
@@ -89,6 +89,23 @@ PR006 Storyboard Cinematic Engine não adiciona rotas de render: a UI edita um `
 | `POST` | `/api/v1/generations/images` | Create an image job. Authenticated jobs are persisted to the user's asset library. |
 | `POST` | `/api/v1/generations/videos` | Create an H.264 video job for the configured video provider. |
 | `GET` | `/api/v1/jobs/{job_id}` | Read one of the caller's jobs (PR002: identity required). |
+
+## `graph` — 12
+
+| Método | Rota | Descrição |
+| --- | --- | --- |
+| `GET` | `/api/v1/graph/characters/{name}/context` | CharacterGraph: identity, relations and phrases for one character (V3.1). |
+| `GET` | `/api/v1/graph/edges` | List the caller's graph edges, filterable by endpoint or relation (V3.1). |
+| `POST` | `/api/v1/graph/edges` | Relate two nodes; the verb is normalised onto the engine vocabulary (V3.1). |
+| `DELETE` | `/api/v1/graph/edges/{edge_id}` | Delete one graph edge; the endpoint nodes are untouched (V3.1). |
+| `GET` | `/api/v1/graph/neighbors/{node_id}` | Walk the graph around one node: depth 1-3, in/out/both directions (V3.1). |
+| `GET` | `/api/v1/graph/nodes` | List the caller's graph nodes, optionally filtered by entity type (V3.1). |
+| `POST` | `/api/v1/graph/nodes` | Create a knowledge-graph node in the caller's workspace (V3.1: identity required). |
+| `DELETE` | `/api/v1/graph/nodes/{node_id}` | Delete a graph node and its incident edges in both directions (V3.1). |
+| `GET` | `/api/v1/graph/nodes/{node_id}` | Read one of the caller's graph nodes (V3.1; foreign ids 404). |
+| `PATCH` | `/api/v1/graph/nodes/{node_id}` | Partially update a graph node; attributes/aliases replace wholesale (V3.1). |
+| `GET` | `/api/v1/graph/query` | Semantic search over the caller's graph: names, aliases, attributes (V3.1). |
+| `POST` | `/api/v1/graph/seed` | Load the demonstration graph into the caller's workspace, idempotently (V3.1). |
 
 ## `knowledge` — 1
 

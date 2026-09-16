@@ -6,6 +6,37 @@ versões de produto do `ROADMAP.md`.
 
 ---
 
+## [Unreleased] — V3.1: CINEMATIC KNOWLEDGE GRAPH
+
+V3.1 conecta personagens, marcas, campanhas, lugares, veículos, figurino e
+objetos num grafo persistente por workspace, com busca semântica PT/EN e
+contexto de personagem para o Director AI. O Director, o Provider Registry e
+o Render Engine não foram alterados — o grafo enriquece, nunca reescreve, o
+`GenerationSpec`.
+
+### O que mudou
+
+- **Pacote `backend/app/graph/`** — `graph_models.py` (2 tabelas, 7 tipos de
+  entidade), `relationship_engine.py` (16 relações canônicas + aliases PT,
+  travessia BFS bidirecional, frases em voz ativa), `semantic_query.py`
+  (8 tiers determinísticos 100–30, sem embeddings) e `graph_repository.py`
+  (CRUD com escopo de workspace, seed idempotente).
+- **Migração Alembic `0003`** — tabelas `graph_nodes`/`graph_edges`, idempotente.
+- **Contratos** — `GraphContext`/`GraphContextSource` em `core/contracts.py`;
+  `MemoryResolver.context_phrases()` (injeção opcional; sem source, vazio).
+- **Rotas** — doze endpoints `/api/v1/graph/*` com identidade (CRUD de
+  nós/arestas, busca, vizinhança 1–3 saltos, contexto de personagem, seed),
+  404 para id estrangeiro, audit em cada mutação.
+- **UI `/studio/knowledge`** — canvas SVG radial determinístico, busca, filtros
+  por tipo, detalhe com vizinhança e contexto do Director AI.
+- **Testes** — 201 testes novos (`test_graph_*.py`, 5 arquivos); pacote
+  `backend/app/graph/` em 100% executável; frontend `lib/graph/layout.ts`
+  em 100% (vitest, gate de 95%).
+
+Documentação nova: `docs/KNOWLEDGE_GRAPH.md`.
+
+---
+
 ## [Unreleased] — PR009: REAL AI CONNECTORS
 
 PR009 liga os adapters de provider a motores reais (Flux para imagem, Wan 2.1 para

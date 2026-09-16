@@ -494,6 +494,47 @@ class PersonaProfileSource(Protocol):
         ...
 
 
+@dataclass(frozen=True)
+class GraphContext:
+    """V3.1: what the Knowledge Graph knows about one subject.
+
+    Vocabulary only: the subject's display name, the relation phrases that
+    describe it (``Petrick dirige RAM``) and how many relations produced
+    them. ``GenerationSpec`` is untouched by this contract — the phrases are
+    enrichment for callers that ask, never an implicit prompt rewrite.
+    """
+
+    subject: str
+    phrases: tuple[str, ...] = ()
+    relation_count: int = 0
+
+    def to_dict(self) -> dict:
+        return {
+            "subject": self.subject,
+            "phrases": list(self.phrases),
+            "relation_count": self.relation_count,
+        }
+
+    @property
+    def is_empty(self) -> bool:
+        return not self.phrases
+
+
+@runtime_checkable
+class GraphContextSource(Protocol):
+    """Where graph context is read from (V3.1).
+
+    Kept separate from ``PersonaSource``/``PersonaProfileSource`` on purpose:
+    those are the identity contracts (frozen), this one is the relational
+    view. ``MemoryResolver`` takes it as an optional third injection, so
+    every existing construction keeps working unchanged. The Core still never
+    touches SQL: the API layer plugs the graph-backed source in.
+    """
+
+    def get_context(self, subject: str) -> GraphContext | None:
+        ...
+
+
 @runtime_checkable
 class StyleSource(Protocol):
     def fetch(self, style_id: str) -> StylePreset | None:
