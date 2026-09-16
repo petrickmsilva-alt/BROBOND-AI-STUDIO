@@ -76,7 +76,11 @@ def render() -> str:
         "contexto de personagem para o Director AI). V3.2 adiciona treze rotas "
         "`/api/v1/continuity/*` (Character Continuity Engine com identidade: "
         "cinco locks com fingerprint, resolver persona+campanha+episódio e "
-        "histórico imutável de episódios).\n"
+        "histórico imutável de episódios). V3.3 adiciona sete rotas "
+        "`/api/v1/campaigns/*` (Campaign Builder com identidade: interpretar "
+        "um briefing, criar a campanha completa com sete entregáveis e "
+        "timeline de cinco dias, duplicar, anexar entregas reais e exportar "
+        "o ZIP com manifesto).\n"
     )
 
     for tag in sorted(by_tag):

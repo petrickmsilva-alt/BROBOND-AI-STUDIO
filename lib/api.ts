@@ -984,3 +984,129 @@ export function listContinuityEpisodes(params?: { persona_id?: string; campaign_
   const suffix = query.toString();
   return get<ContinuityEpisode[]>(`/api/v1/continuity/episodes${suffix ? `?${suffix}` : ''}`);
 }
+
+// ---------------------------------------------------------------------------
+// V3.3 — Campaign Builder
+// ---------------------------------------------------------------------------
+
+export type CampaignBriefInfo = {
+  id: string;
+  campaign_id: string;
+  raw_text: string;
+  product: string;
+  product_type: string;
+  audience: string;
+  platform: string;
+  objective: string;
+  duration_seconds: number;
+  cta: string;
+  missing: string[];
+  matched: string[];
+  created_at: string;
+};
+
+export type CampaignAsset = {
+  id: string;
+  campaign_id: string;
+  day: number;
+  kind: string;
+  label: string;
+  medium: 'video' | 'image' | string;
+  aspect_ratio: string;
+  width: number;
+  height: number;
+  duration_seconds: number | null;
+  prompt: string;
+  cta: string;
+  status: 'planned' | 'delivered' | string;
+  output_key: string | null;
+  thumbnail_key: string | null;
+  position: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CampaignEpisode = {
+  id: string;
+  campaign_id: string;
+  day: number;
+  focus: string;
+  cta: string;
+  notes: string;
+  asset_kinds: string[];
+  created_at: string;
+};
+
+export type CampaignExportInfo = {
+  id: string;
+  campaign_id: string;
+  object_key: string;
+  download_url: string;
+  file_count: number;
+  sha256: string;
+  created_at: string;
+};
+
+export type Campaign = {
+  id: string;
+  workspace_id: string;
+  name: string;
+  product: string;
+  product_type: string;
+  audience: string;
+  platform: string;
+  objective: string;
+  status: string;
+  seed: number;
+  primary_cta: string;
+  created_at: string;
+  updated_at: string;
+};
+
+export type CampaignDetail = Campaign & {
+  brief: CampaignBriefInfo | null;
+  assets: CampaignAsset[];
+  episodes: CampaignEpisode[];
+  exports: CampaignExportInfo[];
+};
+
+export type CampaignInterpretation = {
+  raw_text: string;
+  name: string;
+  product: string;
+  product_type: string;
+  audience: string;
+  platform: string;
+  objective: string;
+  duration_seconds: number;
+  missing: string[];
+  matched: string[];
+};
+
+export function interpretBriefing(briefing: string) {
+  return post<CampaignInterpretation>('/api/v1/campaigns/interpret', { briefing });
+}
+
+export function createCampaign(payload: { briefing: string; name?: string }) {
+  return post<CampaignDetail>('/api/v1/campaigns', payload);
+}
+
+export function listCampaigns() {
+  return get<Campaign[]>('/api/v1/campaigns');
+}
+
+export function getCampaign(campaignId: string) {
+  return get<CampaignDetail>(`/api/v1/campaigns/${encodeURIComponent(campaignId)}`);
+}
+
+export function duplicateCampaign(campaignId: string, name?: string) {
+  return post<CampaignDetail>(`/api/v1/campaigns/${encodeURIComponent(campaignId)}/duplicate`, { name: name ?? null });
+}
+
+export function deliverCampaignAsset(campaignId: string, assetId: string, payload: { output_key?: string; thumbnail_key?: string }) {
+  return post<CampaignAsset>(`/api/v1/campaigns/${encodeURIComponent(campaignId)}/assets/${encodeURIComponent(assetId)}/deliver`, payload);
+}
+
+export function exportCampaign(campaignId: string) {
+  return post<CampaignExportInfo>(`/api/v1/campaigns/${encodeURIComponent(campaignId)}/export`, {});
+}

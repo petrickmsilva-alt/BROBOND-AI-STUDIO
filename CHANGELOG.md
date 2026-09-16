@@ -6,7 +6,50 @@ versões de produto do `ROADMAP.md`.
 
 ---
 
-## [Unreleased] — V3.2: CHARACTER CONTINUITY ENGINE
+## [Unreleased] — V3.3: CAMPAIGN BUILDER
+
+V3.3 transforma um único briefing em uma campanha completa: sete entregáveis,
+timeline de cinco dias, deck de CTAs que nunca repete e ZIP de exportação.
+O Director AI, o Provider Registry e o Render Engine não foram alterados — o
+builder planeja, agenda e empacota; um ativo só vira `delivered` quando um
+arquivo real é anexado a ele.
+
+### O que mudou
+
+- **Pacote `backend/app/campaign/`** — `brief_interpreter.py` (leitura
+  determinística PT/EN do briefing: produto, público, plataforma, duração,
+  objetivo — com lista honesta de `missing` para todo default), `cta_engine.py`
+  (deck de 28 templates embaralhado por seed de campanha; sortear nunca repete,
+  por construção), `timeline_builder.py` (catálogo dos 7 entregáveis + plano
+  Dia 1..Dia 5 com foco/ativos diferentes por dia + composição de prompt por
+  formato), `export_center.py` (manifesto + prompt + metadata + binários
+  entregues em um ZIP determinístico com sha256) e `campaign_service.py`
+  (orquestra tudo e expande os prompts pelo `PromptEnhancer` existente).
+- **Migração Alembic `0005`** — tabelas `campaigns`, `campaign_briefs`,
+  `campaign_episodes`, `campaign_assets` e `campaign_exports`, idempotente.
+- **Rotas** — sete endpoints `/api/v1/campaigns/*` com identidade
+  (interpret, create, list, detail, duplicate, deliver, export), 404 para id
+  estrangeiro, 422 para briefing vazio e entrega inválida, audit em cada
+  mutação; o ZIP é servido pela rota autenticada `/assets/download/{key}`.
+- **UI `/studio/campaigns`** — BriefPanel (interpretar + criar),
+  CampaignCalendar (Dia 1..Dia 5 com ativos e CTAs), CampaignAssets (sete
+  entregáveis com prompt, CTA e anexar entrega real), ExportPanel (exportar
+  ZIP, baixar, duplicar campanha); erros distinguem offline, anônimo e
+  rejeição.
+- **Testes** — 138 testes novos (`test_campaign_*.py`, 7 arquivos); pacote
+  `backend/app/campaign/` em **100%** de cobertura.
+
+### Invariantes
+
+- Nunca repetir CTA dentro da campanha (o deck valida unicidade; duplicar
+  cunha seed nova e re-armar o deck).
+- Cada dia da timeline roda um conjunto **diferente** de ativos.
+- Nada é inventado: export sem arquivo entregue sai só com texto; entrega
+  exige chave do próprio workspace existente no storage.
+
+---
+
+## [V3.2] — CHARACTER CONTINUITY ENGINE
 
 V3.2 congela o que cada personagem é, veste, onde está, o que dirige e como
 soa — por campanha, com override por episódio, fingerprint visual e

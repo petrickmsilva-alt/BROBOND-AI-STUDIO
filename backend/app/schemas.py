@@ -1424,3 +1424,130 @@ class ContinuityEpisodeResponse(BaseModel):
     notes: str = ""
     snapshot: dict[str, Any] = Field(default_factory=dict)
     created_at: str = ""
+
+
+# ---------------------------------------------------------------------------
+# V3.3 — Campaign Builder
+# ---------------------------------------------------------------------------
+
+
+class CampaignBriefingRequest(BaseModel):
+    """One raw briefing line — the only input the builder needs."""
+
+    briefing: str = Field(min_length=1, max_length=2000)
+
+
+class CampaignCreateRequest(CampaignBriefingRequest):
+    name: str | None = Field(default=None, max_length=160)
+
+
+class CampaignDuplicateRequest(BaseModel):
+    name: str | None = Field(default=None, max_length=160)
+
+
+class CampaignDeliverRequest(BaseModel):
+    """Attach real stored files to a planned asset (planned → delivered)."""
+
+    output_key: str | None = Field(default=None, max_length=500)
+    thumbnail_key: str | None = Field(default=None, max_length=500)
+
+
+class CampaignInterpretationResponse(BaseModel):
+    """The Brief Interpreter's read, before anything is persisted."""
+
+    raw_text: str
+    name: str
+    product: str
+    product_type: str = ""
+    audience: str = ""
+    platform: str = ""
+    objective: str = ""
+    duration_seconds: int = 15
+    missing: list[str] = Field(default_factory=list)
+    matched: list[str] = Field(default_factory=list)
+
+
+class CampaignBriefResponse(BaseModel):
+    id: str
+    workspace_id: str
+    campaign_id: str
+    raw_text: str
+    product: str = ""
+    product_type: str = ""
+    audience: str = ""
+    platform: str = ""
+    objective: str = ""
+    duration_seconds: int = 15
+    cta: str = ""
+    missing: list[str] = Field(default_factory=list)
+    matched: list[str] = Field(default_factory=list)
+    created_at: str = ""
+
+
+class CampaignAssetResponse(BaseModel):
+    id: str
+    workspace_id: str
+    campaign_id: str
+    day: int
+    kind: str
+    label: str = ""
+    medium: str = "image"
+    aspect_ratio: str = "1:1"
+    width: int = 1080
+    height: int = 1080
+    duration_seconds: int | None = None
+    prompt: str = ""
+    cta: str = ""
+    status: str = "planned"
+    output_key: str | None = None
+    thumbnail_key: str | None = None
+    position: int = 0
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class CampaignEpisodeResponse(BaseModel):
+    id: str
+    workspace_id: str
+    campaign_id: str
+    day: int
+    focus: str = ""
+    cta: str = ""
+    notes: str = ""
+    asset_kinds: list[str] = Field(default_factory=list)
+    created_at: str = ""
+
+
+class CampaignExportResponse(BaseModel):
+    id: str
+    workspace_id: str
+    campaign_id: str
+    object_key: str
+    #: Relative download path (proxied by the frontend's origin).
+    download_url: str = ""
+    file_count: int = 0
+    sha256: str = ""
+    created_at: str = ""
+
+
+class CampaignResponse(BaseModel):
+    id: str
+    workspace_id: str
+    name: str
+    product: str
+    product_type: str = ""
+    audience: str = ""
+    platform: str = ""
+    objective: str = ""
+    status: str = "active"
+    seed: int = 0
+    primary_cta: str = ""
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class CampaignDetailResponse(CampaignResponse):
+    brief: CampaignBriefResponse | None = None
+    assets: list[CampaignAssetResponse] = Field(default_factory=list)
+    episodes: list[CampaignEpisodeResponse] = Field(default_factory=list)
+    exports: list[CampaignExportResponse] = Field(default_factory=list)

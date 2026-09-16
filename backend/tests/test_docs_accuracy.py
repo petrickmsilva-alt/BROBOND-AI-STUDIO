@@ -296,7 +296,7 @@ def _identity_dependency(route) -> str | None:
 
 
 def test_the_authorisation_count_is_the_real_one(inventory) -> None:
-    """62 of 99 routes touch identity — 59 require it, 3 do not (V3.2).
+    """69 of 106 routes touch identity — 66 require it, 3 do not (V3.3).
 
     PR002 closed the P0-2 exposure: 25 of 58 (22 required, 3 optional).
     PR003 added the six persona-profile routes, all `Depends(current_user)`;
@@ -308,11 +308,14 @@ def test_the_authorisation_count_is_the_real_one(inventory) -> None:
     like personas): 49 of 86 (46 required, 3 optional). V3.2 adds the thirteen
     continuity routes, all `Depends(current_user)` (locks and episodes are
     tenant product data, like personas): 62 of 99 (59 required, 3 optional).
-    Before PR002 the numbers were 10 (6 required, 4 optional). The prose and
-    the guard move together, because the three numbers drift independently of
-    each other. The three WebSockets are also authenticated, through the
-    `token` query parameter (see test_security_authorization.py) — they are
-    not routes, so they are not in the count.
+    V3.3 adds the seven campaign routes, all `Depends(current_user)`
+    (campaigns are tenant product data, like personas): 69 of 106 (66
+    required, 3 optional). Before PR002 the numbers were 10 (6 required,
+    4 optional). The prose and the guard move together, because the three
+    numbers drift independently of each other. The three WebSockets are also
+    authenticated, through the `token` query parameter (see
+    test_security_authorization.py) — they are not routes, so they are not in
+    the count.
     """
 
     kinds = [_identity_dependency(r) for r in inventory["http"]]
@@ -320,7 +323,7 @@ def test_the_authorisation_count_is_the_real_one(inventory) -> None:
     optional = len([k for k in kinds if k == "optional_user"])
     touching = required + optional
 
-    assert required == 59, f"rotas exigindo token mudaram: {required}"
+    assert required == 66, f"rotas exigindo token mudaram: {required}"
     assert optional == 3, f"rotas com identidade opcional mudaram: {optional}"
 
     text = _read(LIMITATIONS)

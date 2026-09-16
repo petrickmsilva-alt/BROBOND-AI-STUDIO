@@ -65,6 +65,9 @@ def test_fresh_database_gets_the_full_schema(temp_database) -> None:
         "graph_nodes", "graph_edges",
         # V3.2 (migration 0004): the Character Continuity Engine tables.
         "continuity_locks", "continuity_episodes",
+        # V3.3 (migration 0005): the Campaign Builder tables.
+        "campaigns", "campaign_briefs", "campaign_episodes", "campaign_assets",
+        "campaign_exports",
     ):
         assert expected in tables, f"{expected} missing from a fresh schema"
 

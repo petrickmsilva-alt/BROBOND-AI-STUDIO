@@ -757,6 +757,28 @@ o contexto resolvido e nunca se movem com re-locks. Treze rotas
 `/api/v1/continuity/*` (tag `continuity`), todas com identidade, e a UI
 `/studio/continuity`. Detalhes em `docs/CHARACTER_CONTINUITY.md`.
 
+## Campaign Builder (V3.3)
+
+Um briefing vira uma campanha completa — sete entregáveis, timeline de cinco
+dias, deck de CTAs que nunca repete e ZIP de exportação. Cinco tabelas
+(`campaigns`, `campaign_briefs`, `campaign_episodes`, `campaign_assets`,
+`campaign_exports`, migração `0005`) e quatro módulos framework-free em
+`backend/app/campaign/`:
+
+```text
+POST /campaigns/interpret  -> InterpretedBrief (produto, público, plataforma, duração, objetivo)
+POST /campaigns            -> campanha completa: 7 deliverables + Dia 1..Dia 5 + CTA deck
+POST /campaigns/{id}/duplicate -> cópia com seed nova (CTAs re-armados, entregas zeradas)
+POST /campaigns/{id}/assets/{asset_id}/deliver -> arquivo real anexado (planned -> delivered)
+POST /campaigns/{id}/export    -> ZIP: manifest + prompts + metadata + binários entregues
+```
+
+O builder planeja, agenda e empacota — nunca renderiza. O prompt de cada
+entregável passa pelo `PromptEnhancer` existente (fachada do `PromptCompiler`
+do Core); o ZIP é servido pela rota autenticada de assets. Sete rotas
+`/api/v1/campaigns/*` (tag `campaign`), todas com identidade, e a UI
+`/studio/campaigns`. Detalhes em `docs/CAMPAIGN_BUILDER.md`.
+
 ## Prompt compiler (ETAPA 9)
 
 `SYSTEM_PROMPT.md` declara treze blocos. Até a ETAPA 9 só dez eram emitidos e a junção não
