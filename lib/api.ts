@@ -405,10 +405,57 @@ export type UniversalProvider = {
   capabilities: ProviderCapabilities;
   reason?: string | null;
   loaded: boolean;
+  /** PR009: when the health report was produced (UTC ISO-8601). */
+  last_health_at?: string | null;
+  /** PR009: explicit availability flag (status === 'ready'). */
+  available?: boolean;
+};
+
+/** PR009: outcome of the real-test button on /studio/providers. */
+export type ProviderTestResult = {
+  provider_id: string;
+  executed_provider_id: string;
+  kind: string;
+  success: boolean;
+  fallback: boolean;
+  fallback_reason?: string | null;
+  error_code?: string | null;
+  attempts: number;
+  latency_ms: number;
+  queue_time_ms: number;
+  render_time_ms: number;
+  asset_kind: string;
+  asset_bytes: number;
+};
+
+/** PR009: one provider execution record from the telemetry store. */
+export type ProviderTelemetryRecord = {
+  provider_id: string;
+  requested_provider_id: string;
+  spec_id: string;
+  kind: string;
+  success: boolean;
+  error_code?: string | null;
+  latency_ms: number;
+  queue_time_ms: number;
+  render_time_ms: number;
+  attempts: number;
+  fallback: boolean;
+  fallback_reason?: string | null;
+  job_id?: string | null;
+  at: string;
 };
 
 export function listProviders() {
   return get<UniversalProvider[]>('/api/v1/providers');
+}
+
+export function testProvider(providerId: string) {
+  return post<ProviderTestResult>(`/api/v1/providers/${providerId}/test`, {});
+}
+
+export function listProviderTelemetry(limit = 50) {
+  return get<ProviderTelemetryRecord[]>(`/api/v1/providers/telemetry?limit=${limit}`);
 }
 
 export function providerAdapters(kind?: 'image' | 'video') {

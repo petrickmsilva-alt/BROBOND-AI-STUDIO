@@ -437,22 +437,24 @@ def inference_on(monkeypatch):
 def test_the_worker_refuses_a_render_that_was_never_written(inference_on, monkeypatch) -> None:
     """The original defect, end to end: this used to be reported `complete`."""
 
-    from app.providers.image import GenerationOutput
+    from app.providers.base_provider import ProviderAsset
 
     from app.queue import process_generation
     from app.schemas import GenerationType, Job
     from app.store import store
 
-    import app.providers.image as image_module
+    import app.providers.flux_provider as flux_module
 
-    class LyingProvider:
-        def __init__(self, model_id: str = "x") -> None:
-            pass
+    def lying_generate(self, spec, output_dir):
+        return ProviderAsset(
+            path="/tmp/does-not-exist.png",
+            kind="image",
+            provider_id=self.provider_id,
+            width=512,
+            height=512,
+        )
 
-        def generate(self, spec, output_dir):
-            return GenerationOutput("/tmp/does-not-exist.png", 512, 512)
-
-    monkeypatch.setattr(image_module, "FluxDiffusersProvider", LyingProvider)
+    monkeypatch.setattr(flux_module.FluxProvider, "generate_image", lying_generate)
 
     job = store.add_job(Job(type=GenerationType.IMAGE, prompt="x", parameters={}))
     result = process_generation(str(job.id))
@@ -466,25 +468,23 @@ def test_the_worker_refuses_a_render_that_was_never_written(inference_on, monkey
 def test_the_worker_refuses_a_frame_that_contradicts_the_spec(
     inference_on, monkeypatch, tmp_path
 ) -> None:
-    from app.providers.image import GenerationOutput
+    from app.providers.base_provider import ProviderAsset
 
     from app.queue import process_generation
     from app.schemas import GenerationType, Job
     from app.store import store
 
-    import app.providers.image as image_module
+    import app.providers.flux_provider as flux_module
 
     target = tmp_path / "square.png"
     target.write_bytes(b"\x89PNG fake")
 
-    class WrongShape:
-        def __init__(self, model_id: str = "x") -> None:
-            pass
+    def wrong_shape_generate(self, spec, output_dir):
+        return ProviderAsset(
+            path=str(target), kind="image", provider_id=self.provider_id, width=512, height=512
+        )
 
-        def generate(self, spec, output_dir):
-            return GenerationOutput(str(target), 512, 512)
-
-    monkeypatch.setattr(image_module, "FluxDiffusersProvider", WrongShape)
+    monkeypatch.setattr(flux_module.FluxProvider, "generate_image", wrong_shape_generate)
 
     job = store.add_job(
         Job(type=GenerationType.IMAGE, prompt="x", parameters={"aspect_ratio": "16:9"})
@@ -497,25 +497,23 @@ def test_the_worker_refuses_a_frame_that_contradicts_the_spec(
 def test_the_worker_completes_a_render_that_satisfies_the_spec(
     inference_on, monkeypatch, tmp_path
 ) -> None:
-    from app.providers.image import GenerationOutput
+    from app.providers.base_provider import ProviderAsset
 
     from app.queue import process_generation
     from app.schemas import GenerationType, Job
     from app.store import store
 
-    import app.providers.image as image_module
+    import app.providers.flux_provider as flux_module
 
     target = tmp_path / "good.png"
     target.write_bytes(b"\x89PNG fake")
 
-    class HonestProvider:
-        def __init__(self, model_id: str = "x") -> None:
-            pass
+    def honest_generate(self, spec, output_dir):
+        return ProviderAsset(
+            path=str(target), kind="image", provider_id=self.provider_id, width=1024, height=576
+        )
 
-        def generate(self, spec, output_dir):
-            return GenerationOutput(str(target), 1024, 576)
-
-    monkeypatch.setattr(image_module, "FluxDiffusersProvider", HonestProvider)
+    monkeypatch.setattr(flux_module.FluxProvider, "generate_image", honest_generate)
 
     job = store.add_job(
         Job(type=GenerationType.IMAGE, prompt="x", parameters={"aspect_ratio": "16:9"})

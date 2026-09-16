@@ -7,7 +7,7 @@ transport layer.
 
 from __future__ import annotations
 
-from .providers.base_provider import ProviderHealth, ProviderNotFound
+from .providers.base_provider import STATUS_READY, ProviderHealth, ProviderNotFound
 from .providers.provider_registry import DEFAULT_REGISTRY, ProviderRegistry
 from .schemas import UniversalProviderResponse
 
@@ -42,6 +42,9 @@ def prompt_budget_for_provider(
 def _public_health_payload(report: ProviderHealth) -> dict[str, object]:
     payload = report.to_dict()
     payload["reason"] = _redact_reason(report.reason)
+    # PR009: the frontend shows availability as a first-class fact, derived
+    # here (one definition) rather than re-derived in every consumer.
+    payload["available"] = report.status == STATUS_READY
     return payload
 
 

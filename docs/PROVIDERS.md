@@ -7,6 +7,11 @@ PR007 cria uma arquitetura universal para Providers. A regra central é:
 
 Nenhuma imagem é gerada durante health/discovery e nenhum segredo é exposto pela API.
 
+> **PR009 evoluiu esta camada** — os adapters Flux e Wan viraram conectores reais e o
+> `GenerationExecutor` ganhou retry (máx. 3 tentativas), timeout configurável,
+> fallback com motivo registrado no Job e telemetria por execução. Ver
+> `docs/AI_CONNECTORS.md`.
+
 ---
 
 ## Interface única

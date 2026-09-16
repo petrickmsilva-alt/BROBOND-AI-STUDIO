@@ -635,10 +635,10 @@ Componentes:
 |---|---|
 | `providers/base_provider.py` | `BaseProvider`, `ProviderCapabilities`, `ProviderEstimate`, `ProviderHealth`, `ProviderAsset`. |
 | `providers/provider_registry.py` | `register()`, `get()`, `list()`, `health_all()` por registro/alias, sem `if/else` por modelo. |
-| `providers/flux_provider.py` | Wrapper universal de imagem; recebe apenas `GenerationSpec`. |
-| `providers/wan_provider.py` | Wrapper universal de vídeo; compartilha `_VideoDiffusersProvider` com Hunyuan para não duplicar lógica. |
-| `providers/mock_provider.py` | Provider fake obrigatório para testes e desenvolvimento sem GPU. |
-| `providers/generation_executor.py` | Orquestra `GenerationSpec -> Registry -> Provider -> Asset -> Job` sem conhecer IDs de provider. |
+| `providers/flux_provider.py` | Conector real de imagem (PR009): text-to-image e image-to-image; recebe apenas `GenerationSpec`. |
+| `providers/wan_provider.py` | Conector real de vídeo (PR009): text-to-video e image-to-video; loader de vídeo compartilhado com Hunyuan. |
+| `providers/mock_provider.py` | Provider fake obrigatório para testes e desenvolvimento sem GPU; destino padrão do fallback. |
+| `providers/generation_executor.py` | Orquestra `GenerationSpec -> Registry -> Provider -> Asset -> Job` com retry, timeout, fallback e telemetria (PR009), sem conhecer IDs de provider. |
 
 `GET /api/v1/providers` expõe health, latência, versão e capabilities (`max_resolution`,
 `supports_video`, `supports_image`, `supports_lora`, `supports_upscale`, `supports_seed`,
@@ -675,6 +675,36 @@ Componentes:
 Seis rotas `/api/v1/render/*` (todas com identidade) e o WebSocket `/ws/render/{batch_id}`
 alimentam a tela `/studio/render`: storyboard, progresso, cena atual, ETA, preview,
 download e Fila com Cancelar/Repetir. Detalhes em `docs/RENDER_ENGINE.md`.
+
+## Real AI Connectors (PR009)
+
+PR009 liga os adapters de PR007 a motores reais (Flux para imagem, Wan 2.1 para vídeo) e
+envolve o `GenerationExecutor` com resiliência — tudo dentro de `backend/app/providers/`,
+sem tocar Core, Director, Storyboard ou Render Engine.
+
+```text
+GenerationSpec
+  -> ProviderRegistry.get(spec.provider)   (falha? -> fallback com motivo)
+  -> RetryEngine (max 3 tentativas, backoff com cap)
+     -> TimeoutManager (Flux 90s / Wan+Hunyuan 300s / default 120s, ENV-override)
+        -> BaseProvider.generate_image/generate_video
+  -> ProviderAsset + ProviderJob (attempts, fallback, fallback_from, fallback_reason)
+  -> TelemetryStore (provider, latency_ms, queue_time, render_time, success, error_code)
+```
+
+Componentes novos:
+
+| Arquivo | Responsabilidade |
+|---|---|
+| `providers/retry_policy.py` | `RetryPolicy`/`RetryEngine`: classificação `RETRYABLE`/`TIMEOUT`/`FATAL`, backoff exponencial, cap de 3 tentativas, hook de decisão. |
+| `providers/timeout_manager.py` | Deadline por provider, configurável por ENV (`PROVIDER_TIMEOUT_*_SECONDS`); estouro vira `ProviderTimeoutError` retryável. |
+| `providers/telemetry.py` | `ProviderTelemetryRecord` + store thread-safe (500, sink JSONL opcional) + `default_telemetry_store()`. |
+
+Decisões de desenho: erro **fatal** propaga sem fallback (spec inválido não é falha de
+provider); o fallback registra o motivo no Job e o Batch nunca se perde; telemetria é
+registrada em todo desfecho, inclusive na falha. Rotas públicas novas:
+`POST /api/v1/providers/{id}/test` e `GET /api/v1/providers/telemetry`. Detalhes em
+`docs/AI_CONNECTORS.md`.
 
 ## Prompt compiler (ETAPA 9)
 

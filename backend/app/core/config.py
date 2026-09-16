@@ -28,6 +28,19 @@ class Settings(BaseSettings):
     #: PR002: auth endpoints (login/register) accept at most this many attempts
     #: per client IP per minute, per process. Set to 0 to disable the limiter.
     rate_limit_auth_per_minute: int = 20
+    #: PR009 — provider execution deadlines (seconds), configurable per
+    #: deployment via `BROBOND_PROVIDER_TIMEOUT_*_SECONDS`. Flux renders are
+    #: bounded at 90s and Wan renders at 300s by default; anything else gets
+    #: the generic deadline. A deadline of 0 disables the guard.
+    provider_timeout_flux_seconds: float = 90.0
+    provider_timeout_wan_seconds: float = 300.0
+    provider_timeout_default_seconds: float = 120.0
+    #: PR009 — retry engine backoff base delay (seconds). The attempt budget
+    #: itself (3) is a product invariant and lives in `providers/retry_policy`.
+    provider_retry_base_delay_seconds: float = 0.25
+    #: PR009 — optional JSONL sink for provider telemetry records. Empty keeps
+    #: telemetry in-process only.
+    provider_telemetry_log: str = ""
     # Comma-separated list of browser origins allowed by the CORS middleware.
     # Render sets the deployed web origin here (see render.yaml).
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"

@@ -13,7 +13,7 @@ mudar e o documento não for regenerado, a suíte falha.
 
 ## Resumo
 
-- **72** rotas HTTP sob `/api/v1`
+- **74** rotas HTTP sob `/api/v1`
 - **32** delas são `/api/v1/core/*` — a camada de decisão
 - **3** WebSockets
 - **14** tags
@@ -125,11 +125,13 @@ PR006 Storyboard Cinematic Engine não adiciona rotas de render: a UI edita um `
 | --- | --- | --- |
 | `POST` | `/api/v1/prompts/enhance` | enhance_prompt |
 
-## `providers` — 1
+## `providers` — 3
 
 | Método | Rota | Descrição |
 | --- | --- | --- |
 | `GET` | `/api/v1/providers` | Universal provider health, latency, version and capabilities (PR007). |
+| `GET` | `/api/v1/providers/telemetry` | Recent provider telemetry records, newest first (PR009). |
+| `POST` | `/api/v1/providers/{provider_id}/test` | PR009 real test: run a deterministic test spec through the full path. |
 
 ## `queue` — 2
 

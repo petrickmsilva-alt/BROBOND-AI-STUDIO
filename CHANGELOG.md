@@ -6,6 +6,45 @@ versões de produto do `ROADMAP.md`.
 
 ---
 
+## [Unreleased] — PR009: REAL AI CONNECTORS
+
+PR009 liga os adapters de provider a motores reais (Flux para imagem, Wan 2.1 para
+vídeo) e envolve o `GenerationExecutor` com retry, timeout, fallback e telemetria.
+O Registry, o Director, o Storyboard e o Render Engine não foram alterados — a
+resiliência vive inteira em `backend/app/providers/`.
+
+### O que mudou
+
+- **Conector Flux real** — `providers/flux_provider.py`: text-to-image e
+  image-to-image (exige `spec.reference_path`), seed, negative, steps, LoRA e
+  aspect-ratio; pipeline por modo com cache e CPU offload; recebe apenas
+  `GenerationSpec`.
+- **Conector Wan real** — `providers/wan_provider.py`: text-to-video e
+  image-to-video, duration, fps, motion_strength e seed; frames em `4n+1`; encode
+  `imageio/libx264`; capabilities declaram o que é consumido e o que é ignorado.
+- **Retry** — `providers/retry_policy.py`: estados `RETRYABLE`/`TIMEOUT`/`FATAL`,
+  backoff exponencial com cap, **máximo de 3 tentativas** e hook de decisão.
+- **Timeout** — `providers/timeout_manager.py`: deadline por provider (Flux 90s,
+  Wan/Hunyuan 300s, default 120s), configurável por ENV
+  (`PROVIDER_TIMEOUT_*_SECONDS`); estouro vira `ProviderTimeoutError` retryável.
+- **Fallback** — provider indisponível ou kind errado cai para o próximo provider
+  do Registry (Mock incluído) com motivo registrado no Job
+  (`fallback`/`fallback_from`/`fallback_reason`); erro fatal propaga sem fallback;
+  o Batch nunca se perde (teste força 6 falhas e o batch fecha `completed`).
+- **Telemetria** — `providers/telemetry.py`: `provider_id`, `latency_ms`,
+  `queue_time_ms`, `render_time_ms`, `success`, `error_code` (+ attempts/fallback),
+  store thread-safe de 500 registros com sink JSONL opcional.
+- **Rotas** — `POST /api/v1/providers/{provider_id}/test` (teste real determinístico)
+  e `GET /api/v1/providers/telemetry` (histórico mais-novo-primeiro).
+- **UI `/studio/providers`** — Disponibilidade, Último Health e botão **Teste Real**
+  com resultado honesto (sucesso / fallback com motivo / falha).
+- **Testes** — `backend/tests/test_pr009_ai_connectors.py` (81 testes); pacote
+  `backend/app/providers/` a 100% de cobertura.
+
+Documentação nova: `docs/AI_CONNECTORS.md`.
+
+---
+
 ## [Unreleased] — PR008: CINEMATIC RENDER ENGINE
 
 PR008 conecta o Director AI ao Generation Executor e ativa a renderização: storyboards

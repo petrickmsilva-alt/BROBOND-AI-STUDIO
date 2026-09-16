@@ -133,6 +133,8 @@ def _video_kwargs(job, parameters: dict) -> dict:
         "mode": parameters.get("mode") or "text-to-video",
         "fps": parameters.get("fps"),
         "duration": parameters.get("duration_seconds") or 5.0,
+        # PR009: the Wan connector consumes motion magnitude from the spec.
+        "motion_strength": parameters.get("motion_strength"),
         "cinematic_mode": bool(parameters.get("cinematic_mode", True)),
         "slow_motion": bool(parameters.get("slow_motion", False)),
         "native_audio": bool(parameters.get("native_audio", False)),

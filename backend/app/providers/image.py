@@ -32,8 +32,11 @@ from typing import Any
 from ..core.contracts import GenerationSpec
 from . import conditioning as conditioning_adapters
 from .common import (
+    ASPECT_RATIOS,
+    DIMENSION_MULTIPLE,
     apply_lora,
     cuda_availability,
+    dimensions_for,
     generator_for,
     health_report,
     require_cuda,
@@ -188,26 +191,7 @@ def pipeline_arguments(spec: GenerationSpec, width: int, height: int) -> dict[st
 _supported_kwargs = supported_kwargs
 _generator = generator_for
 
-#: Aspect ratios this provider can render, hoisted out of the function body so
-#: the mapping is built once rather than on every call.
-ASPECT_RATIOS: dict[str, tuple[int, int]] = {
-    "16:9": (16, 9),
-    "1:1": (1, 1),
-    "9:16": (9, 16),
-    "4:3": (4, 3),
-    "3:4": (3, 4),
-}
-
-#: Dimensions are rounded to a multiple of this, which the VAE requires.
-DIMENSION_MULTIPLE = 8
-
-
-def _dimensions(aspect_ratio: str, resolution: int) -> tuple[int, int]:
-    width_ratio, height_ratio = ASPECT_RATIOS.get(aspect_ratio, (16, 9))
-    if width_ratio >= height_ratio:
-        width = resolution
-        height = round(resolution * height_ratio / width_ratio / DIMENSION_MULTIPLE) * DIMENSION_MULTIPLE
-    else:
-        height = resolution
-        width = round(resolution * width_ratio / height_ratio / DIMENSION_MULTIPLE) * DIMENSION_MULTIPLE
-    return width, height
+#: PR009: the aspect-ratio table and the dimension rule now live in
+#: `providers/common.py` (one definition, shared with the real connectors);
+#: these re-exports keep this module's tested surface intact.
+_dimensions = dimensions_for

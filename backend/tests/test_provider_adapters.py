@@ -10,6 +10,8 @@ from __future__ import annotations
 import ast
 import dataclasses
 import pathlib
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -505,27 +507,47 @@ def inference_enabled(monkeypatch):
 def test_the_worker_routes_a_video_request_to_the_requested_adapter(
     inference_enabled, monkeypatch, tmp_path
 ) -> None:
+    """PR009: routing lands on the real Hunyuan connector, not on Wan."""
+
+    import sys
+    import types as types_module
+
     from app.queue import process_generation
     from app.schemas import GenerationType, Job
     from app.store import store
 
+    import app.providers.wan_provider as wan_module
+
     seen: dict = {}
 
-    class FakeHunyuan:
-        def __init__(self, model_id: str = "x") -> None:
-            seen["model_id"] = model_id
+    def fake_imwrite(target, frames, fps=None, codec=None):
+        Path(target).write_bytes(b"fake mp4")
 
-        def generate(self, spec, output_dir):
-            seen["spec"] = spec
-            # ETAPA 14: the worker verifies the artifact exists before it will
-            # call a job complete, so the fake writes one.
-            target = tmp_path / "out.mp4"
-            target.write_bytes(b"fake mp4")
-            return video_module.VideoGenerationOutput(
-                str(target), int(spec.duration), spec.fps
-            )
+    module = types_module.ModuleType("imageio.v3")
+    module.imwrite = fake_imwrite
+    parent = types_module.ModuleType("imageio")
+    parent.v3 = module
+    monkeypatch.setitem(sys.modules, "imageio", parent)
+    monkeypatch.setitem(sys.modules, "imageio.v3", module)
 
-    monkeypatch.setattr(video_module, "HunyuanVideoProvider", FakeHunyuan)
+    class FakeHunyuanPipeline:
+        def __call__(self, **kwargs):
+            return SimpleNamespace(frames=[[object()]])
+
+    def fake_loader(self, model_id, pipeline_class_name):
+        seen["model_id"] = model_id
+        seen["pipeline_class"] = pipeline_class_name
+        return FakeHunyuanPipeline()
+
+    monkeypatch.setattr(wan_module.VideoPipelineLoader, "__call__", fake_loader)
+
+    original_generate = wan_module.HunyuanProvider.generate_video
+
+    def spy_generate(self, spec, output_dir):
+        seen["spec"] = spec
+        return original_generate(self, spec, output_dir)
+
+    monkeypatch.setattr(wan_module.HunyuanProvider, "generate_video", spy_generate)
 
     job = store.add_job(
         Job(
@@ -538,30 +560,43 @@ def test_the_worker_routes_a_video_request_to_the_requested_adapter(
 
     assert result["status"] == "complete", result
     assert seen["model_id"] == "hunyuanvideo-community/HunyuanVideo"
+    assert seen["pipeline_class"] == "HunyuanVideoPipeline"
     assert isinstance(seen["spec"], GenerationSpec)
 
 
 def test_the_worker_still_defaults_to_wan_when_no_model_is_named(
     inference_enabled, monkeypatch, tmp_path
 ) -> None:
+    import sys
+    import types as types_module
+
     from app.queue import process_generation
     from app.schemas import GenerationType, Job
     from app.store import store
 
+    import app.providers.wan_provider as wan_module
+
     seen: dict = {}
 
-    class FakeWan:
-        def __init__(self, model_id: str = "x") -> None:
-            seen["model_id"] = model_id
+    def fake_imwrite(target, frames, fps=None, codec=None):
+        Path(target).write_bytes(b"fake mp4")
 
-        def generate(self, spec, output_dir):
-            target = tmp_path / "out.mp4"
-            target.write_bytes(b"fake mp4")
-            return video_module.VideoGenerationOutput(
-                str(target), int(spec.duration), spec.fps
-            )
+    module = types_module.ModuleType("imageio.v3")
+    module.imwrite = fake_imwrite
+    parent = types_module.ModuleType("imageio")
+    parent.v3 = module
+    monkeypatch.setitem(sys.modules, "imageio", parent)
+    monkeypatch.setitem(sys.modules, "imageio.v3", module)
 
-    monkeypatch.setattr(video_module, "WanVideoProvider", FakeWan)
+    class FakeWanPipeline:
+        def __call__(self, **kwargs):
+            return SimpleNamespace(frames=[[object()]])
+
+    def fake_loader(self, model_id, pipeline_class_name):
+        seen["model_id"] = model_id
+        return FakeWanPipeline()
+
+    monkeypatch.setattr(wan_module.VideoPipelineLoader, "__call__", fake_loader)
 
     job = store.add_job(
         Job(type=GenerationType.VIDEO, prompt="a slow dolly-in", parameters={"mode": "text-to-video"})
