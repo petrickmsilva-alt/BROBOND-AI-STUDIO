@@ -24,6 +24,7 @@ import type {
   RenderScene,
   UniversalProvider,
 } from '../../../lib/api';
+import { failureMessage } from '../../../lib/network/status';
 import {
   cancelRenderBatch,
   createProductionPlan,
@@ -168,7 +169,7 @@ export default function RenderPage() {
       setPlan(result.data);
     } else {
       setPlan(null);
-      setError(result.error === 'offline' ? 'API offline — inicie o FastAPI para criar o plano.' : result.error);
+      setError(failureMessage(result, 'API offline — inicie o FastAPI para criar o plano.'));
     }
     setBusy(false);
   };
@@ -201,7 +202,7 @@ export default function RenderPage() {
       seed: seed.trim() === '' ? null : Number(seed),
     });
     if (!created.remote) {
-      setError(created.error === 'offline' ? 'API offline — inicie o FastAPI para renderizar.' : created.error);
+      setError(failureMessage(created, 'API offline — inicie o FastAPI para renderizar.'));
       setBusy(false);
       return;
     }

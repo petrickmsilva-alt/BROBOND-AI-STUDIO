@@ -220,3 +220,14 @@ PR006 Storyboard Cinematic Engine não adiciona rotas de render: a UI edita um `
 | `/api/v1/personas/{persona_id}/training/events/{run_id}` | training_events |
 | `/api/v1/queue/events/{job_id}` | Stream a job's transitions until it reaches a terminal state. |
 | `/ws/render/{batch_id}` | Push a batch's render events until the terminal one. No polling. |
+
+## Cliente — camada de rede (V3.2.1)
+
+Todas as chamadas acima partem de `lib/api.ts`, que delega a `lib/network/request.ts` —
+a única fronteira de `fetch` do frontend. Timeout 10s (30s em upload), trace id
+`x-brobond-trace`, e retry **somente GET** para as três sondas de status
+(`/api/v1/health`, `/api/v1/system/readiness`, `/api/v1/system/gpu`: 3 tentativas,
+backoff 300/600/1200ms). Falhas chegam tipadas (`NetworkErrorType`) e timeout na janela
+8–60s é tratado como cold start ("Servidor iniciando…"), não como API Offline.
+Nenhuma rota nova — este documento continua sendo o inventário canônico
+(106 rotas HTTP + 3 WebSockets). Detalhes: `docs/NETWORK_LAYER.md`.

@@ -9,6 +9,11 @@ import {
   uploadAsset, videoModels, wsUrl,
 } from '../lib/api';
 import PersonaSelector, { mainImage } from './components/studio/PersonaSelector';
+// V3.2.1: failures arrive typed from the network layer — the UI branches on
+// NetworkErrorType (never on a bare 'offline' string) and the human text is
+// produced by the layer itself (cold start aware).
+import { NetworkErrorType } from '../lib/network/request';
+import { failureMessage, isUnreachable } from '../lib/network/status';
 import PersonaPreview from './components/studio/PersonaPreview';
 // PR004.1: components never touch localStorage — project memory flows through
 // the Memory Adapter (hook), and the auth/legacy keys through its seam.
@@ -39,13 +44,17 @@ const modules = [
 function Toggle({ on = true }: { on?: boolean }) { return <span className={`toggle ${on ? 'on' : ''}`}><i /></span>; }
 function Chip({ children, active = false, onClick }: { children: React.ReactNode; active?: boolean; onClick?: () => void }) { return <button type="button" className={`chip ${active ? 'active' : ''}`} onClick={onClick}>{children}</button>; }
 
-/** A message the user can act on. `offline` is the only case with no detail. */
-function Notice({ error, status }: { error?: string; status?: number }) {
+/** A message the user can act on. Typed failures carry their complete text
+ * from the network layer (cold start says "Servidor iniciando…", never
+ * "offline"); "no answer" and session-expiry render calm, the API's own
+ * errors render as errors. */
+function Notice({ error, errorType, status }: { error?: string; errorType?: NetworkErrorType; status?: number }) {
   if (!error) return null;
-  const offline = error === 'offline';
-  return <div className={`notice ${offline ? '' : 'notice-error'}`}>
+  const calm = isUnreachable({ errorType }) || errorType === NetworkErrorType.UNAUTHORIZED;
+  const text = errorType !== undefined ? error : `${error}${status ? ` (${status})` : ''}`;
+  return <div className={`notice ${calm ? '' : 'notice-error'}`}>
     <AlertTriangle size={13} />
-    <span>{offline ? 'API offline — start FastAPI to run this for real.' : `${error}${status ? ` (${status})` : ''}`}</span>
+    <span>{failureMessage({ error: text, errorType }, 'API offline — start FastAPI to run this for real.')}</span>
   </div>;
 }
 
@@ -232,13 +241,14 @@ function DirectorStudio({ onRenderImage }: { onRenderImage: (prompt: string) => 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>();
   const [status, setStatus] = useState<number | undefined>();
+  const [errorType, setErrorType] = useState<NetworkErrorType | undefined>();
 
   const direct = async () => {
     if (!intent.trim()) return;
-    setLoading(true); setError(undefined);
+    setLoading(true); setError(undefined); setErrorType(undefined);
     const result = await directIntent({ intent: intent.trim(), scene_count: sceneCount });
     if (result.remote) setBrief(result.data); else setBrief(null);
-    setError(result.error); setStatus(result.status);
+    setError(result.error); setStatus(result.status); setErrorType(result.errorType);
     setLoading(false);
   };
 
@@ -267,7 +277,7 @@ function DirectorStudio({ onRenderImage }: { onRenderImage: (prompt: string) => 
         <div className="example-row">
           {examples.map(example => <button key={example} className="example-chip" onClick={() => setIntent(example)}>{example}</button>)}
         </div>
-        <Notice error={error} status={status} />
+        <Notice error={error} status={status} errorType={errorType} />
       </div>
 
       <div className="brief-canvas">
@@ -275,7 +285,7 @@ function DirectorStudio({ onRenderImage }: { onRenderImage: (prompt: string) => 
           <div className="empty-icon"><MessageSquareText size={23} /></div>
           <h3>The director is listening</h3>
           <p>State an intention and you will get a brief,<br />not a prompt field.</p>
-          {error === 'offline' && <span className="muted">API offline — nothing is being faked here.</span>}
+          {isUnreachable({ errorType }) && <span className="muted">The API did not answer — nothing is being faked here.</span>}
         </div> : <>
           {brief.clarification && <div className="clarification"><MessageSquareText size={15} /><div><strong>The director needs one answer</strong><p>{brief.clarification}</p></div></div>}
           <div className="brief-head">
@@ -323,7 +333,7 @@ function AuthModal({ user, onAuthenticated, onClose }: { user: AuthUser | null; 
     // problems and only one of them is fixed by starting the server.
     if (result.status) { setMessage(result.error ?? `Request failed (${result.status})`); return; }
     if (mode === 'login') { onAuthenticated({ id: 'local', email: email || 'local@brobond.ai', name: name || 'Local session' }); onClose(); }
-    else setMessage('API offline. Start FastAPI to create a persistent account.');
+    else setMessage(failureMessage(result, 'API offline. Start FastAPI to create a persistent account.'));
   };
   const logout = () => { clearAuthToken(); onAuthenticated(null); onClose(); };
   return <div className="modal-backdrop" onClick={onClose}><div className="auth-modal" onClick={event => event.stopPropagation()}><button className="modal-close" onClick={onClose}><X size={17} /></button>{user ? <><div className="auth-icon"><LockKeyhole size={20} /></div><h2>{user.name}</h2><p className="auth-subtitle">{user.email}</p><button className="secondary-button full" onClick={logout}>Sign out</button></> : <><div className="auth-icon"><LogIn size={20} /></div><div className="auth-switch"><button className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>Sign in</button><button className={mode === 'register' ? 'active' : ''} onClick={() => setMode('register')}>Create account</button></div><h2>{mode === 'login' ? 'Welcome back' : 'Create your workspace'}</h2><p className="auth-subtitle">{mode === 'login' ? 'Sign in to sync your creations and assets.' : 'Start building your private visual studio.'}</p><form onSubmit={submit}>{mode === 'register' && <input value={name} onChange={event => setName(event.target.value)} placeholder="Full name" required />}<input type="email" value={email} onChange={event => setEmail(event.target.value)} placeholder="Email address" required /><input type="password" value={password} onChange={event => setPassword(event.target.value)} placeholder="Password · 8+ characters" minLength={8} required /><button className="primary-button full" type="submit">{mode === 'login' ? 'Sign in' : 'Create account'} <ArrowUpRight size={15} /></button></form>{message && <small className="auth-message">{message}</small>}</>}</div></div>;
@@ -413,6 +423,7 @@ function ImageStudio({ prompt, setPrompt, generated, setGenerated, ...creative }
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | undefined>();
   const [status, setStatus] = useState<number | undefined>();
+  const [errorType, setErrorType] = useState<NetworkErrorType | undefined>();
   const [models, setModels] = useState<ModelOption[]>([]);
   const [model, setModel] = useState('flux-dev');
   const [resolution, setResolution] = useState('1024');
@@ -434,15 +445,15 @@ function ImageStudio({ prompt, setPrompt, generated, setGenerated, ...creative }
     const file = event.target.files?.[0]; if (!file) return;
     setReferenceStatus('Uploading reference...'); const result = await uploadAsset(file);
     if (result.remote) { setReferenceAssetId(result.data.id); setReferenceStatus('Reference ready'); }
-    else setReferenceStatus(result.error === 'offline' ? 'API offline' : (result.error ?? 'Upload failed'));
+    else setReferenceStatus(failureMessage(result, 'API offline — the reference was not uploaded.'));
     event.target.value = '';
   };
 
   const enhance = async () => {
-    setEnhancing(true); setError(undefined);
+    setEnhancing(true); setError(undefined); setErrorType(undefined);
     const result = await enhancePrompt({ prompt, style: 'cinematic realism', camera: 'medium shot, 85mm lens' });
     if (result.remote) setPrompt(result.data.enhanced);
-    setError(result.error); setStatus(result.status);
+    setError(result.error); setStatus(result.status); setErrorType(result.errorType);
     setEnhancing(false);
   };
 
@@ -483,12 +494,12 @@ function ImageStudio({ prompt, setPrompt, generated, setGenerated, ...creative }
       const signedIn = getAuthToken() !== null;
       setConnection(signedIn ? `Job ${result.data.id.slice(0, 8)} queued` : 'Job created — sign in to track it');
     }
-    else { setJob(null); setConnection(result.error === 'offline' ? 'API offline' : 'Request rejected'); }
-    setError(result.error); setStatus(result.status);
+    else { setJob(null); setConnection(isUnreachable(result) ? 'API unreachable' : 'Request rejected'); }
+    setError(result.error); setStatus(result.status); setErrorType(result.errorType);
     setLoading(false);
   };
 
-  return <StudioLayout type="Image" onGenerate={generate}><div className="studio-grid"><div className="control-panel"><IdentityPanel {...creative} /><div className="panel-heading"><span>Prompt</span><button className="magic-button" onClick={enhance}><WandSparkles size={14} /> {enhancing ? 'Enhancing...' : 'Enhance'}</button></div><textarea value={prompt} onChange={e => setPrompt(e.target.value)} /><div className="prompt-meta"><span>{prompt.length} / 2,000</span><button onClick={() => setPrompt('')}>Reset</button></div><div className="form-row"><label>Model<select value={model} onChange={event => setModel(event.target.value)}>{(models.length ? models : [{ id: model, label: model, status: 'unknown' }]).map(option => <option key={option.id} value={option.id}>{option.label ?? option.id}{option.status ? ` · ${option.status}` : ''}</option>)}</select></label><label>Aspect ratio<select value={aspectRatio} onChange={event => setAspectRatio(event.target.value)}><option value="16:9">16:9 · Landscape</option><option value="1:1">1:1 · Square</option><option value="9:16">9:16 · Portrait</option></select></label></div><div className="form-row"><label>Resolution<select value={resolution} onChange={event => setResolution(event.target.value)}><option value="1024">1024 · HD</option><option value="2048">2048 · 2K</option></select></label><label>Seed<div className="input-with-action"><input value="Random" readOnly /><button><Aperture size={14} /></button></div></label></div><div className="conditioning-box"><div className="panel-heading"><span>Structure &amp; identity</span><span className="muted">Optional</span></div><label>ControlNet<select value={controlnet} onChange={event => setControlnet(event.target.value)}><option value="none">None</option><option value="pose">OpenPose</option><option value="depth">Depth map</option><option value="canny">Canny edges</option><option value="tile">Tile detail</option></select></label><div className="mini-slider"><span>Control strength <b>{controlScale.toFixed(1)}</b></span><input type="range" min="0" max="2" step="0.1" value={controlScale} onChange={event => setControlScale(Number(event.target.value))} /></div><div className="mini-slider"><span>IP Adapter <b>{ipScale.toFixed(1)}</b></span><input type="range" min="0" max="1" step="0.1" value={ipScale} onChange={event => setIpScale(Number(event.target.value))} /></div></div><div className="panel-footer"><label className="secondary-button lora-select"><Plus size={15} /> {loras.length ? <select value={selectedLora} onChange={event => setSelectedLora(event.target.value)}><option value="">Add LoRA</option>{loras.map(lora => <option value={lora.asset_id} key={lora.asset_id}>{lora.version}</option>)}</select> : 'Add LoRA'}</label><label className="secondary-button upload-label"><ImageIcon size={15} /> {referenceStatus || 'Reference image'}<input type="file" accept="image/*" onChange={handleReference} /></label></div><Notice error={error} status={status} /></div><div className={`generation-canvas ${generated ? 'has-result' : ''}`}>{generated ? <><div className="result-art">{job?.output_url ? <img className="result-image" src={job.output_url} alt={prompt} /> : <div className="result-pending"><Box size={26} /><span>{job?.status === 'failed' ? 'The render failed — no image was produced' : job?.status === 'cancelled' ? 'Cancelled — nothing was produced' : loading || job ? 'Rendering…' : 'No image yet'}</span></div>}{job?.output_url && <span className="result-label">{model} · {aspectRatio}</span>}</div><div className="result-toolbar"><span>{loading ? 'Submitting generation...' : `${connection}${job?.output_url ? ' · ready' : ''}`}{(loading || (job && job.status === 'running')) && <i className="job-progress"><b style={{ width: `${progress}%` }} /></i>}</span><div>{job && (job.status === 'queued' || job.status === 'running') && <button className="cancel-job" onClick={async () => { await cancelJob(job.id); setConnection('Job cancelled'); setLoading(false); }}>Cancel</button>}{job?.output_url && <a className="icon-button" href={job.output_url} target="_blank" rel="noreferrer"><Download size={16} /></a>}</div></div></> : <div className="empty-canvas"><div className="empty-icon"><Sparkles size={23} /></div><h3>Your canvas is empty</h3><p>Describe an image and hit Generate<br />to bring your idea to life.</p><span>The result shown here is always the real render</span></div>}</div></div></StudioLayout>; }
+  return <StudioLayout type="Image" onGenerate={generate}><div className="studio-grid"><div className="control-panel"><IdentityPanel {...creative} /><div className="panel-heading"><span>Prompt</span><button className="magic-button" onClick={enhance}><WandSparkles size={14} /> {enhancing ? 'Enhancing...' : 'Enhance'}</button></div><textarea value={prompt} onChange={e => setPrompt(e.target.value)} /><div className="prompt-meta"><span>{prompt.length} / 2,000</span><button onClick={() => setPrompt('')}>Reset</button></div><div className="form-row"><label>Model<select value={model} onChange={event => setModel(event.target.value)}>{(models.length ? models : [{ id: model, label: model, status: 'unknown' }]).map(option => <option key={option.id} value={option.id}>{option.label ?? option.id}{option.status ? ` · ${option.status}` : ''}</option>)}</select></label><label>Aspect ratio<select value={aspectRatio} onChange={event => setAspectRatio(event.target.value)}><option value="16:9">16:9 · Landscape</option><option value="1:1">1:1 · Square</option><option value="9:16">9:16 · Portrait</option></select></label></div><div className="form-row"><label>Resolution<select value={resolution} onChange={event => setResolution(event.target.value)}><option value="1024">1024 · HD</option><option value="2048">2048 · 2K</option></select></label><label>Seed<div className="input-with-action"><input value="Random" readOnly /><button><Aperture size={14} /></button></div></label></div><div className="conditioning-box"><div className="panel-heading"><span>Structure &amp; identity</span><span className="muted">Optional</span></div><label>ControlNet<select value={controlnet} onChange={event => setControlnet(event.target.value)}><option value="none">None</option><option value="pose">OpenPose</option><option value="depth">Depth map</option><option value="canny">Canny edges</option><option value="tile">Tile detail</option></select></label><div className="mini-slider"><span>Control strength <b>{controlScale.toFixed(1)}</b></span><input type="range" min="0" max="2" step="0.1" value={controlScale} onChange={event => setControlScale(Number(event.target.value))} /></div><div className="mini-slider"><span>IP Adapter <b>{ipScale.toFixed(1)}</b></span><input type="range" min="0" max="1" step="0.1" value={ipScale} onChange={event => setIpScale(Number(event.target.value))} /></div></div><div className="panel-footer"><label className="secondary-button lora-select"><Plus size={15} /> {loras.length ? <select value={selectedLora} onChange={event => setSelectedLora(event.target.value)}><option value="">Add LoRA</option>{loras.map(lora => <option value={lora.asset_id} key={lora.asset_id}>{lora.version}</option>)}</select> : 'Add LoRA'}</label><label className="secondary-button upload-label"><ImageIcon size={15} /> {referenceStatus || 'Reference image'}<input type="file" accept="image/*" onChange={handleReference} /></label></div><Notice error={error} status={status} errorType={errorType} /></div><div className={`generation-canvas ${generated ? 'has-result' : ''}`}>{generated ? <><div className="result-art">{job?.output_url ? <img className="result-image" src={job.output_url} alt={prompt} /> : <div className="result-pending"><Box size={26} /><span>{job?.status === 'failed' ? 'The render failed — no image was produced' : job?.status === 'cancelled' ? 'Cancelled — nothing was produced' : loading || job ? 'Rendering…' : 'No image yet'}</span></div>}{job?.output_url && <span className="result-label">{model} · {aspectRatio}</span>}</div><div className="result-toolbar"><span>{loading ? 'Submitting generation...' : `${connection}${job?.output_url ? ' · ready' : ''}`}{(loading || (job && job.status === 'running')) && <i className="job-progress"><b style={{ width: `${progress}%` }} /></i>}</span><div>{job && (job.status === 'queued' || job.status === 'running') && <button className="cancel-job" onClick={async () => { await cancelJob(job.id); setConnection('Job cancelled'); setLoading(false); }}>Cancel</button>}{job?.output_url && <a className="icon-button" href={job.output_url} target="_blank" rel="noreferrer"><Download size={16} /></a>}</div></div></> : <div className="empty-canvas"><div className="empty-icon"><Sparkles size={23} /></div><h3>Your canvas is empty</h3><p>Describe an image and hit Generate<br />to bring your idea to life.</p><span>The result shown here is always the real render</span></div>}</div></div></StudioLayout>; }
 
 function VideoStudio(props: StudioPersonaProps & StudioCreativeProps) {
   // PR004.1: duration/aspect/camera are project-level controls owned by Home
@@ -499,6 +510,7 @@ function VideoStudio(props: StudioPersonaProps & StudioCreativeProps) {
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState<string | undefined>();
   const [status, setStatus] = useState<number | undefined>();
+  const [errorType, setErrorType] = useState<NetworkErrorType | undefined>();
   const [brief, setBrief] = useState('A cinematic slow dolly-in through a futuristic city at night, neon reflections on wet pavement');
   const [models, setModels] = useState<ModelOption[]>([]);
   const [model, setModel] = useState('wan-2.1-t2v');
@@ -540,11 +552,11 @@ function VideoStudio(props: StudioPersonaProps & StudioCreativeProps) {
       const signedIn = getAuthToken() !== null;
       setConnection(signedIn ? `Job ${result.data.id.slice(0, 8)} queued` : 'Job created — sign in to track it');
     }
-    else { setJob(null); setConnection(result.error === 'offline' ? 'API offline' : 'Request rejected'); }
-    setError(result.error); setStatus(result.status);
+    else { setJob(null); setConnection(isUnreachable(result) ? 'API unreachable' : 'Request rejected'); }
+    setError(result.error); setStatus(result.status); setErrorType(result.errorType);
   };
 
-  return <StudioLayout type="Video" onGenerate={generate}><div className="video-layout"><div className="control-panel"><IdentityPanel {...props} /><div className="tab-row"><button className="active">Text to video</button><button>Image to video</button></div><div className="panel-heading"><span>Describe your shot</span></div><textarea value={brief} onChange={event => setBrief(event.target.value)} /><label>Model<select value={model} onChange={event => setModel(event.target.value)}>{(models.length ? models : [{ id: model, label: model, status: 'unknown' }]).map(option => <option key={option.id} value={option.id}>{option.label ?? option.id}{option.status ? ` · ${option.status}` : ''}</option>)}</select></label><label>Duration <div className="chip-row">{[5, 10, 15].map(value => <Chip key={value} active={duration === value} onClick={() => setDuration(value)}>{value}s</Chip>)}</div></label><label>Format <div className="chip-row">{['16:9', '9:16', '1:1'].map(value => <Chip key={value} active={aspect === value} onClick={() => setAspect(value)}>{value}</Chip>)}</div></label><label>Camera <div className="chip-row">{['static', 'pan', 'tilt', 'zoom', 'tracking', 'crane'].map(value => <Chip key={value} active={cameraMotion === value} onClick={() => setCameraMotion(value)}>{value}</Chip>)}</div></label>{loras.length > 0 && <label>Persona LoRA<select value={selectedLora} onChange={event => setSelectedLora(event.target.value)}><option value="">None</option>{loras.map(lora => <option value={lora.asset_id} key={lora.asset_id}>{lora.version}</option>)}</select></label>}<div className="setting-line"><span>Native audio</span><button onClick={() => setNativeAudio(!nativeAudio)}><Toggle on={nativeAudio} /></button></div><div className="setting-line"><span>Cinematic mode</span><button onClick={() => setCinematicMode(!cinematicMode)}><Toggle on={cinematicMode} /></button></div><Notice error={error} status={status} /></div><div className="video-canvas"><div className="video-placeholder">{job?.output_url ? <video className="result-image" src={job.output_url} controls /> : <><div className="video-lines" /><Play size={28} fill="currentColor" /><span>{job?.status === 'failed' ? 'The render failed — no video was produced' : connection}</span></>}{job && (job.status === 'queued' || job.status === 'running') && <><div className="render-progress"><i style={{ width: `${progress}%` }} /></div><button className="cancel-job" onClick={async () => { await cancelJob(job.id); setConnection('Render cancelled'); }}>Cancel render</button></>}</div><div className="timeline"><span>00:00</span><div className="timeline-track"><i style={{ width: `${Math.max(progress, 2)}%` }} /></div><span>{`00:0${duration}`.slice(0, 5)}</span></div></div></div></StudioLayout>; }
+  return <StudioLayout type="Video" onGenerate={generate}><div className="video-layout"><div className="control-panel"><IdentityPanel {...props} /><div className="tab-row"><button className="active">Text to video</button><button>Image to video</button></div><div className="panel-heading"><span>Describe your shot</span></div><textarea value={brief} onChange={event => setBrief(event.target.value)} /><label>Model<select value={model} onChange={event => setModel(event.target.value)}>{(models.length ? models : [{ id: model, label: model, status: 'unknown' }]).map(option => <option key={option.id} value={option.id}>{option.label ?? option.id}{option.status ? ` · ${option.status}` : ''}</option>)}</select></label><label>Duration <div className="chip-row">{[5, 10, 15].map(value => <Chip key={value} active={duration === value} onClick={() => setDuration(value)}>{value}s</Chip>)}</div></label><label>Format <div className="chip-row">{['16:9', '9:16', '1:1'].map(value => <Chip key={value} active={aspect === value} onClick={() => setAspect(value)}>{value}</Chip>)}</div></label><label>Camera <div className="chip-row">{['static', 'pan', 'tilt', 'zoom', 'tracking', 'crane'].map(value => <Chip key={value} active={cameraMotion === value} onClick={() => setCameraMotion(value)}>{value}</Chip>)}</div></label>{loras.length > 0 && <label>Persona LoRA<select value={selectedLora} onChange={event => setSelectedLora(event.target.value)}><option value="">None</option>{loras.map(lora => <option value={lora.asset_id} key={lora.asset_id}>{lora.version}</option>)}</select></label>}<div className="setting-line"><span>Native audio</span><button onClick={() => setNativeAudio(!nativeAudio)}><Toggle on={nativeAudio} /></button></div><div className="setting-line"><span>Cinematic mode</span><button onClick={() => setCinematicMode(!cinematicMode)}><Toggle on={cinematicMode} /></button></div><Notice error={error} status={status} errorType={errorType} /></div><div className="video-canvas"><div className="video-placeholder">{job?.output_url ? <video className="result-image" src={job.output_url} controls /> : <><div className="video-lines" /><Play size={28} fill="currentColor" /><span>{job?.status === 'failed' ? 'The render failed — no video was produced' : connection}</span></>}{job && (job.status === 'queued' || job.status === 'running') && <><div className="render-progress"><i style={{ width: `${progress}%` }} /></div><button className="cancel-job" onClick={async () => { await cancelJob(job.id); setConnection('Render cancelled'); }}>Cancel render</button></>}</div><div className="timeline"><span>00:00</span><div className="timeline-track"><i style={{ width: `${Math.max(progress, 2)}%` }} /></div><span>{`00:0${duration}`.slice(0, 5)}</span></div></div></div></StudioLayout>; }
 
 function PersonaStudio() {
   const [personaId, setPersonaId] = useState<string | null>(null);
@@ -578,7 +590,7 @@ function PersonaStudio() {
   const startTraining = async () => {
     setStatus('Creating persona...'); setError(undefined);
     const created = personaId ? { remote: true, data: { id: personaId } } : await createPersona({ name: 'Petrick Martins', age: 50, appearance: 'Athletic portrait', eye_color: 'Dark brown', beard: 'Short beard', hair: 'Long, tied back', height_m: 1.85, style: 'Cinematic realism', reference_asset_ids: referenceIds });
-    if (!created.remote) { setError(created.error); setStatus(created.error === 'offline' ? 'API offline · start FastAPI to train' : 'Persona rejected'); return; }
+    if (!created.remote) { setError(created.error); setStatus(isUnreachable(created) ? 'API unreachable · start FastAPI to train' : 'Persona rejected'); return; }
     const id = String(created.data.id); setPersonaId(id);
     // LEGACY (pre-PR004): the Persona Lab still writes the legacy persona id
     // (Project Memory supersedes it); the write goes through the adapter's
@@ -623,7 +635,8 @@ function Assets({ onCounted }: { onCounted: (count: number) => void }) {
   const [remote, setRemote] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | undefined>();
-  useEffect(() => { listAssets().then(result => { setRemote(result.remote); setError(result.error); if (result.remote) { setAssets(result.data); onCounted(result.data.length); } }); }, []);
+  const [errorType, setErrorType] = useState<NetworkErrorType | undefined>();
+  useEffect(() => { listAssets().then(result => { setRemote(result.remote); setError(result.error); setErrorType(result.errorType); if (result.remote) { setAssets(result.data); onCounted(result.data.length); } }); }, []);
   const counts = useMemo(() => {
     const by = (kind: string) => assets.filter(asset => asset.kind === kind).length;
     return { all: assets.length, image: by('image'), video: by('video'), audio: by('audio'), lora: by('lora') };
@@ -631,12 +644,12 @@ function Assets({ onCounted }: { onCounted: (count: number) => void }) {
   const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    setUploading(true); setError(undefined);
+    setUploading(true); setError(undefined); setErrorType(undefined);
     const result = await uploadAsset(file);
     if (result.remote) { setAssets(current => [result.data, ...current]); setRemote(true); onCounted(assets.length + 1); }
-    else setError(result.error);
+    else { setError(result.error); setErrorType(result.errorType); }
     setUploading(false);
     event.target.value = '';
   };
-  return <><PageHeader eyebrow="LIBRARY" title="Your creative archive" description="Everything you make, in one calm place. Counts are read from the API."><label className="primary-button upload-label"><Plus size={17} /> {uploading ? 'Uploading...' : 'Upload assets'}<input type="file" accept="image/*,video/*,audio/*" onChange={handleUpload} /></label></PageHeader><Notice error={error} /><div className="asset-tabs"><button className="active">All assets <span>{remote ? counts.all : '—'}</span></button><button>Images <span>{remote ? counts.image : '—'}</span></button><button>Videos <span>{remote ? counts.video : '—'}</span></button><button>LoRA <span>{remote ? counts.lora : '—'}</span></button><button>Audio <span>{remote ? counts.audio : '—'}</span></button></div>{!remote ? <div className="empty-library"><Library size={22} /><h3>Library not synced</h3><p>{error === 'offline' ? 'Start FastAPI to load your real assets.' : (error ?? 'Sign in to load your assets.')}</p></div> : assets.length === 0 ? <div className="empty-library"><Library size={22} /><h3>Your library is empty</h3><p>Upload a reference or generate your first asset.</p></div> : <div className="asset-grid">{assets.map((asset, i) => <div className="asset-item" key={asset.id}><div className={`asset-image asset-${i % 6}`} style={asset.url ? { backgroundImage: `url(${asset.url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}><span>{asset.kind === 'video' ? <Clapperboard size={18} /> : <ImageIcon size={18} />}</span></div><div><strong>{asset.name}</strong><small>{asset.kind} · synced</small></div><MoreHorizontal size={16} /></div>)}</div>}</>;
+  return <><PageHeader eyebrow="LIBRARY" title="Your creative archive" description="Everything you make, in one calm place. Counts are read from the API."><label className="primary-button upload-label"><Plus size={17} /> {uploading ? 'Uploading...' : 'Upload assets'}<input type="file" accept="image/*,video/*,audio/*" onChange={handleUpload} /></label></PageHeader><Notice error={error} /><div className="asset-tabs"><button className="active">All assets <span>{remote ? counts.all : '—'}</span></button><button>Images <span>{remote ? counts.image : '—'}</span></button><button>Videos <span>{remote ? counts.video : '—'}</span></button><button>LoRA <span>{remote ? counts.lora : '—'}</span></button><button>Audio <span>{remote ? counts.audio : '—'}</span></button></div>{!remote ? <div className="empty-library"><Library size={22} /><h3>Library not synced</h3><p>{failureMessage({ error, errorType }, 'Start FastAPI to load your real assets.')}</p></div> : assets.length === 0 ? <div className="empty-library"><Library size={22} /><h3>Your library is empty</h3><p>Upload a reference or generate your first asset.</p></div> : <div className="asset-grid">{assets.map((asset, i) => <div className="asset-item" key={asset.id}><div className={`asset-image asset-${i % 6}`} style={asset.url ? { backgroundImage: `url(${asset.url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}><span>{asset.kind === 'video' ? <Clapperboard size={18} /> : <ImageIcon size={18} />}</span></div><div><strong>{asset.name}</strong><small>{asset.kind} · synced</small></div><MoreHorizontal size={16} /></div>)}</div>}</>;
 }

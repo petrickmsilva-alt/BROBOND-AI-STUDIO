@@ -6,6 +6,48 @@ versões de produto do `ROADMAP.md`.
 
 ---
 
+## [Unreleased] — V3.2.1: NETWORK RELIABILITY LAYER
+
+A correção proposta no PR009.2, agora implementada. **Nenhuma funcionalidade
+nova, nenhum provider alterado** — apenas robustez; Provider Registry, Render
+Engine e Director AI intocados.
+
+- **ETAPA 1/2** — `lib/network/request.ts` é a única fronteira de `fetch` do
+  frontend: timeout (`AbortSignal.timeout` 10s/30s), merge de abort do
+  chamador (`AbortSignal.any`), enum `NetworkErrorType`
+  (ONLINE/TIMEOUT/OFFLINE/CORS/UNAUTHORIZED/SERVER_ERROR/UNKNOWN) e
+  `NetworkError` tipado — `lib/api.ts` delega (`runRequest`) e não existe mais
+  nenhum `catch` retornando o literal `'offline'` (as comparações
+  `error === 'offline'` da UI viraram `isUnreachable`/`failureMessage` sobre
+  `ApiResult.errorType`).
+- **ETAPA 3** — retry policy das sondas de status (`health`, `readiness`,
+  `gpuInfo`): somente GET, 3 tentativas, backoff exponencial 300/600/1200ms.
+- **ETAPA 4** — cold start detection: timeout com duração entre 8s e 60s vira
+  "Servidor iniciando — o primeiro acesso pode demorar alguns segundos.",
+  nunca "API Offline" (free tier do Render).
+- **ETAPA 5** — `StatusCenter` (`app/components/StatusCenter.tsx`) montado no
+  shell: um estado honesto com cor e ação — Online, Inicializando (sonda a
+  cada 3s enquanto o servidor acorda), Sem internet (retry), Sessão expirada,
+  Erro interno.
+- **ETAPA 6** — trace id `x-brobond-trace` em toda requisição (mesmo id em
+  todas as tentativas de retry), log `[brobond:network]` com URL sem query
+  string (sem PII), método, latência e desfecho; `ApiResult.traceId`.
+- **ETAPA 7** — todos os `app/studio/*/page.tsx` e `app/page.tsx` ramificam
+  por `errorType`; `describeError` dos painéis recebe o resultado tipado.
+- **ETAPA 8** — `lib/network/request.test.ts` + `lib/network/status.test.ts`
+  (DNS, CORS, Timeout, cold start, 500 com retry, 401 sem retry, agenda de
+  backoff exata, trace id, log, `readError`); `lib/api.network.test.ts`
+  reescrito para o contrato tipado (19 testes); cobertura de `lib/network/**`
+  com piso **98%** no `vitest.config.ts` (hoje ~99.5/99/100/99.5, suíte
+  inteira: 124 testes).
+- **Guardas** — `test_fetch_lives_only_in_the_network_layer` (honesty):
+  `fetch(` só em `lib/network/request.ts`; contagens de teste sincronizadas
+  (1.955 backend / 124 frontend).
+- **Docs** — `docs/NETWORK_LAYER.md` novo; ARCHITECTURE.md, docs/API.md
+  (contagem de rotas inalterada: 106 + 3 WS) e este CHANGELOG atualizados.
+
+---
+
 ## [Unreleased] — PR009.2: FRONTEND NETWORK RECONCILIATION
 
 Diagnóstico reproduzível do "API Offline" com a API respondendo 200.

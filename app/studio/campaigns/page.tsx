@@ -16,6 +16,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { Megaphone, RefreshCcw, XCircle } from 'lucide-react';
 
 import type { Campaign, CampaignDetail } from '../../../lib/api';
+import { NetworkErrorType } from '../../../lib/network/request';
+import { failureMessage } from '../../../lib/network/status';
 import {
   duplicateCampaign,
   exportCampaign,
@@ -28,10 +30,9 @@ import CampaignCalendar from './CampaignCalendar';
 import CampaignAssets from './CampaignAssets';
 import ExportPanel from './ExportPanel';
 
-function describeError(error: string | undefined, status?: number): string {
-  if (error === 'offline') return 'API offline — inicie o FastAPI para usar o Campaign Builder.';
-  if (status === 401) return 'Entre com sua conta na tela inicial — campanhas exigem identidade.';
-  return error ?? 'Algo falhou.';
+function describeError(result: { error?: string; errorType?: NetworkErrorType; status?: number }): string {
+  if (result.status === 401) return 'Entre com sua conta na tela inicial — campanhas exigem identidade.';
+  return failureMessage(result, 'API offline — inicie o FastAPI para usar o Campaign Builder.');
 }
 
 export default function CampaignsPage() {
@@ -46,7 +47,7 @@ export default function CampaignsPage() {
   const refreshList = useCallback(async (): Promise<Campaign[]> => {
     const result = await listCampaigns();
     if (!result.remote) {
-      setError(describeError(result.error, result.status));
+      setError(describeError(result));
       return [];
     }
     setError(undefined);
@@ -61,7 +62,7 @@ export default function CampaignsPage() {
     setLoading(false);
     if (!result.remote) {
       setDetail(null);
-      setError(describeError(result.error, result.status));
+      setError(describeError(result));
       return;
     }
     setError(undefined);
@@ -75,7 +76,7 @@ export default function CampaignsPage() {
       setError(undefined);
       setDetail(result.data);
     } else {
-      setError(describeError(result.error, result.status));
+      setError(describeError(result));
     }
   }, [selectedId]);
 
@@ -99,7 +100,7 @@ export default function CampaignsPage() {
     const result = await exportCampaign(selectedId);
     setExporting(false);
     if (!result.remote) {
-      setError(describeError(result.error, result.status));
+      setError(describeError(result));
       return;
     }
     setError(undefined);
@@ -112,7 +113,7 @@ export default function CampaignsPage() {
     const result = await duplicateCampaign(selectedId);
     setDuplicating(false);
     if (!result.remote) {
-      setError(describeError(result.error, result.status));
+      setError(describeError(result));
       return;
     }
     setError(undefined);

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Clock3, Clapperboard, Film, History, MessageSquareText, Redo2, Sparkles, Undo2, UserRound } from 'lucide-react';
 import type { PersonaProfile, ProductionPlan } from '../../../lib/api';
+import { failureMessage } from '../../../lib/network/status';
 import { createProductionPlan, listPersonaProfiles } from '../../../lib/api';
 import type { CameraPresetName, SceneMood, ScenePatch, StoryboardHistory, StoryboardState } from '../../../lib/storyboard/storyboard_state';
 import {
@@ -92,7 +93,7 @@ export default function DirectorPage() {
       setPlan(null);
       setHistory(null);
       setSelectedSceneId(undefined);
-      setError(result.error === 'offline' ? 'API offline — inicie o FastAPI para criar o plano.' : result.error);
+      setError(failureMessage(result, 'API offline — inicie o FastAPI para criar o plano.'));
     }
     setLoading(false);
   };

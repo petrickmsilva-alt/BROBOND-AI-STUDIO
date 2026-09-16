@@ -1,15 +1,33 @@
 /**
  * API client for the studio.
  *
- * Two changes in ETAPA 15, both about not lying to the user:
+ * V3.2.1: there is no `fetch` here anymore — every request goes through
+ * `lib/network/request.ts` (timeout, retry, abort, trace id, error
+ * mapping). Failures arrive as a typed `NetworkErrorType` on
+ * `ApiResult.errorType` plus a human message on `error`; no catch returns
+ * a bare "offline" string, and a timeout in the cold-start window is
+ * reported as "Servidor iniciando…", not as a dead server (PR009.2
+ * diagnosed the old conflations; this layer fixes them).
  *
- * 1. `request` used to swallow every failure — 401, 422, 500, timeout — into the
- *    same `{ data: null, remote: false }`. The UI could not tell "wrong
- *    password" from "server is down", so it always said "offline". Results now
- *    carry `status` and `error`, and `remote` still means "usable data arrived".
- * 2. The base URL is relative and proxied by `next.config.mjs`, so the browser
- *    never hard-codes an origin it may not be able to reach.
+ * The base URL is still relative and proxied by `next.config.mjs`, so the
+ * browser never hard-codes an origin it may not be able to reach.
  */
+
+import { getAuthToken, setAuthToken } from './memory/project_memory';
+import {
+  API_URL,
+  DEFAULT_TIMEOUT_MS,
+  UPLOAD_TIMEOUT_MS,
+  STATUS_RETRY_ATTEMPTS,
+  NetworkErrorType,
+  httpErrorType,
+  networkProblemText,
+  readError,
+  runRequest,
+} from './network/request';
+
+export { API_URL } from './network/request';
+export { NetworkErrorType } from './network/request';
 
 export type Job = {
   id: string;
@@ -27,65 +45,65 @@ export type ApiResult<T> = {
   remote: boolean;
   /** HTTP status when the server answered at all, even with an error. */
   status?: number;
-  /** Human-readable reason. `offline` means no answer was received. */
+  /** Human-readable reason (network classes carry their own text). */
   error?: string;
+  /** V3.2.1: the typed failure — UI branches on this, never on strings. */
+  errorType?: NetworkErrorType;
+  /** V3.2.1: the `x-brobond-trace` id of the request. */
+  traceId?: string;
 };
-
-/**
- * Empty by default: requests go to the same origin and `next.config.mjs`
- * proxies them to FastAPI. Set `NEXT_PUBLIC_API_URL` to talk to another host.
- */
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
-
-const DEFAULT_TIMEOUT_MS = 10000;
-const UPLOAD_TIMEOUT_MS = 30000;
-
-import { getAuthToken, setAuthToken } from './memory/project_memory';
 
 // PR002's auth token. Since PR004.1 it is read/written through the Memory
 // Adapter's accessors (`lib/memory/project_memory.ts`) — the only file in
 // the repo allowed to touch `window.localStorage`. The token is a separate
 // contract (auth), not part of `ProjectMemoryState`.
 
-function ok<T>(data: T, status: number): ApiResult<T> {
-  return { data, remote: true, status };
+function ok<T>(data: T, status: number, traceId?: string): ApiResult<T> {
+  return { data, remote: true, status, traceId };
 }
 
-function failed<T>(error: string, status?: number): ApiResult<T> {
-  return { data: null as T, remote: false, status, error };
+function failed<T>(
+  error: string,
+  status?: number,
+  errorType?: NetworkErrorType,
+  traceId?: string,
+): ApiResult<T> {
+  return { data: null as T, remote: false, status, error, errorType, traceId };
 }
 
-/** Pull a useful message out of a FastAPI error body, which has a known shape. */
-async function readError(response: Response): Promise<string> {
-  try {
-    const body = await response.json();
-    if (typeof body?.detail === 'string') return body.detail;
-    if (Array.isArray(body?.detail) && body.detail[0]?.msg) return String(body.detail[0].msg);
-    if (body?.detail) return JSON.stringify(body.detail);
-  } catch {
-    // A non-JSON error body is still an error; fall through to the status text.
+async function request<T>(
+  path: string,
+  init: RequestInit,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  retries = 0,
+): Promise<ApiResult<T>> {
+  const token = getAuthToken();
+  const outcome = await runRequest(path, {
+    ...init,
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(init.headers ?? {}),
+    },
+  }, { timeoutMs, retries });
+  if (outcome.kind === 'error') {
+    const { error } = outcome;
+    return failed<T>(networkProblemText(error), error.status, error.type, error.traceId);
   }
-  return `API ${response.status} ${response.statusText}`.trim();
-}
-
-async function request<T>(path: string, init: RequestInit, timeoutMs = DEFAULT_TIMEOUT_MS): Promise<ApiResult<T>> {
-  try {
-    const token = getAuthToken();
-    const response = await fetch(`${API_URL}${path}`, {
-      ...init,
-      headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(init.headers ?? {}) },
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (!response.ok) return failed<T>(await readError(response), response.status);
-    // PR003: 204 has no body by design (DELETE) — nothing to parse.
-    if (response.status === 204) return ok<T>(null as T, response.status);
-    return ok<T>(await response.json() as T, response.status);
-  } catch {
-    return failed<T>('offline');
+  const { response, traceId } = outcome;
+  if (!response.ok) {
+    return failed<T>(await readError(response), response.status, httpErrorType(response.status), traceId);
   }
+  // PR003: 204 has no body by design (DELETE) — nothing to parse.
+  if (response.status === 204) return ok<T>(null as T, response.status, traceId);
+  return ok<T>(await response.json() as T, response.status, traceId);
 }
 
 const get = <T>(path: string) => request<T>(path, { method: 'GET' });
+// V3.2.1: the status probes ride the retry policy — cold starts answer on
+// the second or third attempt instead of showing the shell as offline.
+const getStatus = <T>(path: string) =>
+  request<T>(path, { method: 'GET' }, DEFAULT_TIMEOUT_MS, STATUS_RETRY_ATTEMPTS);
 const post = <T>(path: string, payload: unknown) =>
   request<T>(path, { method: 'POST', body: JSON.stringify(payload ?? {}) });
 // V3.2: continuity locks upsert idempotently, so they speak PUT.
@@ -164,20 +182,23 @@ export function listPersonaLoras(personaId: string) {
 }
 
 export async function uploadAsset(file: File): Promise<ApiResult<Asset>> {
-  try {
-    const token = getAuthToken();
-    const form = new FormData();
-    form.append('file', file);
-    const response = await fetch(`${API_URL}/api/v1/assets/upload`, {
-      method: 'POST', body: form,
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      signal: AbortSignal.timeout(UPLOAD_TIMEOUT_MS),
-    });
-    if (!response.ok) return failed<Asset>(await readError(response), response.status);
-    return ok<Asset>(await response.json() as Asset, response.status);
-  } catch {
-    return failed<Asset>('offline');
+  const token = getAuthToken();
+  const form = new FormData();
+  form.append('file', file);
+  const outcome = await runRequest('/api/v1/assets/upload', {
+    method: 'POST',
+    body: form,
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  }, { timeoutMs: UPLOAD_TIMEOUT_MS });
+  if (outcome.kind === 'error') {
+    const { error } = outcome;
+    return failed<Asset>(networkProblemText(error), error.status, error.type, error.traceId);
   }
+  const { response, traceId } = outcome;
+  if (!response.ok) {
+    return failed<Asset>(await readError(response), response.status, httpErrorType(response.status), traceId);
+  }
+  return ok<Asset>(await response.json() as Asset, response.status, traceId);
 }
 
 // ---------------------------------------------------------------------------
@@ -197,15 +218,17 @@ export type Readiness = {
 export type ModelOption = { id: string; label?: string; status?: string; [key: string]: unknown };
 
 export function gpuInfo() {
-  return get<GpuInfo>('/api/v1/system/gpu');
+  // ETAPA 3: retry 3× with 300/600/1200ms backoff, GET only — a cold-start
+  // probe that answers on attempt 2 must not read as "API Offline".
+  return getStatus<GpuInfo>('/api/v1/system/gpu');
 }
 
 export function readiness() {
-  return get<Readiness>('/api/v1/system/readiness');
+  return getStatus<Readiness>('/api/v1/system/readiness');
 }
 
 export function health() {
-  return get<Record<string, unknown>>('/api/v1/health');
+  return getStatus<Record<string, unknown>>('/api/v1/health');
 }
 
 export function imageModels() {

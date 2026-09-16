@@ -12,12 +12,13 @@ import { useState } from 'react';
 import { PackageCheck, Layers } from 'lucide-react';
 
 import type { CampaignAsset } from '../../../lib/api';
+import { NetworkErrorType } from '../../../lib/network/request';
+import { failureMessage } from '../../../lib/network/status';
 import { deliverCampaignAsset } from '../../../lib/api';
 
-function describeError(error: string | undefined, status?: number): string {
-  if (error === 'offline') return 'API offline — inicie o FastAPI para anexar entregas.';
-  if (status === 401) return 'Entre com sua conta — entrega exige identidade.';
-  return error ?? 'Algo falhou.';
+function describeError(result: { error?: string; errorType?: NetworkErrorType; status?: number }): string {
+  if (result.status === 401) return 'Entre com sua conta — entrega exige identidade.';
+  return failureMessage(result, 'API offline — inicie o FastAPI para anexar entregas.');
 }
 
 function AssetRow({ asset, onChanged }: { asset: CampaignAsset; onChanged: () => void }) {
@@ -39,7 +40,7 @@ function AssetRow({ asset, onChanged }: { asset: CampaignAsset; onChanged: () =>
     });
     setSaving(false);
     if (!result.remote) {
-      setMessage({ kind: 'error', text: describeError(result.error, result.status) });
+      setMessage({ kind: 'error', text: describeError(result) });
       return;
     }
     setMessage({ kind: 'ok', text: 'Entrega anexada — ativo marcado como entregue.' });

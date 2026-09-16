@@ -13,6 +13,8 @@ import { useState } from 'react';
 import { Sparkles, Wand2 } from 'lucide-react';
 
 import type { CampaignDetail, CampaignInterpretation } from '../../../lib/api';
+import { NetworkErrorType } from '../../../lib/network/request';
+import { failureMessage } from '../../../lib/network/status';
 import { createCampaign, interpretBriefing } from '../../../lib/api';
 
 const EXAMPLES = [
@@ -42,10 +44,9 @@ export default function BriefPanel({
   const [building, setBuilding] = useState(false);
   const [message, setMessage] = useState<{ kind: 'ok' | 'error'; text: string } | null>(null);
 
-  function describeError(error: string | undefined, status?: number): string {
-    if (error === 'offline') return 'API offline — inicie o FastAPI para construir a campanha.';
-    if (status === 401) return 'Entre com sua conta — campanhas exigem identidade.';
-    return error ?? 'Algo falhou.';
+  function describeError(result: { error?: string; errorType?: NetworkErrorType; status?: number }): string {
+    if (result.status === 401) return 'Entre com sua conta — campanhas exigem identidade.';
+    return failureMessage(result, 'API offline — inicie o FastAPI para construir a campanha.');
   }
 
   async function read() {
@@ -60,7 +61,7 @@ export default function BriefPanel({
     setReading(false);
     if (!result.remote) {
       setInterpretation(null);
-      setMessage({ kind: 'error', text: describeError(result.error, result.status) });
+      setMessage({ kind: 'error', text: describeError(result) });
       return;
     }
     setInterpretation(result.data);
@@ -77,7 +78,7 @@ export default function BriefPanel({
     const result = await createCampaign({ briefing: text, name: name.trim() || undefined });
     setBuilding(false);
     if (!result.remote) {
-      setMessage({ kind: 'error', text: describeError(result.error, result.status) });
+      setMessage({ kind: 'error', text: describeError(result) });
       return;
     }
     setInterpretation(null);
