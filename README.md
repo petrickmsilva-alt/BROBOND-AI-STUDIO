@@ -326,15 +326,17 @@ See `ETAPA4_REPORT.md` for the technical report and `ARCHITECTURE.md` for the mo
 BROBOND-AI-STUDIO/
 ├── app/                  # Next.js App Router UI
 │   ├── page.tsx          # workspace shell and module slices
+│   ├── studio/campaigns/ # V3.3 Campaign Builder UI (brief, calendar, assets, export)
 │   └── globals.css       # design system
 ├── backend/              # FastAPI service boundary
 │   ├── app/core/         # BROBOND CORE: director, memory, prompt, style, shot, spec
+│   ├── app/campaign/     # V3.3 Campaign Builder: brief, CTA deck, timeline, export
 │   ├── app/api/          # versioned route package (see AUDIT.md: currently unused)
 │   ├── app/providers/    # FLUX and Wan adapters
 │   ├── app/services/     # service adapters
 │   ├── app/main.py       # composition root: wires the Core, exposes the routes
 │   ├── app/models.py     # SQLAlchemy models
-│   └── tests/            # pytest suite (1,808 tests)
+│   └── tests/            # pytest suite (1,955 tests)
 ├── docker-compose.yml    # local Postgres, Redis and MinIO
 └── requirements.txt      # Python service dependencies
 ```
@@ -386,7 +388,7 @@ npm run build
 
 The end-to-end backend test covers registration, authenticated upload, generation job creation, storyboard expansion and asset listing.
 
-The backend suite is **1,808 tests** and total backend coverage is **97%**, held by a `--fail-under=95` gate in CI. The whole
+The backend suite is **1,955 tests** and total backend coverage is **97%**, held by a `--fail-under=95` gate in CI. The whole
 `backend/app/core/` directory reads 98%, with PR005 Director AI and PR006 StoryboardState covered above the 95% floor. The remainder of the gap is the pre-existing dead
 cluster from `AUDIT.md` P0-1 — four modules, 100 statements, that do not import at all; see
 `docs/LIMITATIONS.md` §5. `core/persona_memory.py`,

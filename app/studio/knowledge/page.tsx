@@ -9,6 +9,7 @@ import type {
   GraphNode,
   GraphQueryMatch,
 } from '../../../lib/api';
+import { failureMessage } from '../../../lib/network/status';
 import {
   graphCharacterContext,
   graphNeighbors,
@@ -87,11 +88,7 @@ export default function KnowledgePage() {
       setNodeTotal(0);
       setEdgeTotal(0);
       const problem = !nodesResult.remote ? nodesResult : edgesResult;
-      setError(
-        problem.error === 'offline'
-          ? 'API offline — inicie o FastAPI para explorar o Knowledge Graph.'
-          : problem.error,
-      );
+      setError(failureMessage(problem, 'API offline — inicie o FastAPI para explorar o Knowledge Graph.'));
     }
     setLoading(false);
   };
@@ -113,9 +110,7 @@ export default function KnowledgePage() {
     } else {
       setMatches([]);
       setSearchedTerm(term);
-      setSearchError(
-        result.error === 'offline' ? 'API offline — sem resposta para a busca.' : result.error,
-      );
+      setSearchError(failureMessage(result, 'API offline — sem resposta para a busca.'));
     }
     setSearching(false);
   };
@@ -148,11 +143,7 @@ export default function KnowledgePage() {
     if (neighborsResult.remote) {
       setNeighborhood(neighborsResult.data);
     } else {
-      setDetailError(
-        neighborsResult.error === 'offline'
-          ? 'API offline — vizinhança indisponível.'
-          : (neighborsResult.error ?? 'Vizinhança indisponível.'),
-      );
+      setDetailError(failureMessage(neighborsResult, 'API offline — vizinhança indisponível.'));
     }
     if (contextResult?.remote) setCharacterContext(contextResult.data);
     setDetailLoading(false);
@@ -170,11 +161,7 @@ export default function KnowledgePage() {
       );
       await load();
     } else {
-      setSeedMessage(
-        result.error === 'offline'
-          ? 'API offline — não foi possível carregar a demonstração.'
-          : result.error,
-      );
+      setSeedMessage(failureMessage(result, 'API offline — não foi possível carregar a demonstração.'));
     }
     setSeeding(false);
   };

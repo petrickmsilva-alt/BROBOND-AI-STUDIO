@@ -6,7 +6,148 @@ versões de produto do `ROADMAP.md`.
 
 ---
 
-## [Unreleased] — V3.2: CHARACTER CONTINUITY ENGINE
+## [Unreleased] — V3.2.1: NETWORK RELIABILITY LAYER
+
+A correção proposta no PR009.2, agora implementada. **Nenhuma funcionalidade
+nova, nenhum provider alterado** — apenas robustez; Provider Registry, Render
+Engine e Director AI intocados.
+
+- **ETAPA 1/2** — `lib/network/request.ts` é a única fronteira de `fetch` do
+  frontend: timeout (`AbortSignal.timeout` 10s/30s), merge de abort do
+  chamador (`AbortSignal.any`), enum `NetworkErrorType`
+  (ONLINE/TIMEOUT/OFFLINE/CORS/UNAUTHORIZED/SERVER_ERROR/UNKNOWN) e
+  `NetworkError` tipado — `lib/api.ts` delega (`runRequest`) e não existe mais
+  nenhum `catch` retornando o literal `'offline'` (as comparações
+  `error === 'offline'` da UI viraram `isUnreachable`/`failureMessage` sobre
+  `ApiResult.errorType`).
+- **ETAPA 3** — retry policy das sondas de status (`health`, `readiness`,
+  `gpuInfo`): somente GET, 3 tentativas, backoff exponencial 300/600/1200ms.
+- **ETAPA 4** — cold start detection: timeout com duração entre 8s e 60s vira
+  "Servidor iniciando — o primeiro acesso pode demorar alguns segundos.",
+  nunca "API Offline" (free tier do Render).
+- **ETAPA 5** — `StatusCenter` (`app/components/StatusCenter.tsx`) montado no
+  shell: um estado honesto com cor e ação — Online, Inicializando (sonda a
+  cada 3s enquanto o servidor acorda), Sem internet (retry), Sessão expirada,
+  Erro interno.
+- **ETAPA 6** — trace id `x-brobond-trace` em toda requisição (mesmo id em
+  todas as tentativas de retry), log `[brobond:network]` com URL sem query
+  string (sem PII), método, latência e desfecho; `ApiResult.traceId`.
+- **ETAPA 7** — todos os `app/studio/*/page.tsx` e `app/page.tsx` ramificam
+  por `errorType`; `describeError` dos painéis recebe o resultado tipado.
+- **ETAPA 8** — `lib/network/request.test.ts` + `lib/network/status.test.ts`
+  (DNS, CORS, Timeout, cold start, 500 com retry, 401 sem retry, agenda de
+  backoff exata, trace id, log, `readError`); `lib/api.network.test.ts`
+  reescrito para o contrato tipado (19 testes); cobertura de `lib/network/**`
+  com piso **98%** no `vitest.config.ts` (hoje ~99.5/99/100/99.5, suíte
+  inteira: 124 testes).
+- **Guardas** — `test_fetch_lives_only_in_the_network_layer` (honesty):
+  `fetch(` só em `lib/network/request.ts`; contagens de teste sincronizadas
+  (1.955 backend / 124 frontend).
+- **Docs** — `docs/NETWORK_LAYER.md` novo; ARCHITECTURE.md, docs/API.md
+  (contagem de rotas inalterada: 106 + 3 WS) e este CHANGELOG atualizados.
+
+---
+
+## [Unreleased] — PR009.2: FRONTEND NETWORK RECONCILIATION
+
+Diagnóstico reproduzível do "API Offline" com a API respondendo 200.
+**Nenhuma feature, nenhum provider, nenhuma arquitetura alterados** — a
+correção fica proposta no relatório, não aplicada.
+
+- **Auditoria** — o literal `'offline'` nasce em exatamente dois `catch` de
+  `lib/api.ts` (linhas 84 e 179) e engole três classes distintas: rede real
+  (`TypeError`), CORS bloqueado (`TypeError: Failed to fetch` — a API
+  respondeu 200 e o browser esconde) e timeout (`TimeoutError`/`AbortError`
+  do `AbortSignal.timeout(10000)` — API viva, cold start do free tier).
+  Base de URL: `API_URL = NEXT_PUBLIC_API_URL ?? ''` verbatim, sem
+  transformação — **MATCH** absoluto com o `render.yaml`
+  (`https://brobond-ai-api.onrender.com`).
+- **Trace real** — `scripts/network_trace.mjs` mede as chamadas da UI contra
+  o proxy same-origin (health/readiness/gpu **200**), a API direta
+  (preflight CORS **400** para origem fora da allow-list local = o mecanismo
+  do falso offline, **200 + echo** para origem permitida) e as URLs de
+  produção (egress do sandbox bloqueado — registrado como inconclusivo).
+  Resultado em `docs/NETWORK_TRACE.md`.
+- **Testes e2e** — `lib/api.network.test.ts` (17 testes, vitest): API online,
+  500, 401, 502, 204, DNS inválido, conexão recusada, CORS e timeout, mais a
+  construção exata da URL base e as rotas de status da Home — "offline" só
+  em rede real, mais as duas conflações documentadas.
+- **Relatório** — `docs/NETWORK_RECONCILIATION_REPORT.md` com o bloco
+  MATCH/MISMATCH, primeira chamada da Home, rota que falha, stack real dos
+  erros e a correção proposta (distinguir timeout, orçamento maior para as
+  rotas de status, proxy same-origin no Render).
+
+---
+
+## [Unreleased] — PR009.1: HEALTH CHECK RECONCILIATION
+
+Hotfix de reconciliação entre as rotas de health do FastAPI e o
+`healthCheckPath` do Render Blueprint. **Nenhuma funcionalidade nova**;
+`render.yaml` e o prefixo global `/api/v1` permanecem intactos — a medição
+encontrou as duas partes já reconciliadas, e o estado passou a ser fixado
+por testes para não divergirem de novo.
+
+- **Verificação** — `GET /api/v1/health` e `GET /health` (mesmo handler,
+  decoradores empilhados) respondem **200** sem exigir token; o probe do
+  Render passa sem credenciais. `healthCheckPath` do blueprint
+  (`brobond-ai-api` → `/api/v1/health`, `brobond-studio-web` → `/`) casa
+  com rotas reais que retornam 200; Swagger (`/docs`), ReDoc (`/redoc`) e
+  `/openapi.json` em 200.
+- **Teste novo** — `backend/tests/test_health_reconciliation.py` (8
+  testes): 200 nas duas rotas, corpo documentado, sem dependência de
+  identidade, prefixo `/api/v1` preservado e **cada `healthCheckPath` do
+  `render.yaml` resolvido contra as rotas servidas pela aplicação** —
+  qualquer divergência futura falha no CI.
+- **Relatório** — `docs/API_HEALTH_REPORT.md` gerado da aplicação em
+  execução, com o inventário completo (método, path, tags), status codes
+  medidos e o caminho do Swagger.
+
+---
+
+## [Unreleased] — V3.3: CAMPAIGN BUILDER
+
+V3.3 transforma um único briefing em uma campanha completa: sete entregáveis,
+timeline de cinco dias, deck de CTAs que nunca repete e ZIP de exportação.
+O Director AI, o Provider Registry e o Render Engine não foram alterados — o
+builder planeja, agenda e empacota; um ativo só vira `delivered` quando um
+arquivo real é anexado a ele.
+
+### O que mudou
+
+- **Pacote `backend/app/campaign/`** — `brief_interpreter.py` (leitura
+  determinística PT/EN do briefing: produto, público, plataforma, duração,
+  objetivo — com lista honesta de `missing` para todo default), `cta_engine.py`
+  (deck de 28 templates embaralhado por seed de campanha; sortear nunca repete,
+  por construção), `timeline_builder.py` (catálogo dos 7 entregáveis + plano
+  Dia 1..Dia 5 com foco/ativos diferentes por dia + composição de prompt por
+  formato), `export_center.py` (manifesto + prompt + metadata + binários
+  entregues em um ZIP determinístico com sha256) e `campaign_service.py`
+  (orquestra tudo e expande os prompts pelo `PromptEnhancer` existente).
+- **Migração Alembic `0005`** — tabelas `campaigns`, `campaign_briefs`,
+  `campaign_episodes`, `campaign_assets` e `campaign_exports`, idempotente.
+- **Rotas** — sete endpoints `/api/v1/campaigns/*` com identidade
+  (interpret, create, list, detail, duplicate, deliver, export), 404 para id
+  estrangeiro, 422 para briefing vazio e entrega inválida, audit em cada
+  mutação; o ZIP é servido pela rota autenticada `/assets/download/{key}`.
+- **UI `/studio/campaigns`** — BriefPanel (interpretar + criar),
+  CampaignCalendar (Dia 1..Dia 5 com ativos e CTAs), CampaignAssets (sete
+  entregáveis com prompt, CTA e anexar entrega real), ExportPanel (exportar
+  ZIP, baixar, duplicar campanha); erros distinguem offline, anônimo e
+  rejeição.
+- **Testes** — 138 testes novos (`test_campaign_*.py`, 7 arquivos); pacote
+  `backend/app/campaign/` em **100%** de cobertura.
+
+### Invariantes
+
+- Nunca repetir CTA dentro da campanha (o deck valida unicidade; duplicar
+  cunha seed nova e re-armar o deck).
+- Cada dia da timeline roda um conjunto **diferente** de ativos.
+- Nada é inventado: export sem arquivo entregue sai só com texto; entrega
+  exige chave do próprio workspace existente no storage.
+
+---
+
+## [V3.2] — CHARACTER CONTINUITY ENGINE
 
 V3.2 congela o que cada personagem é, veste, onde está, o que dirige e como
 soa — por campanha, com override por episódio, fingerprint visual e

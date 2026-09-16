@@ -13,14 +13,14 @@ mudar e o documento não for regenerado, a suíte falha.
 
 ## Resumo
 
-- **99** rotas HTTP sob `/api/v1`
+- **106** rotas HTTP sob `/api/v1`
 - **32** delas são `/api/v1/core/*` — a camada de decisão
 - **3** WebSockets
-- **16** tags
+- **17** tags
 
 OpenAPI interativo em `/docs` (Swagger) e `/redoc` quando o serviço está no ar.
 
-PR006 Storyboard Cinematic Engine não adiciona rotas de render: a UI edita um `StoryboardState` versionado sobre o `ProductionPlan` retornado por `/api/v1/core/director/production-plan`. PR007 adiciona `/api/v1/providers` para health/capabilities do registry universal, sem expor segredos. PR008 adiciona seis rotas `/api/v1/render/*` (lotes de render com identidade) e o WebSocket `/ws/render/{batch_id}` com progresso por push, sem polling. V3.1 adiciona doze rotas `/api/v1/graph/*` (Cinematic Knowledge Graph com identidade: CRUD de nós/arestas, busca semântica, vizinhança e contexto de personagem para o Director AI). V3.2 adiciona treze rotas `/api/v1/continuity/*` (Character Continuity Engine com identidade: cinco locks com fingerprint, resolver persona+campanha+episódio e histórico imutável de episódios).
+PR006 Storyboard Cinematic Engine não adiciona rotas de render: a UI edita um `StoryboardState` versionado sobre o `ProductionPlan` retornado por `/api/v1/core/director/production-plan`. PR007 adiciona `/api/v1/providers` para health/capabilities do registry universal, sem expor segredos. PR008 adiciona seis rotas `/api/v1/render/*` (lotes de render com identidade) e o WebSocket `/ws/render/{batch_id}` com progresso por push, sem polling. V3.1 adiciona doze rotas `/api/v1/graph/*` (Cinematic Knowledge Graph com identidade: CRUD de nós/arestas, busca semântica, vizinhança e contexto de personagem para o Director AI). V3.2 adiciona treze rotas `/api/v1/continuity/*` (Character Continuity Engine com identidade: cinco locks com fingerprint, resolver persona+campanha+episódio e histórico imutável de episódios). V3.3 adiciona sete rotas `/api/v1/campaigns/*` (Campaign Builder com identidade: interpretar um briefing, criar a campanha completa com sete entregáveis e timeline de cinco dias, duplicar, anexar entregas reais e exportar o ZIP com manifesto).
 
 ## `assets` — 4
 
@@ -38,6 +38,18 @@ PR006 Storyboard Cinematic Engine não adiciona rotas de render: a UI edita um `
 | `POST` | `/api/v1/auth/login` | Sign in (PR002: rate-limited, and every attempt — success or failure — audited). |
 | `GET` | `/api/v1/auth/me` | get_current_user |
 | `POST` | `/api/v1/auth/register` | Create an account (PR002: rate-limited and audited). |
+
+## `campaign` — 7
+
+| Método | Rota | Descrição |
+| --- | --- | --- |
+| `GET` | `/api/v1/campaigns` | List the workspace's campaigns, newest first (V3.3). |
+| `POST` | `/api/v1/campaigns` | Build the complete campaign from one briefing (V3.3: brief → deliverables → timeline). |
+| `POST` | `/api/v1/campaigns/interpret` | Read one briefing line into the six brief fields — nothing persisted (V3.3). |
+| `GET` | `/api/v1/campaigns/{campaign_id}` | One campaign with its brief, seven assets, five-day timeline and exports (V3.3). |
+| `POST` | `/api/v1/campaigns/{campaign_id}/assets/{asset_id}/deliver` | Attach a real stored file to a planned asset — planned → delivered (V3.3). |
+| `POST` | `/api/v1/campaigns/{campaign_id}/duplicate` | Copy a campaign with freshly armed CTAs and deliveries reset (V3.3). |
+| `POST` | `/api/v1/campaigns/{campaign_id}/export` | Build the Export Center ZIP: manifest, prompts, metadata and delivered files (V3.3). |
 
 ## `continuity` — 13
 
@@ -208,3 +220,14 @@ PR006 Storyboard Cinematic Engine não adiciona rotas de render: a UI edita um `
 | `/api/v1/personas/{persona_id}/training/events/{run_id}` | training_events |
 | `/api/v1/queue/events/{job_id}` | Stream a job's transitions until it reaches a terminal state. |
 | `/ws/render/{batch_id}` | Push a batch's render events until the terminal one. No polling. |
+
+## Cliente — camada de rede (V3.2.1)
+
+Todas as chamadas acima partem de `lib/api.ts`, que delega a `lib/network/request.ts` —
+a única fronteira de `fetch` do frontend. Timeout 10s (30s em upload), trace id
+`x-brobond-trace`, e retry **somente GET** para as três sondas de status
+(`/api/v1/health`, `/api/v1/system/readiness`, `/api/v1/system/gpu`: 3 tentativas,
+backoff 300/600/1200ms). Falhas chegam tipadas (`NetworkErrorType`) e timeout na janela
+8–60s é tratado como cold start ("Servidor iniciando…"), não como API Offline.
+Nenhuma rota nova — este documento continua sendo o inventário canônico
+(106 rotas HTTP + 3 WebSockets). Detalhes: `docs/NETWORK_LAYER.md`.

@@ -25,6 +25,8 @@ import type {
   ContinuityVoice,
   ContinuityWardrobe,
 } from '../../../lib/api';
+import { NetworkErrorType } from '../../../lib/network/request';
+import { failureMessage } from '../../../lib/network/status';
 import {
   createContinuityEpisode,
   getContinuityIdentity,
@@ -105,10 +107,9 @@ function formFromLock(fields: FieldSpec[], lock: LockData | null): Record<string
   return form;
 }
 
-function describeError(error: string | undefined, status?: number): string {
-  if (error === 'offline') return 'API offline — inicie o FastAPI para travar continuidade.';
-  if (status === 401) return 'Entre com sua conta — continuidade exige identidade.';
-  return error ?? 'Algo falhou.';
+function describeError(result: { error?: string; errorType?: NetworkErrorType; status?: number }): string {
+  if (result.status === 401) return 'Entre com sua conta — continuidade exige identidade.';
+  return failureMessage(result, 'API offline — inicie o FastAPI para travar continuidade.');
 }
 
 function LockCard({
@@ -262,7 +263,7 @@ export default function ContinuityPage() {
       result => !result.remote && result.status !== 404,
     );
     if (fatal) {
-      setError(describeError(fatal.error, fatal.status));
+      setError(describeError(fatal));
       setLoading(false);
       return;
     }
@@ -286,7 +287,7 @@ export default function ContinuityPage() {
       setEpisodesError(undefined);
     } else {
       setEpisodes([]);
-      setEpisodesError(describeError(episodesResult.error, episodesResult.status));
+      setEpisodesError(describeError(episodesResult));
     }
     setLoading(false);
   }, [personaId, campaignId, episodeNumber]);
@@ -305,7 +306,7 @@ export default function ContinuityPage() {
     if (result.remote) setContext(result.data);
     else {
       setContext(null);
-      setContextError(describeError(result.error, result.status));
+      setContextError(describeError(result));
     }
     setResolving(false);
   }, [personaId, campaignId, episodeNumber]);
@@ -318,7 +319,7 @@ export default function ContinuityPage() {
 
   const save = async (
     key: string,
-    call: () => Promise<{ remote: boolean; data: LockData; error?: string; status?: number }>,
+    call: () => Promise<{ remote: boolean; data: LockData; error?: string; errorType?: NetworkErrorType; status?: number }>,
     apply: (lock: LockData) => void,
   ) => {
     setSaving(key);
@@ -328,7 +329,7 @@ export default function ContinuityPage() {
       apply(result.data);
       setMessages(state => ({ ...state, [key]: { kind: 'ok', text: `Travado — fingerprint ${result.data.fingerprint}.` } }));
     } else {
-      setMessages(state => ({ ...state, [key]: { kind: 'error', text: describeError(result.error, result.status) } }));
+      setMessages(state => ({ ...state, [key]: { kind: 'error', text: describeError(result) } }));
     }
     setSaving(null);
   };
@@ -358,7 +359,7 @@ export default function ContinuityPage() {
       const refreshed = await listContinuityEpisodes({ persona_id: persona, campaign_id: campaign });
       if (refreshed.remote) setEpisodes(refreshed.data);
     } else {
-      setEpisodeMessage({ kind: 'error', text: describeError(result.error, result.status) });
+      setEpisodeMessage({ kind: 'error', text: describeError(result) });
     }
     setCreating(false);
   };

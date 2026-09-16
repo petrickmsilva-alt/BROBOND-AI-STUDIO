@@ -64,11 +64,11 @@ restou:
 
 ---
 
-## 3. Autorização (P0-4, fechado no PR002; ampliado no PR003, no PR008, na V3.1 e na V3.2)
+## 3. Autorização (P0-4, fechado no PR002; ampliado no PR003, no PR008, na V3.1, na V3.2 e na V3.3)
 
-**62 de 99 rotas** tocam identidade, e a diferença entre elas importa:
+**69 de 106 rotas** tocam identidade, e a diferença entre elas importa:
 
-- **59** exigem token — `Depends(current_user)`: `/auth/me`, `/knowledge`, `/queue`,
+- **66** exigem token — `Depends(current_user)`: `/auth/me`, `/knowledge`, `/queue`,
   `/jobs/{id}`, `/jobs/{id}/cancel`, `/assets/upload`, `/assets`,
   `/assets/download/{object_key:path}`, `/assets/{id}/conditioning`,
   `/assets/{id}/export`, `POST /personas`, `GET /personas` (listagem, PR003),
@@ -83,7 +83,10 @@ restou:
   como personas: anônimo é recusado e id estrangeiro responde 404),
   e todo o bloco `/api/v1/continuity/*` (13 rotas, V3.2 — locks e episódios
   são dados de tenant, como personas: anônimo é recusado e id estrangeiro
-  responde 404).
+  responde 404),
+  e todo o bloco `/api/v1/campaigns/*` (7 rotas, V3.3 — campanhas, briefs,
+  entregáveis, timeline e exports são dados de tenant, como personas:
+  anônimo é recusado e id estrangeiro responde 404).
 - **3** aceitam token mas **não exigem** — `Depends(optional_user)`:
   `/generations/images`, `/generations/videos`, `/core/compile`. Uma chamada
   anônima passa — e o job criado anônima não tem tenant, logo nenhuma
@@ -120,7 +123,7 @@ from app.main import app
 import inspect
 n = sum(1 for r in app.routes if isinstance(r, APIRoute) and r.path.startswith('/api/v1')
         and 'user' in inspect.signature(r.endpoint).parameters)
-print(f'{n} de 99 rotas com identidade')"
+print(f'{n} de 106 rotas com identidade')"
 ```
 
 ---

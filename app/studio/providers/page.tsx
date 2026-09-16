@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Activity, CheckCircle2, Cpu, FlaskConical, RefreshCcw, XCircle } from 'lucide-react';
 import type { ProviderTestResult, UniversalProvider } from '../../../lib/api';
+import { failureMessage } from '../../../lib/network/status';
 import { listProviders, testProvider } from '../../../lib/api';
 
 const capabilityLabels: Array<[keyof UniversalProvider['capabilities'], string]> = [
@@ -37,7 +38,7 @@ export default function ProvidersPage() {
       setProviders(result.data);
     } else {
       setProviders([]);
-      setError(result.error === 'offline' ? 'API offline — inicie o FastAPI para testar Providers.' : result.error);
+      setError(failureMessage(result, 'API offline — inicie o FastAPI para testar Providers.'));
     }
     setLoading(false);
   };
@@ -51,7 +52,7 @@ export default function ProvidersPage() {
     } else {
       setTestErrors(state => ({
         ...state,
-        [providerId]: result.error === 'offline' ? 'API offline — sem resposta para o teste.' : result.error ?? 'Teste recusado',
+        [providerId]: failureMessage(result, 'API offline — sem resposta para o teste.'),
       }));
     }
     setTesting(state => ({ ...state, [providerId]: false }));

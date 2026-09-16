@@ -55,6 +55,14 @@ from .continuity import (
     continuity_repo,
     continuity_store_for,
 )
+from .campaign import (
+    CampaignValidationError,
+    CampaignError,
+    InvalidDeliveryError,
+    UnknownAssetError,
+    UnknownCampaignError,
+    campaign_service,
+)
 from .core.config import settings
 from .db import SessionLocal, get_db
 from .events import EVENT_CANCELLED, TERMINAL_STATUSES, hub, job_event
@@ -169,6 +177,17 @@ from .schemas import (
     ContinuityVoiceResponse,
     ContinuityWardrobeRequest,
     ContinuityWardrobeResponse,
+    CampaignBriefingRequest,
+    CampaignCreateRequest,
+    CampaignDuplicateRequest,
+    CampaignDeliverRequest,
+    CampaignInterpretationResponse,
+    CampaignBriefResponse,
+    CampaignAssetResponse,
+    CampaignEpisodeResponse,
+    CampaignExportResponse,
+    CampaignResponse,
+    CampaignDetailResponse,
 )
 from .repositories import PersonaRepositoryError, persona_repo
 from .job_service import job_service
@@ -3275,3 +3294,254 @@ def list_continuity_episodes(
         return []
     views = continuity_repo.list_episodes(workspace.id, persona_id=persona_id, campaign_id=campaign_id)
     return [_continuity_episode_payload(view) for view in views]
+
+
+# ---------------------------------------------------------------------------
+# V3.3 — Campaign Builder: one briefing in, a complete campaign out.
+#
+# The service (`app/campaign/campaign_service.py`) owns every decision; these
+# routes only map domain results onto the API contract, resolve the caller's
+# workspace and audit mutations — the same boundary discipline as the
+# continuity block above. All seven routes require identity: campaigns are
+# tenant product data, like personas, graph rows and continuity locks.
+# ---------------------------------------------------------------------------
+
+
+def _campaign_payload(view) -> CampaignResponse:
+    return CampaignResponse(**view.to_dict())
+
+
+def _campaign_brief_payload(view) -> CampaignBriefResponse:
+    return CampaignBriefResponse(**view.to_dict())
+
+
+def _campaign_asset_payload(view) -> CampaignAssetResponse:
+    return CampaignAssetResponse(**view.to_dict())
+
+
+def _campaign_episode_payload(view) -> CampaignEpisodeResponse:
+    return CampaignEpisodeResponse(**view.to_dict())
+
+
+def _campaign_export_payload(view) -> CampaignExportResponse:
+    return CampaignExportResponse(
+        **{key: value for key, value in view.to_dict().items() if key != "manifest"},
+        download_url=f"/api/v1/assets/download/{view.object_key}",
+    )
+
+
+def _campaign_detail_payload(detail) -> CampaignDetailResponse:
+    return CampaignDetailResponse(
+        **_campaign_payload(detail.campaign).model_dump(),
+        brief=_campaign_brief_payload(detail.brief) if detail.brief else None,
+        assets=[_campaign_asset_payload(asset) for asset in detail.assets],
+        episodes=[_campaign_episode_payload(episode) for episode in detail.episodes],
+        exports=[_campaign_export_payload(export) for export in detail.exports],
+    )
+
+
+@app.post("/api/v1/campaigns/interpret", response_model=CampaignInterpretationResponse, tags=["campaign"])
+def interpret_campaign_briefing(
+    request: CampaignBriefingRequest,
+    user: User = Depends(current_user),
+) -> CampaignInterpretationResponse:
+    """Read one briefing line into the six brief fields — nothing persisted (V3.3)."""
+
+    try:
+        brief = campaign_service.interpret(request.briefing)
+    except CampaignValidationError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return CampaignInterpretationResponse(
+        raw_text=brief.raw_text,
+        name=brief.display_name,
+        product=brief.product,
+        product_type=brief.product_type,
+        audience=brief.audience,
+        platform=brief.platform,
+        objective=brief.objective,
+        duration_seconds=brief.duration_seconds,
+        missing=list(brief.missing),
+        matched=list(brief.matched),
+    )
+
+
+@app.post("/api/v1/campaigns", response_model=CampaignDetailResponse, status_code=201, tags=["campaign"])
+def create_campaign(
+    request: CampaignCreateRequest,
+    http_request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> CampaignDetailResponse:
+    """Build the complete campaign from one briefing (V3.3: brief → deliverables → timeline)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    try:
+        bundle = campaign_service.create_from_briefing(workspace.id, request.briefing, name=request.name)
+    except CampaignValidationError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    audit(
+        db,
+        actor=user,
+        action="campaign.created",
+        resource_type="campaign",
+        resource_id=bundle.campaign.id,
+        workspace_id=workspace.id,
+        detail={
+            "name": bundle.campaign.name,
+            "product": bundle.campaign.product,
+            "objective": bundle.campaign.objective,
+            "primary_cta": bundle.campaign.primary_cta,
+            "assets": len(bundle.assets),
+        },
+        request=http_request,
+    )
+    detail = campaign_service.get_detail(workspace.id, bundle.campaign.id)
+    return _campaign_detail_payload(detail)
+
+
+@app.get("/api/v1/campaigns", response_model=list[CampaignResponse], tags=["campaign"])
+def list_campaigns(
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> list[CampaignResponse]:
+    """List the workspace's campaigns, newest first (V3.3)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        return []
+    return [_campaign_payload(view) for view in campaign_service.list_campaigns(workspace.id)]
+
+
+@app.get("/api/v1/campaigns/{campaign_id}", response_model=CampaignDetailResponse, tags=["campaign"])
+def get_campaign(
+    campaign_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> CampaignDetailResponse:
+    """One campaign with its brief, seven assets, five-day timeline and exports (V3.3)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    try:
+        detail = campaign_service.get_detail(workspace.id, campaign_id)
+    except UnknownCampaignError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    return _campaign_detail_payload(detail)
+
+
+@app.post(
+    "/api/v1/campaigns/{campaign_id}/duplicate",
+    response_model=CampaignDetailResponse,
+    status_code=201,
+    tags=["campaign"],
+)
+def duplicate_campaign(
+    campaign_id: str,
+    request: CampaignDuplicateRequest,
+    http_request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> CampaignDetailResponse:
+    """Copy a campaign with freshly armed CTAs and deliveries reset (V3.3)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    try:
+        bundle = campaign_service.duplicate(workspace.id, campaign_id, name=request.name)
+    except UnknownCampaignError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    audit(
+        db,
+        actor=user,
+        action="campaign.duplicated",
+        resource_type="campaign",
+        resource_id=bundle.campaign.id,
+        workspace_id=workspace.id,
+        detail={"source_campaign_id": campaign_id, "name": bundle.campaign.name, "seed": bundle.campaign.seed},
+        request=http_request,
+    )
+    detail = campaign_service.get_detail(workspace.id, bundle.campaign.id)
+    return _campaign_detail_payload(detail)
+
+
+@app.post(
+    "/api/v1/campaigns/{campaign_id}/assets/{asset_id}/deliver",
+    response_model=CampaignAssetResponse,
+    tags=["campaign"],
+)
+def deliver_campaign_asset(
+    campaign_id: str,
+    asset_id: str,
+    request: CampaignDeliverRequest,
+    http_request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> CampaignAssetResponse:
+    """Attach a real stored file to a planned asset — planned → delivered (V3.3)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    try:
+        asset = campaign_service.deliver(
+            workspace.id,
+            campaign_id,
+            asset_id,
+            output_key=request.output_key,
+            thumbnail_key=request.thumbnail_key,
+        )
+    except UnknownCampaignError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except UnknownAssetError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except InvalidDeliveryError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    audit(
+        db,
+        actor=user,
+        action="campaign.asset.delivered",
+        resource_type="campaign_asset",
+        resource_id=asset.id,
+        workspace_id=workspace.id,
+        detail={"campaign_id": campaign_id, "kind": asset.kind, "output_key": asset.output_key},
+        request=http_request,
+    )
+    return _campaign_asset_payload(asset)
+
+
+@app.post(
+    "/api/v1/campaigns/{campaign_id}/export",
+    response_model=CampaignExportResponse,
+    status_code=201,
+    tags=["campaign"],
+)
+def export_campaign(
+    campaign_id: str,
+    http_request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> CampaignExportResponse:
+    """Build the Export Center ZIP: manifest, prompts, metadata and delivered files (V3.3)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    try:
+        export = campaign_service.export(workspace.id, campaign_id)
+    except UnknownCampaignError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    audit(
+        db,
+        actor=user,
+        action="campaign.exported",
+        resource_type="campaign_export",
+        resource_id=export.id,
+        workspace_id=workspace.id,
+        detail={"campaign_id": campaign_id, "object_key": export.object_key, "file_count": export.file_count},
+        request=http_request,
+    )
+    return _campaign_export_payload(export)

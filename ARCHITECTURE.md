@@ -244,22 +244,41 @@ O frontend é Next.js (App Router) na raiz: `app/page.tsx`, `lib/api.ts`, `app/g
 
 ### O browser não recebe origem fixa
 
-`lib/api.ts` usa base vazia e `next.config.mjs` faz rewrite de `/api/v1/:path*` para o
+A base é `API_URL = NEXT_PUBLIC_API_URL ?? ''`, declarada em `lib/network/request.ts` e
+reexportada por `lib/api.ts`; `next.config.mjs` faz rewrite de `/api/v1/:path*` para o
 backend. O alvo é `BROBOND_API_PROXY_TARGET`, não um literal. Antes, `API_URL` default era
 `http://localhost:8000` — só funciona com o browser na máquina da API.
 
 `wsUrl(path)` deriva o WebSocket de `window.location.origin`, então o socket passa pelo mesmo
 proxy (verificado com handshake: `101 Switching Protocols`).
 
+### Camada de rede (V3.2.1)
+
+`lib/network/request.ts` é a **única** fronteira de `fetch` do frontend (guarda estrutural:
+`test_fetch_lives_only_in_the_network_layer`). `lib/api.ts` delega a ele — timeout
+(`AbortSignal.timeout`, 10s/30s), retry **somente GET** para as sondas de status
+(`health`/`readiness`/`gpuInfo`: 3 tentativas, backoff 300/600/1200ms), trace id
+`x-brobond-trace` por requisição lógica, log sem PII e o enum `NetworkErrorType`
+(`ONLINE/TIMEOUT/OFFLINE/CORS/UNAUTHORIZED/SERVER_ERROR/UNKNOWN`). Timeout na janela
+8–60s é **cold start**: "Servidor iniciando…", nunca "API Offline" — a correção da
+conflação diagnosticada no PR009.2. O StatusCenter (`app/components/StatusCenter.tsx`,
+montado no shell) deriva um único estado com cor e ação (Online, Inicializando,
+Sem internet, Sessão expirada, Erro interno). Detalhes: `docs/NETWORK_LAYER.md`.
+
 ### Contrato de resultado
 
 ```ts
-type ApiResult<T> = { data: T; remote: boolean; status?: number; error?: string }
+type ApiResult<T> = {
+  data: T; remote: boolean; status?: number; error?: string;
+  errorType?: NetworkErrorType; traceId?: string; // V3.2.1
+}
 ```
 
 `remote` continua significando "chegou dado utilizável". `status` e `error` separam os dois
-casos que antes eram um só: **sem resposta** (`error: 'offline'`) e **o servidor respondeu com
-erro** (401, 422, 500 — com o `detail` do FastAPI extraído). Cada painel tem um `Notice`.
+casos que antes eram um só: **sem resposta** (tipada — `OFFLINE`, `CORS` ou `TIMEOUT` com o
+texto do `networkProblemText`) e **o servidor respondeu com erro** (401, 422, 500 — com o
+`detail` do FastAPI extraído). A UI ramifica por `errorType`, nunca por string; cada painel
+tem um `Notice` e o shell tem o StatusCenter.
 
 ### A porta de entrada é o Diretor
 
@@ -756,6 +775,28 @@ sem tocar `GenerationSpec`, Director, Registry ou Render. Episódios congelam
 o contexto resolvido e nunca se movem com re-locks. Treze rotas
 `/api/v1/continuity/*` (tag `continuity`), todas com identidade, e a UI
 `/studio/continuity`. Detalhes em `docs/CHARACTER_CONTINUITY.md`.
+
+## Campaign Builder (V3.3)
+
+Um briefing vira uma campanha completa — sete entregáveis, timeline de cinco
+dias, deck de CTAs que nunca repete e ZIP de exportação. Cinco tabelas
+(`campaigns`, `campaign_briefs`, `campaign_episodes`, `campaign_assets`,
+`campaign_exports`, migração `0005`) e quatro módulos framework-free em
+`backend/app/campaign/`:
+
+```text
+POST /campaigns/interpret  -> InterpretedBrief (produto, público, plataforma, duração, objetivo)
+POST /campaigns            -> campanha completa: 7 deliverables + Dia 1..Dia 5 + CTA deck
+POST /campaigns/{id}/duplicate -> cópia com seed nova (CTAs re-armados, entregas zeradas)
+POST /campaigns/{id}/assets/{asset_id}/deliver -> arquivo real anexado (planned -> delivered)
+POST /campaigns/{id}/export    -> ZIP: manifest + prompts + metadata + binários entregues
+```
+
+O builder planeja, agenda e empacota — nunca renderiza. O prompt de cada
+entregável passa pelo `PromptEnhancer` existente (fachada do `PromptCompiler`
+do Core); o ZIP é servido pela rota autenticada de assets. Sete rotas
+`/api/v1/campaigns/*` (tag `campaign`), todas com identidade, e a UI
+`/studio/campaigns`. Detalhes em `docs/CAMPAIGN_BUILDER.md`.
 
 ## Prompt compiler (ETAPA 9)
 

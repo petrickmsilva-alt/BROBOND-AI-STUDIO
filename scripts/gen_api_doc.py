@@ -76,7 +76,11 @@ def render() -> str:
         "contexto de personagem para o Director AI). V3.2 adiciona treze rotas "
         "`/api/v1/continuity/*` (Character Continuity Engine com identidade: "
         "cinco locks com fingerprint, resolver persona+campanha+episódio e "
-        "histórico imutável de episódios).\n"
+        "histórico imutável de episódios). V3.3 adiciona sete rotas "
+        "`/api/v1/campaigns/*` (Campaign Builder com identidade: interpretar "
+        "um briefing, criar a campanha completa com sete entregáveis e "
+        "timeline de cinco dias, duplicar, anexar entregas reais e exportar "
+        "o ZIP com manifesto).\n"
     )
 
     for tag in sorted(by_tag):
@@ -93,6 +97,20 @@ def render() -> str:
     add("| --- | --- |")
     for path, desc in sorted(sockets):
         add(f"| `{path}` | {desc} |")
+
+    # V3.2.1: how the CLIENT reaches these routes. Pure prose — the inventory
+    # above remains the canonical, generated route list.
+    add("")
+    add("## Cliente — camada de rede (V3.2.1)")
+    add("")
+    add("Todas as chamadas acima partem de `lib/api.ts`, que delega a `lib/network/request.ts` —")
+    add("a única fronteira de `fetch` do frontend. Timeout 10s (30s em upload), trace id")
+    add("`x-brobond-trace`, e retry **somente GET** para as três sondas de status")
+    add("(`/api/v1/health`, `/api/v1/system/readiness`, `/api/v1/system/gpu`: 3 tentativas,")
+    add("backoff 300/600/1200ms). Falhas chegam tipadas (`NetworkErrorType`) e timeout na janela")
+    add("8–60s é tratado como cold start (\"Servidor iniciando…\"), não como API Offline.")
+    add("Nenhuma rota nova — este documento continua sendo o inventário canônico")
+    add("(106 rotas HTTP + 3 WebSockets). Detalhes: `docs/NETWORK_LAYER.md`.")
 
     return "\n".join(out) + "\n"
 

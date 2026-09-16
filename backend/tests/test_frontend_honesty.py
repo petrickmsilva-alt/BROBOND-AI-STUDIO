@@ -1,15 +1,21 @@
 """ETAPA 15 guards — the studio must not lie to the user.
 
-The frontend has no JavaScript test runner in this repository, and adding one is
-ETAPA 16 work. These are structural guards in the same style the backend already
-uses for its own source (`test_the_timeline_routes_contain_no_timing_logic_of_their_own`
-and friends): they read the files and assert on what is there.
+These are structural guards in the same style the backend already uses for
+its own source (`test_the_timeline_routes_contain_no_timing_logic_of_their_own`
+and friends): they read the files and assert on what is there. The frontend
+also has a vitest suite (`lib/api.network.test.ts`, `lib/network/request.test.ts`)
+for behavior; these pins survive because they are cheap and cannot rot silently.
 
 They exist because the defects they pin were real and invisible. The shell showed
 a hard-coded "RTX 4090 · 18.4 / 24 GB VRAM" on a host with no GPU, a fake render
 labelled "FLUX / 2K" regardless of whether anything had been generated, and it
 consumed none of the 31 Core routes — so fourteen etapas of decision layer were
 unreachable from the product.
+
+V3.2.1: the network layer moved into `lib/network/` — `request.ts` owns the
+only `fetch`, timeouts, retries and the typed `NetworkError`; `lib/api.ts`
+delegates and no longer produces the bare string `'offline'` that made every
+failure read as "API Offline".
 """
 from __future__ import annotations
 
@@ -19,6 +25,7 @@ import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 API = ROOT / "lib" / "api.ts"
+NETWORK = ROOT / "lib" / "network" / "request.ts"
 PAGE = ROOT / "app" / "page.tsx"
 NEXT_CONFIG = ROOT / "next.config.mjs"
 
@@ -34,6 +41,11 @@ def api_source() -> str:
 
 
 @pytest.fixture(scope="module")
+def network_source() -> str:
+    return _read(NETWORK)
+
+
+@pytest.fixture(scope="module")
 def page_source() -> str:
     return _read(PAGE)
 
@@ -43,15 +55,17 @@ def page_source() -> str:
 # ---------------------------------------------------------------------------
 
 
-def test_the_client_does_not_default_to_localhost(api_source: str) -> None:
+def test_the_client_does_not_default_to_localhost(api_source: str, network_source: str) -> None:
     """`http://localhost:8000` only works when the browser is on the API's host.
 
-    The base is now empty and `next.config.mjs` proxies `/api/v1`, so the UI
-    works behind any host.
+    Since V3.2.1 the base URL lives in `lib/network/request.ts`; `lib/api.ts`
+    re-exports it, and `next.config.mjs` proxies `/api/v1`, so the UI works
+    behind any host.
     """
 
     assert "localhost:8000" not in api_source
-    assert "export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? ''" in api_source
+    assert "process.env.NEXT_PUBLIC_API_URL ?? ''" in network_source
+    assert "export { API_URL }" in api_source
 
 
 def test_the_proxy_is_configured() -> None:
@@ -172,7 +186,7 @@ def test_a_failed_render_is_not_dressed_as_a_result(page_source: str) -> None:
     assert "job?.output_url ? <img" in page_source or "job?.output_url && <span" in page_source
 
 
-def test_errors_reach_the_user(page_source: str, api_source: str) -> None:
+def test_errors_reach_the_user(page_source: str, api_source: str, network_source: str) -> None:
     """Every swallowed error used to read as "offline", including 401 and 422."""
 
     assert "function Notice(" in page_source
@@ -181,7 +195,26 @@ def test_errors_reach_the_user(page_source: str, api_source: str) -> None:
     assert "status?: number" in api_source
     assert "error?: string" in api_source
     assert "readError" in api_source
-    assert "return failed<T>('offline')" in api_source
+    # V3.2.1: the client delegates to the network layer and types its failures —
+    # no catch returns a bare 'offline' string anywhere in the client.
+    assert "runRequest(" in api_source
+    assert "errorType?" in api_source
+    assert "NetworkErrorType" in api_source
+
+
+def test_fetch_lives_only_in_the_network_layer(api_source: str, network_source: str) -> None:
+    """V3.2.1 — exactly one module is allowed to call `fetch`.
+
+    Timeout, retry, abort, the trace id and the error mapping exist only
+    there; anything that bypasses them reintroduces the silent failures
+    this sprint exists to kill.
+    """
+
+    assert "fetch(" not in api_source, "lib/api.ts must delegate to lib/network/request.ts"
+    assert "fetch(" in network_source
+    assert "'offline'" not in api_source, "no stringly-typed offline state may return"
+    assert "enum NetworkErrorType" in network_source
+    assert "x-brobond-trace" in network_source
 
 
 def test_a_rejected_login_is_not_reported_as_offline(page_source: str) -> None:
