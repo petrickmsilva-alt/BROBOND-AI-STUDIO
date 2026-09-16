@@ -6,6 +6,31 @@ versões de produto do `ROADMAP.md`.
 
 ---
 
+## [Unreleased] — PR009.1: HEALTH CHECK RECONCILIATION
+
+Hotfix de reconciliação entre as rotas de health do FastAPI e o
+`healthCheckPath` do Render Blueprint. **Nenhuma funcionalidade nova**;
+`render.yaml` e o prefixo global `/api/v1` permanecem intactos — a medição
+encontrou as duas partes já reconciliadas, e o estado passou a ser fixado
+por testes para não divergirem de novo.
+
+- **Verificação** — `GET /api/v1/health` e `GET /health` (mesmo handler,
+  decoradores empilhados) respondem **200** sem exigir token; o probe do
+  Render passa sem credenciais. `healthCheckPath` do blueprint
+  (`brobond-ai-api` → `/api/v1/health`, `brobond-studio-web` → `/`) casa
+  com rotas reais que retornam 200; Swagger (`/docs`), ReDoc (`/redoc`) e
+  `/openapi.json` em 200.
+- **Teste novo** — `backend/tests/test_health_reconciliation.py` (8
+  testes): 200 nas duas rotas, corpo documentado, sem dependência de
+  identidade, prefixo `/api/v1` preservado e **cada `healthCheckPath` do
+  `render.yaml` resolvido contra as rotas servidas pela aplicação** —
+  qualquer divergência futura falha no CI.
+- **Relatório** — `docs/API_HEALTH_REPORT.md` gerado da aplicação em
+  execução, com o inventário completo (método, path, tags), status codes
+  medidos e o caminho do Swagger.
+
+---
+
 ## [Unreleased] — V3.3: CAMPAIGN BUILDER
 
 V3.3 transforma um único briefing em uma campanha completa: sete entregáveis,
