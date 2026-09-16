@@ -1165,3 +1165,96 @@ class RenderRetryResponse(BaseModel):
     status: str
     retried_scenes: int
     message: str
+
+
+# ---------------------------------------------------------------------------
+# V3.1 — Cinematic Knowledge Graph
+# ---------------------------------------------------------------------------
+
+
+class GraphNodeCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    entity_type: str = Field(min_length=1, max_length=32)
+    attributes: dict[str, Any] = Field(default_factory=dict)
+    aliases: list[str] = Field(default_factory=list)
+    slug: str | None = Field(default=None, max_length=180)
+
+
+class GraphNodeUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=160)
+    entity_type: str | None = Field(default=None, min_length=1, max_length=32)
+    attributes: dict[str, Any] | None = None
+    aliases: list[str] | None = None
+
+
+class GraphNodeResponse(BaseModel):
+    id: str
+    workspace_id: str
+    entity_type: str
+    name: str
+    slug: str
+    attributes: dict[str, Any] = Field(default_factory=dict)
+    aliases: list[str] = Field(default_factory=list)
+    created_at: str = ""
+    updated_at: str = ""
+
+
+class GraphEdgeCreate(BaseModel):
+    source_id: str = Field(min_length=1, max_length=36)
+    target_id: str = Field(min_length=1, max_length=36)
+    relation: str = Field(min_length=1, max_length=64)
+
+
+class GraphEdgeResponse(BaseModel):
+    id: str
+    workspace_id: str
+    source_id: str
+    target_id: str
+    relation: str
+    inverse: str = ""
+    created_at: str = ""
+
+
+class GraphQueryMatchResponse(BaseModel):
+    node: GraphNodeResponse
+    score: int
+    matched_fields: list[str] = Field(default_factory=list)
+
+
+class GraphQueryResponse(BaseModel):
+    query: str
+    entity_type: str | None = None
+    count: int
+    matches: list[GraphQueryMatchResponse] = Field(default_factory=list)
+
+
+class GraphNeighborsResponse(BaseModel):
+    node: GraphNodeResponse
+    depth: int
+    direction: str
+    nodes: list[GraphNodeResponse] = Field(default_factory=list)
+    edges: list[GraphEdgeResponse] = Field(default_factory=list)
+
+
+class GraphCharacterRelationResponse(BaseModel):
+    relation: str
+    direction: str
+    peer: GraphNodeResponse
+    phrase: str
+
+
+class GraphCharacterContextResponse(BaseModel):
+    name: str
+    found: bool
+    persona_id: str | None = None
+    node: GraphNodeResponse | None = None
+    phrases: list[str] = Field(default_factory=list)
+    relations: list[GraphCharacterRelationResponse] = Field(default_factory=list)
+    relation_counts: dict[str, int] = Field(default_factory=dict)
+
+
+class GraphSeedResponse(BaseModel):
+    created_nodes: int
+    created_edges: int
+    skipped_nodes: int
+    skipped_edges: int

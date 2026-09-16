@@ -706,6 +706,31 @@ registrada em todo desfecho, inclusive na falha. Rotas públicas novas:
 `POST /api/v1/providers/{id}/test` e `GET /api/v1/providers/telemetry`. Detalhes em
 `docs/AI_CONNECTORS.md`.
 
+## Cinematic Knowledge Graph (V3.1)
+
+V3.1 persiste o universo BROBOND — personagens, marcas, campanhas, lugares,
+veículos, figurino, objetos — em duas tabelas (`graph_nodes`, `graph_edges`,
+migração `0003`), com travessia e busca sem framework em
+`backend/app/graph/`:
+
+```text
+Director AI -> CharacterGraph.context(nome) -> frases ("Petrick dirige RAM")
+MemoryResolver(persona) + GraphContextSource -> context_phrases()  (ETAPA 5)
+GraphNode/GraphEdge --workspace--> GraphRepository --adapter--> RelationshipEngine
+                                                        \---> SemanticQuery
+```
+
+O motor (`relationship_engine.py`) é stdlib-only sobre o protocolo
+`GraphStore`: 16 relações canônicas, aliases PT (`dirige`/`veste`/`pertence`/
+`localizado`), inversas únicas e BFS bidirecional cycle-safe. A busca
+(`semantic_query.py`) ranqueia em 8 tiers (100–30) com fold de acentos, sem
+embeddings. O repositório vincula os dois a um workspace; id estrangeiro
+responde 404, nunca 403. `GraphContext`/`GraphContextSource` estendem
+`core/contracts.py` sem tocar `GenerationSpec`; o resolver global continua sem
+source de grafo — o enriquecimento é explícito por rota. Doze rotas
+`/api/v1/graph/*` (tag `graph`), todas com identidade, e a UI
+`/studio/knowledge`. Detalhes em `docs/KNOWLEDGE_GRAPH.md`.
+
 ## Prompt compiler (ETAPA 9)
 
 `SYSTEM_PROMPT.md` declara treze blocos. Até a ETAPA 9 só dez eram emitidos e a junção não

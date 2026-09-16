@@ -64,11 +64,11 @@ restou:
 
 ---
 
-## 3. Autorização (P0-4, fechado no PR002; ampliado no PR003 e no PR008)
+## 3. Autorização (P0-4, fechado no PR002; ampliado no PR003, no PR008 e na V3.1)
 
-**37 de 74 rotas** tocam identidade, e a diferença entre elas importa:
+**49 de 86 rotas** tocam identidade, e a diferença entre elas importa:
 
-- **34** exigem token — `Depends(current_user)`: `/auth/me`, `/knowledge`, `/queue`,
+- **46** exigem token — `Depends(current_user)`: `/auth/me`, `/knowledge`, `/queue`,
   `/jobs/{id}`, `/jobs/{id}/cancel`, `/assets/upload`, `/assets`,
   `/assets/download/{object_key:path}`, `/assets/{id}/conditioning`,
   `/assets/{id}/export`, `POST /personas`, `GET /personas` (listagem, PR003),
@@ -78,13 +78,15 @@ restou:
   `/personas/{id}/images` (GET/POST — referências, PR003), todo o bloco
   `/api/v1/core/personas/*` (8 rotas, identidade de personagem = PII) e todo o
   bloco `/api/v1/render/*` (6 rotas, PR008 — renders persistem no workspace de
-  quem chamou, então anônimo é recusado).
+  quem chamou, então anônimo é recusado),
+  e todo o bloco `/api/v1/graph/*` (12 rotas, V3.1 — o grafo é dado de tenant,
+  como personas: anônimo é recusado e id estrangeiro responde 404).
 - **3** aceitam token mas **não exigem** — `Depends(optional_user)`:
   `/generations/images`, `/generations/videos`, `/core/compile`. Uma chamada
   anônima passa — e o job criado anônima não tem tenant, logo nenhuma
   identidade pode lê-lo de volta (consequência documentada, fixada por
   `test_an_anonymous_job_cannot_be_read_back_with_any_token`).
-- As outras **35** não verificam identidade por desenho: `GET /health`, o bloco
+- As outras **37** não verificam identidade por desenho: `GET /health`, o bloco
   `/system/*`, `/models/*`, `/auth/login`, `/auth/register` (com rate limit),
   `/prompts/enhance`, `/storyboards/expand`, `/providers` e o Core read-only
   (`/core/direct`, `/core/director/production-plan`, `/core/cinematic/*`,
@@ -115,7 +117,7 @@ from app.main import app
 import inspect
 n = sum(1 for r in app.routes if isinstance(r, APIRoute) and r.path.startswith('/api/v1')
         and 'user' in inspect.signature(r.endpoint).parameters)
-print(f'{n} de 74 rotas com identidade')"
+print(f'{n} de 86 rotas com identidade')"
 ```
 
 ---

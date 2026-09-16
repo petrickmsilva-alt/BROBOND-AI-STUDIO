@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 from .audit import audit
 from .auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse, auth_rate_limiter, current_user, login, optional_user, register, ws_identity
 from .conditioning import catalog
-from .core.contracts import GenerationKind, GenerationSpec
+from .core.contracts import GenerationKind, GenerationSpec, GraphContext
 from .core.director import CameraDirector, DirectorAgent as ProductionDirectorAgent
 from .core import (
     ASPECT_BY_FORMAT,
@@ -46,6 +46,18 @@ from .core import (
 from .core.config import settings
 from .db import SessionLocal, get_db
 from .events import EVENT_CANCELLED, TERMINAL_STATUSES, hub, job_event
+from .graph import (
+    GraphRepositoryError,
+    GraphValidationError,
+    RelationshipError,
+    character_graph_for,
+    edge_view,
+    graph_repo,
+    inverse_of,
+    node_view,
+    relationship_engine_for,
+    semantic_query_for,
+)
 from .knowledge import resolve as resolve_knowledge, seed_knowledge
 from .lora import lora_trainer
 from .media import MediaError, media
@@ -121,6 +133,17 @@ from .schemas import (
     RenderBatchResponse,
     RenderBatchSummaryResponse,
     RenderRetryResponse,
+    GraphCharacterContextResponse,
+    GraphCharacterRelationResponse,
+    GraphEdgeCreate,
+    GraphEdgeResponse,
+    GraphNeighborsResponse,
+    GraphNodeCreate,
+    GraphNodeResponse,
+    GraphNodeUpdate,
+    GraphQueryMatchResponse,
+    GraphQueryResponse,
+    GraphSeedResponse,
 )
 from .repositories import PersonaRepositoryError, persona_repo
 from .job_service import job_service
@@ -2221,3 +2244,407 @@ async def render_progress(websocket: WebSocket, batch_id: str) -> None:
             return
     finally:
         render_hub.unsubscribe(batch_id, queue)
+
+
+# ---------------------------------------------------------------------------
+# V3.1 — Cinematic Knowledge Graph: memory as relational knowledge
+#
+# These routes only translate HTTP <-> repository/engine calls. The relation
+# vocabulary lives in the RelationshipEngine, persistence in the
+# GraphRepository, and scoring in SemanticQuery — nothing is decided here.
+# Every route requires identity: graph rows are tenant product data, like
+# personas (PR003), so anonymous callers are refused and foreign ids 404.
+# ---------------------------------------------------------------------------
+
+
+class _GraphContextSource:
+    """V3.1: `GraphContextSource` adapter over one workspace's graph.
+
+    Lets a `MemoryResolver` serve graph phrases for a persona name without
+    the Core importing SQLAlchemy — the same adapter pattern PR003 uses for
+    persona profiles. Workspace-bound by construction: unlike the global
+    persona fallback, graph rows must never leak across tenants, so this
+    adapter is composed per request, never on the global resolver.
+    """
+
+    def __init__(self, workspace_id: str) -> None:
+        self._characters = character_graph_for(workspace_id)
+
+    def get_context(self, subject: str):
+        context = self._characters.context(subject)
+        if context is None:
+            return None
+        return GraphContext(
+            subject=context.node.name,
+            phrases=context.phrases,
+            relation_count=len(context.relations),
+        )
+
+
+def _graph_node_payload(view) -> GraphNodeResponse:
+    return GraphNodeResponse(
+        id=view.id,
+        workspace_id=view.workspace_id,
+        entity_type=view.entity_type,
+        name=view.name,
+        slug=view.slug,
+        attributes=dict(view.attributes),
+        aliases=list(view.aliases),
+        created_at=view.created_at,
+        updated_at=view.updated_at,
+    )
+
+
+def _graph_edge_payload(view) -> GraphEdgeResponse:
+    return GraphEdgeResponse(
+        id=view.id,
+        workspace_id=view.workspace_id,
+        source_id=view.source_id,
+        target_id=view.target_id,
+        relation=view.relation,
+        inverse=inverse_of(view.relation),
+        created_at=view.created_at,
+    )
+
+
+@app.post("/api/v1/graph/nodes", response_model=GraphNodeResponse, status_code=201, tags=["graph"])
+def create_graph_node(
+    request: GraphNodeCreate,
+    http_request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> GraphNodeResponse:
+    """Create a knowledge-graph node in the caller's workspace (V3.1: identity required)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    try:
+        row = graph_repo.create_node(
+            workspace.id,
+            name=request.name,
+            entity_type=request.entity_type,
+            attributes=request.attributes,
+            aliases=request.aliases,
+            slug=request.slug,
+        )
+    except GraphRepositoryError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except (GraphValidationError, RelationshipError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    audit(
+        db,
+        actor=user,
+        action="graph.node.created",
+        resource_type="graph_node",
+        resource_id=row.id,
+        workspace_id=workspace.id,
+        detail={"entity_type": row.entity_type, "slug": row.slug},
+        request=http_request,
+    )
+    return _graph_node_payload(node_view(row))
+
+
+@app.get("/api/v1/graph/nodes", response_model=list[GraphNodeResponse], tags=["graph"])
+def list_graph_nodes(
+    entity_type: str | None = None,
+    limit: int = Query(default=100, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> list[GraphNodeResponse]:
+    """List the caller's graph nodes, optionally filtered by entity type (V3.1)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        return []
+    try:
+        rows = graph_repo.list_nodes(workspace.id, entity_type=entity_type, limit=limit, offset=offset)
+    except (GraphValidationError, RelationshipError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return [_graph_node_payload(node_view(row)) for row in rows]
+
+
+@app.get("/api/v1/graph/nodes/{node_id}", response_model=GraphNodeResponse, tags=["graph"])
+def get_graph_node(node_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> GraphNodeResponse:
+    """Read one of the caller's graph nodes (V3.1; foreign ids 404)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    row = graph_repo.get_node(node_id, workspace.id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Graph node not found")
+    return _graph_node_payload(node_view(row))
+
+
+@app.patch("/api/v1/graph/nodes/{node_id}", response_model=GraphNodeResponse, tags=["graph"])
+def update_graph_node(
+    node_id: str,
+    request: GraphNodeUpdate,
+    http_request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> GraphNodeResponse:
+    """Partially update a graph node; attributes/aliases replace wholesale (V3.1)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    try:
+        row = graph_repo.update_node(node_id, workspace.id, request.model_dump(exclude_unset=True))
+    except (GraphValidationError, RelationshipError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    if row is None:
+        raise HTTPException(status_code=404, detail="Graph node not found")
+    audit(
+        db,
+        actor=user,
+        action="graph.node.updated",
+        resource_type="graph_node",
+        resource_id=row.id,
+        workspace_id=workspace.id,
+        detail={"fields": sorted(request.model_dump(exclude_unset=True))},
+        request=http_request,
+    )
+    return _graph_node_payload(node_view(row))
+
+
+@app.delete("/api/v1/graph/nodes/{node_id}", status_code=204, tags=["graph"])
+def delete_graph_node(node_id: str, http_request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Delete a graph node and its incident edges in both directions (V3.1)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    if not graph_repo.delete_node(node_id, workspace.id):
+        raise HTTPException(status_code=404, detail="Graph node not found")
+    audit(
+        db,
+        actor=user,
+        action="graph.node.deleted",
+        resource_type="graph_node",
+        resource_id=node_id,
+        workspace_id=workspace.id,
+        detail={},
+        request=http_request,
+    )
+
+
+@app.post("/api/v1/graph/edges", response_model=GraphEdgeResponse, status_code=201, tags=["graph"])
+def create_graph_edge(
+    request: GraphEdgeCreate,
+    http_request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> GraphEdgeResponse:
+    """Relate two nodes; the verb is normalised onto the engine vocabulary (V3.1)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    if (
+        graph_repo.get_node(request.source_id, workspace.id) is None
+        or graph_repo.get_node(request.target_id, workspace.id) is None
+    ):
+        raise HTTPException(status_code=404, detail="Graph node not found")
+    try:
+        row = graph_repo.create_edge(
+            workspace.id,
+            source_id=request.source_id,
+            target_id=request.target_id,
+            relation=request.relation,
+        )
+    except GraphRepositoryError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except (GraphValidationError, RelationshipError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    audit(
+        db,
+        actor=user,
+        action="graph.edge.created",
+        resource_type="graph_edge",
+        resource_id=row.id,
+        workspace_id=workspace.id,
+        detail={"relation": row.relation},
+        request=http_request,
+    )
+    return _graph_edge_payload(edge_view(row))
+
+
+@app.get("/api/v1/graph/edges", response_model=list[GraphEdgeResponse], tags=["graph"])
+def list_graph_edges(
+    source_id: str | None = None,
+    target_id: str | None = None,
+    relation: str | None = None,
+    limit: int = Query(default=200, ge=1, le=500),
+    offset: int = Query(default=0, ge=0),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> list[GraphEdgeResponse]:
+    """List the caller's graph edges, filterable by endpoint or relation (V3.1)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        return []
+    try:
+        rows = graph_repo.list_edges(
+            workspace.id,
+            source_id=source_id,
+            target_id=target_id,
+            relation=relation,
+            limit=limit,
+            offset=offset,
+        )
+    except (GraphValidationError, RelationshipError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return [_graph_edge_payload(edge_view(row)) for row in rows]
+
+
+@app.delete("/api/v1/graph/edges/{edge_id}", status_code=204, tags=["graph"])
+def delete_graph_edge(edge_id: str, http_request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)):
+    """Delete one graph edge; the endpoint nodes are untouched (V3.1)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    if not graph_repo.delete_edge(edge_id, workspace.id):
+        raise HTTPException(status_code=404, detail="Graph edge not found")
+    audit(
+        db,
+        actor=user,
+        action="graph.edge.deleted",
+        resource_type="graph_edge",
+        resource_id=edge_id,
+        workspace_id=workspace.id,
+        detail={},
+        request=http_request,
+    )
+
+
+@app.get("/api/v1/graph/query", response_model=GraphQueryResponse, tags=["graph"])
+def query_graph(
+    q: str = Query(min_length=1, max_length=200),
+    entity_type: str | None = None,
+    limit: int = Query(default=10, ge=1, le=50),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> GraphQueryResponse:
+    """Semantic search over the caller's graph: names, aliases, attributes (V3.1)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        return GraphQueryResponse(query=q, entity_type=entity_type, count=0, matches=[])
+    if not q.strip():
+        raise HTTPException(status_code=422, detail="Query must not be blank")
+    try:
+        matches = semantic_query_for(workspace.id).query(q, entity_type=entity_type, limit=limit)
+    except (GraphValidationError, RelationshipError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return GraphQueryResponse(
+        query=q,
+        entity_type=entity_type,
+        count=len(matches),
+        matches=[
+            GraphQueryMatchResponse(
+                node=_graph_node_payload(match.node),
+                score=match.score,
+                matched_fields=list(match.matched_fields),
+            )
+            for match in matches
+        ],
+    )
+
+
+@app.get("/api/v1/graph/neighbors/{node_id}", response_model=GraphNeighborsResponse, tags=["graph"])
+def graph_neighbors(
+    node_id: str,
+    depth: int = Query(default=1, ge=1, le=3),
+    direction: str = Query(default="both"),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> GraphNeighborsResponse:
+    """Walk the graph around one node: depth 1-3, in/out/both directions (V3.1)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    try:
+        subgraph = relationship_engine_for(workspace.id).neighbors(node_id, depth=depth, direction=direction)
+    except (GraphValidationError, RelationshipError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    if subgraph.center is None:
+        raise HTTPException(status_code=404, detail="Graph node not found")
+    return GraphNeighborsResponse(
+        node=_graph_node_payload(subgraph.center),
+        depth=depth,
+        direction=direction,
+        nodes=[_graph_node_payload(node) for node in subgraph.nodes],
+        edges=[_graph_edge_payload(edge) for edge in subgraph.edges],
+    )
+
+
+@app.get("/api/v1/graph/characters/{name}/context", response_model=GraphCharacterContextResponse, tags=["graph"])
+def graph_character_context(name: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> GraphCharacterContextResponse:
+    """CharacterGraph: identity, relations and phrases for one character (V3.1)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    characters = character_graph_for(workspace.id)
+    context = characters.context(name)
+    # ETAPA 5: the phrases travel through a MemoryResolver composed with the
+    # workspace-bound graph source — the same seam the spec builder will use.
+    # Graph-only names (no ledger persona) read the character context
+    # directly; names known nowhere come back empty, with found=false.
+    scoped_resolver = MemoryResolver(context_source=_GraphContextSource(workspace.id))
+    persona = scoped_resolver.resolve_by_name(name)
+    if persona is not None:
+        phrases = list(scoped_resolver.context_phrases(persona.persona_id))
+    elif context is not None:
+        phrases = list(context.phrases)
+    else:
+        phrases = []
+    relations = (
+        [
+            GraphCharacterRelationResponse(
+                relation=item.relation,
+                direction=item.direction,
+                peer=_graph_node_payload(item.peer),
+                phrase=item.phrase,
+            )
+            for item in context.relations
+        ]
+        if context is not None
+        else []
+    )
+    return GraphCharacterContextResponse(
+        name=name,
+        found=context is not None,
+        persona_id=persona.persona_id if persona is not None else None,
+        node=_graph_node_payload(context.node) if context is not None else None,
+        phrases=phrases,
+        relations=relations,
+        relation_counts=dict(context.relation_counts) if context is not None else {},
+    )
+
+
+@app.post("/api/v1/graph/seed", response_model=GraphSeedResponse, tags=["graph"])
+def seed_graph_demo(http_request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)) -> GraphSeedResponse:
+    """Load the demonstration graph into the caller's workspace, idempotently (V3.1)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    report = graph_repo.seed_demo(workspace.id)
+    audit(
+        db,
+        actor=user,
+        action="graph.seeded",
+        resource_type="graph",
+        resource_id=workspace.id,
+        workspace_id=workspace.id,
+        detail=report,
+        request=http_request,
+    )
+    return GraphSeedResponse(**report)
