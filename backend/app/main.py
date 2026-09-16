@@ -43,6 +43,18 @@ from .core import (
     ShotResolver,
     StyleResolver,
 )
+from .continuity import (
+    ContinuityRepositoryError,
+    ContinuityResolver,
+    ContinuityValidationError,
+    IdentityLock,
+    LocationLock,
+    VehicleLock,
+    VoiceLock,
+    WardrobeLock,
+    continuity_repo,
+    continuity_store_for,
+)
 from .core.config import settings
 from .db import SessionLocal, get_db
 from .events import EVENT_CANCELLED, TERMINAL_STATUSES, hub, job_event
@@ -144,6 +156,19 @@ from .schemas import (
     GraphQueryMatchResponse,
     GraphQueryResponse,
     GraphSeedResponse,
+    ContinuityEpisodeCreate,
+    ContinuityEpisodeResponse,
+    ContinuityIdentityRequest,
+    ContinuityIdentityResponse,
+    ContinuityLocationRequest,
+    ContinuityLocationResponse,
+    ContinuityResolveResponse,
+    ContinuityVehicleRequest,
+    ContinuityVehicleResponse,
+    ContinuityVoiceRequest,
+    ContinuityVoiceResponse,
+    ContinuityWardrobeRequest,
+    ContinuityWardrobeResponse,
 )
 from .repositories import PersonaRepositoryError, persona_repo
 from .job_service import job_service
@@ -2648,3 +2673,605 @@ def seed_graph_demo(http_request: Request, user: User = Depends(current_user), d
         request=http_request,
     )
     return GraphSeedResponse(**report)
+
+
+# ---------------------------------------------------------------------------
+# V3.2 — Character Continuity Engine
+#
+# Five locks (identity, wardrobe, location, vehicle, voice) plus the resolver
+# and the episode history. Every route requires identity: continuity rows are
+# tenant product data, like personas and graph rows — a foreign id reads as a
+# 404, never a 403. The Director, the Provider Registry and the Render Engine
+# are untouched; the resolver returns a ContinuityContext and never rewrites
+# the GenerationSpec.
+# ---------------------------------------------------------------------------
+
+
+def _continuity_identity_payload(persona_id: str, view) -> ContinuityIdentityResponse:
+    payload = dict(view.payload)
+    return ContinuityIdentityResponse(
+        persona_id=persona_id,
+        face=str(payload.get("face", "")),
+        hair=str(payload.get("hair", "")),
+        beard=str(payload.get("beard", "")),
+        body=str(payload.get("body", "")),
+        skin=str(payload.get("skin", "")),
+        age_appearance=str(payload.get("age_appearance", "")),
+        fingerprint=view.fingerprint,
+        version=view.version,
+        updated_at=view.updated_at,
+    )
+
+
+def _continuity_wardrobe_payload(persona_id: str, campaign_id: str, view) -> ContinuityWardrobeResponse:
+    payload = dict(view.payload)
+    return ContinuityWardrobeResponse(
+        persona_id=persona_id,
+        campaign_id=campaign_id,
+        source_episode=view.episode,
+        outfit=str(payload.get("outfit", "")),
+        accessories=str(payload.get("accessories", "")),
+        colors=str(payload.get("colors", "")),
+        shoes=str(payload.get("shoes", "")),
+        watch=str(payload.get("watch", "")),
+        fingerprint=view.fingerprint,
+        version=view.version,
+        updated_at=view.updated_at,
+    )
+
+
+def _continuity_location_payload(persona_id: str, campaign_id: str, view) -> ContinuityLocationResponse:
+    payload = dict(view.payload)
+    return ContinuityLocationResponse(
+        persona_id=persona_id,
+        campaign_id=campaign_id,
+        source_episode=view.episode,
+        showroom=str(payload.get("showroom", "")),
+        studio=str(payload.get("studio", "")),
+        street=str(payload.get("street", "")),
+        city=str(payload.get("city", "")),
+        base_lighting=str(payload.get("base_lighting", "")),
+        fingerprint=view.fingerprint,
+        version=view.version,
+        updated_at=view.updated_at,
+    )
+
+
+def _continuity_vehicle_payload(persona_id: str, campaign_id: str, view) -> ContinuityVehicleResponse:
+    payload = dict(view.payload)
+    return ContinuityVehicleResponse(
+        persona_id=persona_id,
+        campaign_id=campaign_id,
+        source_episode=view.episode,
+        vehicle=str(payload.get("vehicle", "")),
+        color=str(payload.get("color", "")),
+        plate=str(payload.get("plate", "")),
+        wheels=str(payload.get("wheels", "")),
+        finish=str(payload.get("finish", "")),
+        fingerprint=view.fingerprint,
+        version=view.version,
+        updated_at=view.updated_at,
+    )
+
+
+def _continuity_voice_payload(persona_id: str, view) -> ContinuityVoiceResponse:
+    payload = dict(view.payload)
+    return ContinuityVoiceResponse(
+        persona_id=persona_id,
+        voice_profile=str(payload.get("voice_profile", "")),
+        default_emotion=str(payload.get("default_emotion", "")),
+        speed=str(payload.get("speed", "")),
+        intensity=str(payload.get("intensity", "")),
+        fingerprint=view.fingerprint,
+        version=view.version,
+        updated_at=view.updated_at,
+    )
+
+
+def _continuity_episode_payload(view) -> ContinuityEpisodeResponse:
+    return ContinuityEpisodeResponse(
+        id=view.id,
+        workspace_id=view.workspace_id,
+        persona_id=view.persona_id,
+        campaign_id=view.campaign_id,
+        episode=view.episode,
+        title=view.title,
+        notes=view.notes,
+        snapshot=dict(view.snapshot),
+        created_at=view.created_at,
+    )
+
+
+@app.put("/api/v1/continuity/identity", response_model=ContinuityIdentityResponse, tags=["continuity"])
+def lock_continuity_identity(
+    request: ContinuityIdentityRequest,
+    http_request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ContinuityIdentityResponse:
+    """Freeze a character's visual identity and fingerprint it (V3.2: identity required)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    try:
+        snapshot = IdentityLock.lock(
+            request.persona_id,
+            face=request.face,
+            hair=request.hair,
+            beard=request.beard,
+            body=request.body,
+            skin=request.skin,
+            age_appearance=request.age_appearance,
+        )
+        view = continuity_repo.upsert_lock(
+            workspace.id,
+            lock_type="identity",
+            persona_id=snapshot.persona_id,
+            payload={
+                "face": snapshot.face,
+                "hair": snapshot.hair,
+                "beard": snapshot.beard,
+                "body": snapshot.body,
+                "skin": snapshot.skin,
+                "age_appearance": snapshot.age_appearance,
+            },
+            fingerprint=snapshot.fingerprint,
+        )
+    except ContinuityValidationError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    audit(
+        db,
+        actor=user,
+        action="continuity.identity.locked",
+        resource_type="continuity_lock",
+        resource_id=f"{snapshot.persona_id}:identity",
+        workspace_id=workspace.id,
+        detail={"persona_id": snapshot.persona_id, "fingerprint": snapshot.fingerprint},
+        request=http_request,
+    )
+    return _continuity_identity_payload(snapshot.persona_id, view)
+
+
+@app.get("/api/v1/continuity/identity/{persona_id}", response_model=ContinuityIdentityResponse, tags=["continuity"])
+def get_continuity_identity(
+    persona_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> ContinuityIdentityResponse:
+    """Read a character's frozen visual identity, or 404 when unlocked (V3.2)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    try:
+        view = continuity_repo.get_lock(workspace.id, "identity", persona_id)
+    except ContinuityValidationError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    if view is None:
+        raise HTTPException(status_code=404, detail=f"no identity lock for {persona_id}")
+    return _continuity_identity_payload(view.persona_id, view)
+
+
+@app.put("/api/v1/continuity/wardrobe", response_model=ContinuityWardrobeResponse, tags=["continuity"])
+def lock_continuity_wardrobe(
+    request: ContinuityWardrobeRequest,
+    http_request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ContinuityWardrobeResponse:
+    """Freeze a costume for a campaign, optionally for one episode only (V3.2: identity required)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    try:
+        snapshot = WardrobeLock.lock(
+            outfit=request.outfit,
+            accessories=request.accessories,
+            colors=request.colors,
+            shoes=request.shoes,
+            watch=request.watch,
+        )
+        view = continuity_repo.upsert_lock(
+            workspace.id,
+            lock_type="wardrobe",
+            persona_id=request.persona_id,
+            campaign_id=request.campaign_id,
+            episode=request.episode,
+            payload={
+                "outfit": snapshot.outfit,
+                "accessories": snapshot.accessories,
+                "colors": snapshot.colors,
+                "shoes": snapshot.shoes,
+                "watch": snapshot.watch,
+            },
+            fingerprint=snapshot.fingerprint,
+        )
+    except ContinuityValidationError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    audit(
+        db,
+        actor=user,
+        action="continuity.wardrobe.locked",
+        resource_type="continuity_lock",
+        resource_id=f"{view.persona_id}:{view.campaign_id}:{view.episode}:wardrobe",
+        workspace_id=workspace.id,
+        detail={"persona_id": view.persona_id, "campaign_id": view.campaign_id, "fingerprint": snapshot.fingerprint},
+        request=http_request,
+    )
+    return _continuity_wardrobe_payload(view.persona_id, view.campaign_id, view)
+
+
+@app.get("/api/v1/continuity/wardrobe", response_model=ContinuityWardrobeResponse, tags=["continuity"])
+def get_continuity_wardrobe(
+    persona_id: str,
+    campaign_id: str = "default",
+    episode: int | None = None,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ContinuityWardrobeResponse:
+    """Read the resolved costume: episode override or campaign default (V3.2)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    try:
+        view = continuity_repo.get_lock(workspace.id, "wardrobe", persona_id, campaign_id, episode)
+    except ContinuityValidationError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    if view is None:
+        raise HTTPException(status_code=404, detail=f"no wardrobe lock for {persona_id}")
+    return _continuity_wardrobe_payload(view.persona_id, view.campaign_id, view)
+
+
+@app.put("/api/v1/continuity/location", response_model=ContinuityLocationResponse, tags=["continuity"])
+def lock_continuity_location(
+    request: ContinuityLocationRequest,
+    http_request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ContinuityLocationResponse:
+    """Freeze the set for a campaign, optionally for one episode only (V3.2: identity required)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    try:
+        snapshot = LocationLock.lock(
+            showroom=request.showroom,
+            studio=request.studio,
+            street=request.street,
+            city=request.city,
+            base_lighting=request.base_lighting,
+        )
+        view = continuity_repo.upsert_lock(
+            workspace.id,
+            lock_type="location",
+            persona_id=request.persona_id,
+            campaign_id=request.campaign_id,
+            episode=request.episode,
+            payload={
+                "showroom": snapshot.showroom,
+                "studio": snapshot.studio,
+                "street": snapshot.street,
+                "city": snapshot.city,
+                "base_lighting": snapshot.base_lighting,
+            },
+            fingerprint=snapshot.fingerprint,
+        )
+    except ContinuityValidationError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    audit(
+        db,
+        actor=user,
+        action="continuity.location.locked",
+        resource_type="continuity_lock",
+        resource_id=f"{view.persona_id}:{view.campaign_id}:{view.episode}:location",
+        workspace_id=workspace.id,
+        detail={"persona_id": view.persona_id, "campaign_id": view.campaign_id, "fingerprint": snapshot.fingerprint},
+        request=http_request,
+    )
+    return _continuity_location_payload(view.persona_id, view.campaign_id, view)
+
+
+@app.get("/api/v1/continuity/location", response_model=ContinuityLocationResponse, tags=["continuity"])
+def get_continuity_location(
+    persona_id: str,
+    campaign_id: str = "default",
+    episode: int | None = None,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ContinuityLocationResponse:
+    """Read the resolved set: episode override or campaign default (V3.2)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    try:
+        view = continuity_repo.get_lock(workspace.id, "location", persona_id, campaign_id, episode)
+    except ContinuityValidationError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    if view is None:
+        raise HTTPException(status_code=404, detail=f"no location lock for {persona_id}")
+    return _continuity_location_payload(view.persona_id, view.campaign_id, view)
+
+
+@app.put("/api/v1/continuity/vehicle", response_model=ContinuityVehicleResponse, tags=["continuity"])
+def lock_continuity_vehicle(
+    request: ContinuityVehicleRequest,
+    http_request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ContinuityVehicleResponse:
+    """Freeze the hero vehicle for a campaign, optionally for one episode (V3.2: identity required)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    try:
+        snapshot = VehicleLock.lock(
+            vehicle=request.vehicle,
+            color=request.color,
+            plate=request.plate,
+            wheels=request.wheels,
+            finish=request.finish,
+        )
+        view = continuity_repo.upsert_lock(
+            workspace.id,
+            lock_type="vehicle",
+            persona_id=request.persona_id,
+            campaign_id=request.campaign_id,
+            episode=request.episode,
+            payload={
+                "vehicle": snapshot.vehicle,
+                "color": snapshot.color,
+                "plate": snapshot.plate,
+                "wheels": snapshot.wheels,
+                "finish": snapshot.finish,
+            },
+            fingerprint=snapshot.fingerprint,
+        )
+    except ContinuityValidationError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    audit(
+        db,
+        actor=user,
+        action="continuity.vehicle.locked",
+        resource_type="continuity_lock",
+        resource_id=f"{view.persona_id}:{view.campaign_id}:{view.episode}:vehicle",
+        workspace_id=workspace.id,
+        detail={"persona_id": view.persona_id, "campaign_id": view.campaign_id, "fingerprint": snapshot.fingerprint},
+        request=http_request,
+    )
+    return _continuity_vehicle_payload(view.persona_id, view.campaign_id, view)
+
+
+@app.get("/api/v1/continuity/vehicle", response_model=ContinuityVehicleResponse, tags=["continuity"])
+def get_continuity_vehicle(
+    persona_id: str,
+    campaign_id: str = "default",
+    episode: int | None = None,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ContinuityVehicleResponse:
+    """Read the resolved hero vehicle: episode override or campaign default (V3.2)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    try:
+        view = continuity_repo.get_lock(workspace.id, "vehicle", persona_id, campaign_id, episode)
+    except ContinuityValidationError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    if view is None:
+        raise HTTPException(status_code=404, detail=f"no vehicle lock for {persona_id}")
+    return _continuity_vehicle_payload(view.persona_id, view.campaign_id, view)
+
+
+@app.put("/api/v1/continuity/voice", response_model=ContinuityVoiceResponse, tags=["continuity"])
+def lock_continuity_voice(
+    request: ContinuityVoiceRequest,
+    http_request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ContinuityVoiceResponse:
+    """Freeze a character's voice profile, emotion, speed and intensity (V3.2: identity required)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    try:
+        snapshot = VoiceLock.lock(
+            voice_profile=request.voice_profile,
+            default_emotion=request.default_emotion,
+            speed=request.speed,
+            intensity=request.intensity,
+        )
+        view = continuity_repo.upsert_lock(
+            workspace.id,
+            lock_type="voice",
+            persona_id=request.persona_id,
+            payload={
+                "voice_profile": snapshot.voice_profile,
+                "default_emotion": snapshot.default_emotion,
+                "speed": snapshot.speed,
+                "intensity": snapshot.intensity,
+            },
+            fingerprint=snapshot.fingerprint,
+        )
+    except ContinuityValidationError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    audit(
+        db,
+        actor=user,
+        action="continuity.voice.locked",
+        resource_type="continuity_lock",
+        resource_id=f"{request.persona_id.strip()}:voice",
+        workspace_id=workspace.id,
+        detail={"persona_id": request.persona_id.strip(), "fingerprint": snapshot.fingerprint},
+        request=http_request,
+    )
+    return _continuity_voice_payload(view.persona_id, view)
+
+
+@app.get("/api/v1/continuity/voice/{persona_id}", response_model=ContinuityVoiceResponse, tags=["continuity"])
+def get_continuity_voice(
+    persona_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> ContinuityVoiceResponse:
+    """Read a character's frozen voice, or 404 when unlocked (V3.2)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    try:
+        view = continuity_repo.get_lock(workspace.id, "voice", persona_id)
+    except ContinuityValidationError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    if view is None:
+        raise HTTPException(status_code=404, detail=f"no voice lock for {persona_id}")
+    return _continuity_voice_payload(view.persona_id, view)
+
+
+@app.get("/api/v1/continuity/resolve", response_model=ContinuityResolveResponse, tags=["continuity"])
+def resolve_continuity(
+    persona_id: str,
+    campaign_id: str = "default",
+    episode: int = 1,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ContinuityResolveResponse:
+    """Resolve one ContinuityContext: persona + campaign + episode (V3.2)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    try:
+        resolver = ContinuityResolver(continuity_store_for(workspace.id))
+        context = resolver.resolve(persona_id, campaign_id, episode)
+    except ContinuityValidationError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    identity = ContinuityIdentityResponse(
+        persona_id=context.persona_id,
+        face=context.identity.face,
+        hair=context.identity.hair,
+        beard=context.identity.beard,
+        body=context.identity.body,
+        skin=context.identity.skin,
+        age_appearance=context.identity.age_appearance,
+        fingerprint=context.identity.fingerprint,
+    ) if context.identity else None
+    wardrobe = ContinuityWardrobeResponse(
+        persona_id=context.persona_id,
+        campaign_id=context.campaign_id,
+        outfit=context.wardrobe.outfit,
+        accessories=context.wardrobe.accessories,
+        colors=context.wardrobe.colors,
+        shoes=context.wardrobe.shoes,
+        watch=context.wardrobe.watch,
+        fingerprint=context.wardrobe.fingerprint,
+    ) if context.wardrobe else None
+    location = ContinuityLocationResponse(
+        persona_id=context.persona_id,
+        campaign_id=context.campaign_id,
+        showroom=context.location.showroom,
+        studio=context.location.studio,
+        street=context.location.street,
+        city=context.location.city,
+        base_lighting=context.location.base_lighting,
+        fingerprint=context.location.fingerprint,
+    ) if context.location else None
+    vehicle = ContinuityVehicleResponse(
+        persona_id=context.persona_id,
+        campaign_id=context.campaign_id,
+        vehicle=context.vehicle.vehicle,
+        color=context.vehicle.color,
+        plate=context.vehicle.plate,
+        wheels=context.vehicle.wheels,
+        finish=context.vehicle.finish,
+        fingerprint=context.vehicle.fingerprint,
+    ) if context.vehicle else None
+    voice = ContinuityVoiceResponse(
+        persona_id=context.persona_id,
+        voice_profile=context.voice.voice_profile,
+        default_emotion=context.voice.default_emotion,
+        speed=context.voice.speed,
+        intensity=context.voice.intensity,
+        fingerprint=context.voice.fingerprint,
+    ) if context.voice else None
+    return ContinuityResolveResponse(
+        persona_id=context.persona_id,
+        campaign_id=context.campaign_id,
+        episode=context.episode,
+        identity=identity,
+        wardrobe=wardrobe,
+        location=location,
+        vehicle=vehicle,
+        voice=voice,
+        phrases=list(context.phrases),
+        fingerprints=context.fingerprint_map(),
+        missing=list(context.missing),
+        drift=list(context.drift),
+        consistent=context.consistent,
+        block=context.block(),
+    )
+
+
+@app.post("/api/v1/continuity/episodes", response_model=ContinuityEpisodeResponse, status_code=201, tags=["continuity"])
+def create_continuity_episode(
+    request: ContinuityEpisodeCreate,
+    http_request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> ContinuityEpisodeResponse:
+    """Freeze a new episode with the currently resolved continuity (V3.2: identity required)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    try:
+        persona_id = request.persona_id.strip()
+        campaign_id = request.campaign_id.strip() or "default"
+        episode = request.episode
+        if episode is None:
+            episode = continuity_repo.next_episode_number(workspace.id, persona_id, campaign_id)
+        resolver = ContinuityResolver(continuity_store_for(workspace.id))
+        context = resolver.resolve(persona_id, campaign_id, episode)
+        view = continuity_repo.create_episode(
+            workspace.id,
+            persona_id=persona_id,
+            campaign_id=campaign_id,
+            episode=episode,
+            title=request.title,
+            notes=request.notes,
+            snapshot=resolver.snapshot_dict(context),
+        )
+    except ContinuityRepositoryError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except ContinuityValidationError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    audit(
+        db,
+        actor=user,
+        action="continuity.episode.created",
+        resource_type="continuity_episode",
+        resource_id=view.id,
+        workspace_id=workspace.id,
+        detail={"persona_id": persona_id, "campaign_id": campaign_id, "episode": episode},
+        request=http_request,
+    )
+    return _continuity_episode_payload(view)
+
+
+@app.get("/api/v1/continuity/episodes", response_model=list[ContinuityEpisodeResponse], tags=["continuity"])
+def list_continuity_episodes(
+    persona_id: str | None = None,
+    campaign_id: str | None = None,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> list[ContinuityEpisodeResponse]:
+    """List frozen episode snapshots, optionally filtered (V3.2)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        return []
+    views = continuity_repo.list_episodes(workspace.id, persona_id=persona_id, campaign_id=campaign_id)
+    return [_continuity_episode_payload(view) for view in views]

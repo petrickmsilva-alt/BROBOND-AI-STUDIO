@@ -13,14 +13,14 @@ mudar e o documento não for regenerado, a suíte falha.
 
 ## Resumo
 
-- **86** rotas HTTP sob `/api/v1`
+- **99** rotas HTTP sob `/api/v1`
 - **32** delas são `/api/v1/core/*` — a camada de decisão
 - **3** WebSockets
-- **15** tags
+- **16** tags
 
 OpenAPI interativo em `/docs` (Swagger) e `/redoc` quando o serviço está no ar.
 
-PR006 Storyboard Cinematic Engine não adiciona rotas de render: a UI edita um `StoryboardState` versionado sobre o `ProductionPlan` retornado por `/api/v1/core/director/production-plan`. PR007 adiciona `/api/v1/providers` para health/capabilities do registry universal, sem expor segredos. PR008 adiciona seis rotas `/api/v1/render/*` (lotes de render com identidade) e o WebSocket `/ws/render/{batch_id}` com progresso por push, sem polling. V3.1 adiciona doze rotas `/api/v1/graph/*` (Cinematic Knowledge Graph com identidade: CRUD de nós/arestas, busca semântica, vizinhança e contexto de personagem para o Director AI).
+PR006 Storyboard Cinematic Engine não adiciona rotas de render: a UI edita um `StoryboardState` versionado sobre o `ProductionPlan` retornado por `/api/v1/core/director/production-plan`. PR007 adiciona `/api/v1/providers` para health/capabilities do registry universal, sem expor segredos. PR008 adiciona seis rotas `/api/v1/render/*` (lotes de render com identidade) e o WebSocket `/ws/render/{batch_id}` com progresso por push, sem polling. V3.1 adiciona doze rotas `/api/v1/graph/*` (Cinematic Knowledge Graph com identidade: CRUD de nós/arestas, busca semântica, vizinhança e contexto de personagem para o Director AI). V3.2 adiciona treze rotas `/api/v1/continuity/*` (Character Continuity Engine com identidade: cinco locks com fingerprint, resolver persona+campanha+episódio e histórico imutável de episódios).
 
 ## `assets` — 4
 
@@ -38,6 +38,24 @@ PR006 Storyboard Cinematic Engine não adiciona rotas de render: a UI edita um `
 | `POST` | `/api/v1/auth/login` | Sign in (PR002: rate-limited, and every attempt — success or failure — audited). |
 | `GET` | `/api/v1/auth/me` | get_current_user |
 | `POST` | `/api/v1/auth/register` | Create an account (PR002: rate-limited and audited). |
+
+## `continuity` — 13
+
+| Método | Rota | Descrição |
+| --- | --- | --- |
+| `GET` | `/api/v1/continuity/episodes` | List frozen episode snapshots, optionally filtered (V3.2). |
+| `POST` | `/api/v1/continuity/episodes` | Freeze a new episode with the currently resolved continuity (V3.2: identity required). |
+| `PUT` | `/api/v1/continuity/identity` | Freeze a character's visual identity and fingerprint it (V3.2: identity required). |
+| `GET` | `/api/v1/continuity/identity/{persona_id}` | Read a character's frozen visual identity, or 404 when unlocked (V3.2). |
+| `GET` | `/api/v1/continuity/location` | Read the resolved set: episode override or campaign default (V3.2). |
+| `PUT` | `/api/v1/continuity/location` | Freeze the set for a campaign, optionally for one episode only (V3.2: identity required). |
+| `GET` | `/api/v1/continuity/resolve` | Resolve one ContinuityContext: persona + campaign + episode (V3.2). |
+| `GET` | `/api/v1/continuity/vehicle` | Read the resolved hero vehicle: episode override or campaign default (V3.2). |
+| `PUT` | `/api/v1/continuity/vehicle` | Freeze the hero vehicle for a campaign, optionally for one episode (V3.2: identity required). |
+| `PUT` | `/api/v1/continuity/voice` | Freeze a character's voice profile, emotion, speed and intensity (V3.2: identity required). |
+| `GET` | `/api/v1/continuity/voice/{persona_id}` | Read a character's frozen voice, or 404 when unlocked (V3.2). |
+| `GET` | `/api/v1/continuity/wardrobe` | Read the resolved costume: episode override or campaign default (V3.2). |
+| `PUT` | `/api/v1/continuity/wardrobe` | Freeze a costume for a campaign, optionally for one episode only (V3.2: identity required). |
 
 ## `core` — 32
 

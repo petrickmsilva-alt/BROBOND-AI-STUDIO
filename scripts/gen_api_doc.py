@@ -73,7 +73,10 @@ def render() -> str:
         "WebSocket `/ws/render/{batch_id}` com progresso por push, sem polling. "
         "V3.1 adiciona doze rotas `/api/v1/graph/*` (Cinematic Knowledge Graph "
         "com identidade: CRUD de nós/arestas, busca semântica, vizinhança e "
-        "contexto de personagem para o Director AI).\n"
+        "contexto de personagem para o Director AI). V3.2 adiciona treze rotas "
+        "`/api/v1/continuity/*` (Character Continuity Engine com identidade: "
+        "cinco locks com fingerprint, resolver persona+campanha+episódio e "
+        "histórico imutável de episódios).\n"
     )
 
     for tag in sorted(by_tag):
