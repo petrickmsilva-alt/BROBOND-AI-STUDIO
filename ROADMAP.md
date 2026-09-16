@@ -27,8 +27,8 @@ worker devolver `cancelled` sem executar nada (P0-2a) foi corrigido.
 **Atualização PR002/PR003 (segurança e persistência):** os P0s pendentes foram
 fechados. **P0-2b** (jobs em memória): `JobRow` + repositório SQL — API e
 worker compartilham a tabela `jobs` (Alembic `0001`). **P0-4** (endpoints
-sem token): 28 de 66 rotas exigem identidade, 3 a aceitam sem exigir e 35 são
-públicas por desenho; os 2 WebSockets autenticam por `?token=`. **P0-3** foi
+sem token): 34 de 72 rotas exigem identidade, 3 a aceitam sem exigir e 35 são
+públicas por desenho; os 3 WebSockets autenticam por `?token=`. **P0-3** foi
 fechado na ETAPA 11 com `publish_sync`. **P0-1** permanece por decisão:
 quatro módulos mortos e quebrados, não apagados nem ressuscitados. E as
 **personas** deixaram a memória no PR003 (Persona Memory Engine): tabelas
@@ -98,6 +98,7 @@ ponta a ponta: GPU, pesos e providers instalados. Ver `docs/LIMITATIONS.md`.
 
 - [x] **Director AI Engine / PR005**: intenção humana → `ProductionPlan` imutável, moods internos, câmera automática por Shot Library, storyboard de 4–8 cenas e UI `/studio/director`, sem render e sem providers.
 - [x] **Storyboard Cinematic Engine / PR006**: `StoryboardState` versionado, editor visual desacoplado, drag/drop, timeline proporcional com duração editável por arraste, CameraPanel, MoodPanel, undo/redo e duplicação de cena sem render.
+- [x] **Cinematic Render Engine / PR008**: Director conectado ao `GenerationExecutor` — `RenderBatch` com cenas de progresso independente, `SceneRenderer` (cena → `GenerationSpec` via `PromptCompiler`), pipeline de assets (PNG/MP4 + thumbnail + metadados com prompt/seed/provider), WebSocket `/ws/render/{batch_id}` por push e UI `/studio/render` com Fila, Cancelar e Repetir.
 - [~] Conversa de direção: trailer, luxo, fashion film, documental *(ETAPA 2 entregou o `DirectorAgent` determinístico e `POST /api/v1/core/direct`, PR005 entrega `POST /api/v1/core/director/production-plan`; falta a conversa multi-turno e o enriquecimento por LLM, cujo hook `LanguageModel` já existe)*
 - [~] Roteirista automático persistido e versionado *(PR006 versiona o StoryboardState no editor; persistência server-side continua como evolução futura)*
 - [x] Diretor de câmera IA inicial (PR005: Dolly, Orbit, Crane, Tracking, Static, Drone escolhidos da Shot Library; PR006: presets Hero Walk, Orbit, Tracking, Crane, Drone e Static editáveis por cena)

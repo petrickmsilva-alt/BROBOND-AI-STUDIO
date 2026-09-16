@@ -68,7 +68,9 @@ def render() -> str:
         "PR006 Storyboard Cinematic Engine não adiciona rotas de render: a UI edita um "
         "`StoryboardState` versionado sobre o `ProductionPlan` retornado por "
         "`/api/v1/core/director/production-plan`. PR007 adiciona `/api/v1/providers` "
-        "para health/capabilities do registry universal, sem expor segredos.\n"
+        "para health/capabilities do registry universal, sem expor segredos. PR008 "
+        "adiciona seis rotas `/api/v1/render/*` (lotes de render com identidade) e o "
+        "WebSocket `/ws/render/{batch_id}` com progresso por push, sem polling.\n"
     )
 
     for tag in sorted(by_tag):

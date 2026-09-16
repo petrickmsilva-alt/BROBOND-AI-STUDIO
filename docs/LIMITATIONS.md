@@ -64,19 +64,21 @@ restou:
 
 ---
 
-## 3. Autorização (P0-4, fechado no PR002; ampliado no PR003)
+## 3. Autorização (P0-4, fechado no PR002; ampliado no PR003 e no PR008)
 
-**31 de 66 rotas** tocam identidade, e a diferença entre elas importa:
+**37 de 72 rotas** tocam identidade, e a diferença entre elas importa:
 
-- **28** exigem token — `Depends(current_user)`: `/auth/me`, `/knowledge`, `/queue`,
+- **34** exigem token — `Depends(current_user)`: `/auth/me`, `/knowledge`, `/queue`,
   `/jobs/{id}`, `/jobs/{id}/cancel`, `/assets/upload`, `/assets`,
   `/assets/download/{object_key:path}`, `/assets/{id}/conditioning`,
   `/assets/{id}/export`, `POST /personas`, `GET /personas` (listagem, PR003),
   `/personas/{id}` (GET/PATCH/DELETE — perfis persistentes, PR003),
   `/personas/{id}/train`,
   `/personas/{id}/training/{run_id}`, `/personas/{id}/loras`,
-  `/personas/{id}/images` (GET/POST — referências, PR003) e todo o bloco
-  `/api/v1/core/personas/*` (8 rotas, identidade de personagem = PII).
+  `/personas/{id}/images` (GET/POST — referências, PR003), todo o bloco
+  `/api/v1/core/personas/*` (8 rotas, identidade de personagem = PII) e todo o
+  bloco `/api/v1/render/*` (6 rotas, PR008 — renders persistem no workspace de
+  quem chamou, então anônimo é recusado).
 - **3** aceitam token mas **não exigem** — `Depends(optional_user)`:
   `/generations/images`, `/generations/videos`, `/core/compile`. Uma chamada
   anônima passa — e o job criado anônima não tem tenant, logo nenhuma
@@ -93,9 +95,11 @@ Regras de tenant: um token nunca enxerga job, asset, run ou LoRA de outro
 workspace — as respostas são **404** (não 403), para o id de outro tenant não
 ser enumerável. Fixado por `test_security_authorization.py`.
 
-Os **2 WebSockets** autenticam pelo query parameter `token` (o browser não
+Os **3 WebSockets** autenticam pelo query parameter `token` (o browser não
 define header em handshake de WebSocket): sem token, ou com token que não
-possui o job/run, o socket é fechado com `1008` **antes** de aceitar.
+possui o job/run/batch, o socket é fechado com `1008` **antes** de aceitar.
+O terceiro é `/ws/render/{batch_id}` (PR008), com progresso por push e sem
+polling.
 
 `POST /auth/login` e `/auth/register` têm rate limit configurável
 (`BROBOND_RATE_LIMIT_AUTH_PER_MINUTE`, default 20/min/IP, `0` desliga), e as
@@ -111,7 +115,7 @@ from app.main import app
 import inspect
 n = sum(1 for r in app.routes if isinstance(r, APIRoute) and r.path.startswith('/api/v1')
         and 'user' in inspect.signature(r.endpoint).parameters)
-print(f'{n} de 66 rotas com identidade')"
+print(f'{n} de 72 rotas com identidade')"
 ```
 
 ---

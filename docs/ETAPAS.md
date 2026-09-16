@@ -44,7 +44,7 @@ antes de o formato de relatório ser estabelecido na ETAPA 4. O que entregaram e
 | **P0-2a** | `process_generation` devolvia sempre `cancelled` | **Corrigido na ETAPA 3** |
 | **P0-2b** | `MemoryStore` em memória | **Fechado no PR002 e PR003** — jobs são linhas na tabela `jobs` (migration Alembic `0001`); `JobStore` é o repositório comum da API e do worker. Personas fechadas no PR003: tabela `personas` (migration `0002`) + `repositories/persona_repository.py`. Ver `docs/LIMITATIONS.md` §2 e `docs/PERSONA_ENGINE.md` |
 | **P0-3** | `EventHub.publish` sem chamadores | **Corrigido na ETAPA 11** — `publish_sync`, porque o worker Celery é síncrono e o hub era asyncio-only |
-| **P0-4** | Endpoints sem token; vazamento cross-tenant em `GET /api/v1/queue`; PII em `GET /api/v1/knowledge` | **Fechado no PR002 (ampliado no PR003)** — **28 de 66 rotas** exigem token, 3 o aceitam sem exigir (gerações + `/core/compile`), 35 permanecem públicas por desenho (dados de referência, `/api/v1/providers` e Core read-only, incluindo `/core/director/production-plan`); os 2 WebSockets autenticam por `?token=`; rate limit configurável em login/registro e audit log para ações críticas. Ver `docs/LIMITATIONS.md` §3 |
+| **P0-4** | Endpoints sem token; vazamento cross-tenant em `GET /api/v1/queue`; PII em `GET /api/v1/knowledge` | **Fechado no PR002 (ampliado no PR003 e no PR008)** — **34 de 72 rotas** exigem token, 3 o aceitam sem exigir (gerações + `/core/compile`), 35 permanecem públicas por desenho (dados de referência, `/api/v1/providers` e Core read-only, incluindo `/core/director/production-plan`); os 3 WebSockets autenticam por `?token=`; rate limit configurável em login/registro e audit log para ações críticas. Ver `docs/LIMITATIONS.md` §3 |
 
 ---
 
@@ -81,11 +81,11 @@ Estas regras foram respeitadas em todas as etapas e são verificadas por testes:
 
 | Métrica | Valor |
 | --- | --- |
-| Suíte de testes | **1.246** |
+| Suíte de testes | **1.324** |
 | Cobertura `backend/app` | **96%** (gate CI: 95%) |
-| Módulos em 100% | **45** |
-| Rotas HTTP `/api/v1` | **66** — **32** delas `/api/v1/core/*` |
-| WebSockets | **2** |
+| Módulos em 100% | **51** |
+| Rotas HTTP `/api/v1` | **72** — **32** delas `/api/v1/core/*` |
+| WebSockets | **3** |
 | Componentes do Core | **13** |
 | Arquivos deletados desde `3708784` | **0** |
 

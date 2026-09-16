@@ -483,3 +483,157 @@ export function listPersonaImages(personaId: string) {
 export function addPersonaImage(personaId: string, payload: { asset_id: string; image_type?: 'face' | 'body' | 'style' | 'reference'; order_index?: number }) {
   return post<PersonaImageRef>(`/api/v1/personas/${personaId}/images`, payload);
 }
+
+// ---------------------------------------------------------------------------
+// PR008 — Cinematic Render Engine
+// ---------------------------------------------------------------------------
+
+export type RenderSceneInput = {
+  scene_number: number;
+  title: string;
+  objective: string;
+  emotion?: string;
+  camera?: string;
+  lens?: string;
+  lighting?: string;
+  motion?: string;
+  duration?: number;
+  environment?: string;
+  mood?: string;
+  negative_prompt?: string;
+  seed?: number | null;
+};
+
+export type RenderAsset = {
+  scene_id: string;
+  scene_number: number;
+  kind: 'image' | 'video';
+  object_key: string;
+  url: string;
+  thumbnail_key: string;
+  thumbnail_url: string;
+  metadata_key: string;
+  metadata_url: string;
+  prompt: string;
+  seed: number | null;
+  provider_id: string;
+  spec_id: string;
+  width: number;
+  height: number;
+  duration_seconds: number;
+  fps: number;
+};
+
+export type RenderScene = {
+  scene_id: string;
+  scene_number: number;
+  title: string;
+  status: 'queued' | 'running' | 'rendering' | 'completed' | 'failed' | 'cancelled';
+  progress: number;
+  spec_id: string | null;
+  asset: RenderAsset | null;
+  job: Record<string, unknown> | null;
+  error: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+};
+
+export type RenderBatch = {
+  batch_id: string;
+  workspace_id: string;
+  project_id: string;
+  kind: 'image' | 'video';
+  provider: string;
+  status: 'queued' | 'running' | 'rendering' | 'completed' | 'failed' | 'cancelled';
+  scenes: RenderScene[];
+  production_plan_id: string | null;
+  storyboard_version: number | null;
+  persona_id: string | null;
+  style: string;
+  aspect_ratio: string;
+  fps: number;
+  seed: number | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  eta_seconds: number;
+  progress: number;
+  scene_count: number;
+  completed_scenes: number;
+  failed_scenes: number;
+  current_scene_id: string | null;
+  current_scene_number: number | null;
+};
+
+export type RenderBatchSummary = {
+  batch_id: string;
+  project_id: string;
+  kind: 'image' | 'video';
+  provider: string;
+  status: RenderBatch['status'];
+  progress: number;
+  scene_count: number;
+  completed_scenes: number;
+  failed_scenes: number;
+  current_scene_number: number | null;
+  eta_seconds: number;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+};
+
+export type RenderEvent =
+  | { event: 'snapshot'; batch: RenderBatch }
+  | {
+      event: 'batch_started' | 'scene_started' | 'scene_progress' | 'scene_completed' | 'batch_completed';
+      batch_id: string;
+      at: string;
+      scene_id?: string;
+      scene_number?: number;
+      status?: string;
+      progress?: number;
+      eta_seconds?: number;
+      error?: string;
+      asset?: RenderAsset;
+      job?: Record<string, unknown>;
+    };
+
+export function createRenderBatch(payload: {
+  scenes: RenderSceneInput[];
+  kind: 'image' | 'video';
+  provider?: string;
+  project_id?: string;
+  production_plan_id?: string | null;
+  storyboard_version?: number | null;
+  persona_id?: string | null;
+  style?: string;
+  mood?: string;
+  aspect_ratio?: '16:9' | '1:1' | '9:16' | '4:3' | '3:4';
+  fps?: number;
+  seed?: number | null;
+}) {
+  return post<RenderBatch>('/api/v1/render/batches', payload);
+}
+
+export function listRenderBatches() {
+  return get<RenderBatchSummary[]>('/api/v1/render/batches');
+}
+
+export function getRenderBatch(batchId: string) {
+  return get<RenderBatch>(`/api/v1/render/batches/${batchId}`);
+}
+
+export function startRenderBatch(batchId: string) {
+  return post<RenderBatch>(`/api/v1/render/batches/${batchId}/start`, {});
+}
+
+export function cancelRenderBatch(batchId: string) {
+  return post<RenderBatch>(`/api/v1/render/batches/${batchId}/cancel`, {});
+}
+
+export function retryRenderBatch(batchId: string) {
+  return post<{ batch_id: string; status: string; retried_scenes: number; message: string }>(
+    `/api/v1/render/batches/${batchId}/retry`,
+    {},
+  );
+}

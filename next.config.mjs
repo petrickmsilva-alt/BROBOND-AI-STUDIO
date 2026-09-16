@@ -15,6 +15,12 @@ const nextConfig = {
         source: '/api/v1/:path*',
         destination: `${backend}/api/v1/:path*`,
       },
+      // PR008: the render progress socket speaks the same relative language —
+      // the browser opens /ws/render/{batch_id} on its own origin.
+      {
+        source: '/ws/:path*',
+        destination: `${backend}/ws/:path*`,
+      },
     ];
   },
 };

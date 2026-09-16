@@ -6,6 +6,38 @@ versões de produto do `ROADMAP.md`.
 
 ---
 
+## [Unreleased] — PR008: CINEMATIC RENDER ENGINE
+
+PR008 conecta o Director AI ao Generation Executor e ativa a renderização: storyboards
+produzem imagens e vídeos reais. O pacote `backend/app/render/` orquestra
+`ProductionPlan → Scene → GenerationSpec → Executor → Assets → Jobs` sem chamar nenhum
+Provider diretamente — a única dependência voltada a providers é o `GenerationExecutor`.
+
+### O que mudou
+
+- **Render Orchestrator** — `render_orchestrator.py` cria lotes de `ProductionPlan`
+  (PR005) ou `StoryboardState` (PR006) e executa cena a cena, com cancelamento
+  cooperativo e retry só das falhas; seeds determinísticas (`base + índice`).
+- **Scene Renderer** — `scene_renderer.py` compila cada cena em um `GenerationSpec`
+  pelo `PromptCompiler` existente, com persona, style, mood, camera, lens, lighting,
+  motion, seed, aspect_ratio e duration obrigatórios.
+- **Batch Rendering** — `RenderBatch` com estados `queued/running/rendering/completed/
+  failed/cancelled` e progresso independente por cena.
+- **Progress Engine** — WebSocket `/ws/render/{batch_id}` com os cinco eventos
+  (`batch_started`, `scene_started`, `scene_progress`, `scene_completed`,
+  `batch_completed`) por push thread-safe, sem polling.
+- **Asset Pipeline** — `asset_pipeline.py` salva PNG/MP4, thumbnail e metadados JSON
+  (prompt, seed, provider) pelo `StorageService`, com linhas `Asset` na biblioteca.
+- **API e UI** — seis rotas `/api/v1/render/*` com identidade e a tela `/studio/render`
+  com storyboard, progresso, cena atual, ETA, preview, download e Fila com Cancelar
+  e Repetir.
+- **Testes** — `backend/tests/test_pr008_render_engine.py` cobre batch, renderer,
+  executor, WebSocket, assets e frontend; pacote `backend/app/render` em 100%.
+
+Documentação nova: `docs/RENDER_ENGINE.md`.
+
+---
+
 ## [Unreleased] — PR007: GPU PROVIDER ORCHESTRATOR
 
 PR007 cria a camada universal de Providers. O Core agora trata `provider` como identificador
