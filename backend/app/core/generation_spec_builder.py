@@ -278,6 +278,7 @@ class GenerationSpecBuilder:
             cinematic_mode=bool(kwargs.get("cinematic_mode", True)),
             slow_motion=bool(kwargs.get("slow_motion", False)),
             native_audio=bool(kwargs.get("native_audio", False)),
+            motion_strength=_opt_float(kwargs.get("motion_strength"), 1.0),
             kind=GenerationKind(kwargs.get("kind") or GenerationKind.IMAGE),
         )
         return BuildResult(spec=spec, trace=trace)

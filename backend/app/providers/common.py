@@ -115,3 +115,45 @@ def require_cuda() -> None:
     available, reason = cuda_availability()
     if not available:
         raise RuntimeError(reason)
+
+
+#: Aspect ratios image providers can render. Hoisted here in PR009 so the real
+#: connectors and the legacy ETAPA 10 adapter share one definition.
+ASPECT_RATIOS: dict[str, tuple[int, int]] = {
+    "16:9": (16, 9),
+    "1:1": (1, 1),
+    "9:16": (9, 16),
+    "4:3": (4, 3),
+    "3:4": (3, 4),
+}
+
+#: Dimensions are rounded to a multiple of this, which the VAE requires.
+DIMENSION_MULTIPLE = 8
+
+
+def dimensions_for(aspect_ratio: str, resolution: int) -> tuple[int, int]:
+    """Longest side fixed by `resolution`; the other follows the ratio."""
+
+    width_ratio, height_ratio = ASPECT_RATIOS.get(aspect_ratio, (16, 9))
+    if width_ratio >= height_ratio:
+        width = resolution
+        height = round(resolution * height_ratio / width_ratio / DIMENSION_MULTIPLE) * DIMENSION_MULTIPLE
+    else:
+        height = resolution
+        width = round(resolution * width_ratio / height_ratio / DIMENSION_MULTIPLE) * DIMENSION_MULTIPLE
+    return width, height
+
+
+def load_reference_image(reference_path: str | None):
+    """Open the spec's reference image for image-conditioned generation.
+
+    Raises `ValueError` (a fatal, non-retryable error) when the path is
+    missing: an image-to-image request without a source image is an invalid
+    spec, not a transient failure.
+    """
+
+    if not reference_path:
+        raise ValueError("image-conditioned generation requires spec.reference_path")
+    from PIL import Image
+
+    return Image.open(reference_path).convert("RGB")

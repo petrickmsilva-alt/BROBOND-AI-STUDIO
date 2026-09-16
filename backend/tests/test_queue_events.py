@@ -32,6 +32,7 @@ from app.events import (
 )
 from app.main import app
 from app.models import User, Workspace
+from app.providers.base_provider import ProviderUnsupported
 from app.schemas import GenerationType, Job, JobStatus
 from app.store import store
 
@@ -386,16 +387,14 @@ def test_the_worker_no_longer_jumps_from_ten_to_a_hundred(
 
 
 def test_a_failing_job_emits_failed_with_the_reason(client, monkeypatch) -> None:
-    import app.providers.image as image_module
+    import app.providers.flux_provider as flux_module
 
-    class Broken:
-        def __init__(self, model_id: str = "x") -> None:
-            pass
+    # PR009: a *fatal* provider error is the one thing the fallback chain
+    # refuses to mask, so it is the honest way to drive a job to `failed`.
+    def broken_generate(self, spec, output_dir):
+        raise ProviderUnsupported("CUDA GPU is required")
 
-        def generate(self, spec, output_dir):
-            raise RuntimeError("CUDA GPU is required")
-
-    monkeypatch.setattr(image_module, "FluxDiffusersProvider", Broken)
+    monkeypatch.setattr(flux_module.FluxProvider, "generate_image", broken_generate)
     monkeypatch.setattr(settings, "inference_enabled", True)
     monkeypatch.setattr(settings, "storage_enabled", False)
 
@@ -553,16 +552,12 @@ def test_an_unauthenticated_socket_is_refused_before_accept(client) -> None:
 
 
 def test_a_failure_reaches_the_client_with_its_reason(client, monkeypatch) -> None:
-    import app.providers.image as image_module
+    import app.providers.flux_provider as flux_module
 
-    class Broken:
-        def __init__(self, model_id: str = "x") -> None:
-            pass
+    def broken_generate(self, spec, output_dir):
+        raise ProviderUnsupported("CUDA GPU is required")
 
-        def generate(self, spec, output_dir):
-            raise RuntimeError("CUDA GPU is required")
-
-    monkeypatch.setattr(image_module, "FluxDiffusersProvider", Broken)
+    monkeypatch.setattr(flux_module.FluxProvider, "generate_image", broken_generate)
     monkeypatch.setattr(settings, "inference_enabled", True)
     monkeypatch.setattr(settings, "storage_enabled", False)
 

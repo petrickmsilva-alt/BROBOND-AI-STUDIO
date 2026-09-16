@@ -91,25 +91,26 @@ def _job(store_module, parameters: dict | None = None):
 
 
 def _honest_provider(monkeypatch, tmp_path, width: int = 1280, height: int = 720):
-    """A provider that writes a real file, so the quality gate has something to read."""
+    """A provider that writes a real file, so the quality gate has something to read.
 
-    from app.providers.image import GenerationOutput
+    PR009: the seam is the real Flux connector's `generate_image`.
+    """
 
-    import app.providers.image as image_module
+    from app.providers.base_provider import ProviderAsset
+
+    import app.providers.flux_provider as flux_module
 
     seen: dict = {}
 
-    class Honest:
-        def __init__(self, model_id: str = "x") -> None:
-            seen["model_id"] = model_id
+    def honest_generate(self, spec, output_dir):
+        seen["spec"] = spec
+        target = tmp_path / "render.png"
+        target.write_bytes(b"\x89PNG fake")
+        return ProviderAsset(
+            path=str(target), kind="image", provider_id=self.provider_id, width=width, height=height
+        )
 
-        def generate(self, spec, output_dir):
-            seen["spec"] = spec
-            target = tmp_path / "render.png"
-            target.write_bytes(b"\x89PNG fake")
-            return GenerationOutput(str(target), width, height)
-
-    monkeypatch.setattr(image_module, "FluxDiffusersProvider", Honest)
+    monkeypatch.setattr(flux_module.FluxProvider, "generate_image", honest_generate)
     return seen
 
 
@@ -363,23 +364,25 @@ def test_a_job_in_a_workspace_is_saved_as_an_asset(inference, monkeypatch, db, t
 def test_a_video_job_is_saved_with_a_video_content_type(inference, monkeypatch, db, tmp_path) -> None:
     from app import queue
     from app.storage import storage
-    from app.providers.video import VideoGenerationOutput
+    from app.providers.base_provider import ProviderAsset
 
-    import app.providers.video as video_module
+    import app.providers.wan_provider as wan_module
     from app.schemas import GenerationType, Job
 
     monkeypatch.setattr(storage, "local_root", tmp_path)
     clip = tmp_path / "clip.mp4"
     clip.write_bytes(b"fake")
 
-    class Honest:
-        def __init__(self, model_id: str = "x") -> None:
-            pass
+    def honest_generate(self, spec, output_dir):
+        return ProviderAsset(
+            path=str(clip),
+            kind="video",
+            provider_id=self.provider_id,
+            duration_seconds=5.0,
+            fps=24,
+        )
 
-        def generate(self, spec, output_dir):
-            return VideoGenerationOutput(str(clip), duration_seconds=5.0, fps=24)
-
-    monkeypatch.setattr(video_module, "WanVideoProvider", Honest)
+    monkeypatch.setattr(wan_module.WanProvider, "generate_video", honest_generate)
 
     saved: dict = {}
     monkeypatch.setattr(

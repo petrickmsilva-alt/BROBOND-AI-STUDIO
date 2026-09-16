@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, replace
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -21,6 +22,12 @@ NO_COST_UNITS = 0.0
 STATUS_READY = "ready"
 STATUS_UNAVAILABLE = "unavailable"
 STATUS_ERROR = "error"
+
+
+def health_timestamp() -> str:
+    """UTC ISO-8601 stamp for health reports (PR009)."""
+
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
 class ProviderError(RuntimeError):
@@ -37,6 +44,15 @@ class ProviderUnavailable(ProviderError):
 
 class ProviderUnsupported(ProviderUnavailable):
     """The provider does not support this media operation."""
+
+
+class ProviderTimeoutError(ProviderError):
+    """A provider execution exceeded its configured deadline (PR009).
+
+    The deadline abandons the *wait*: GPU work cannot be preempted, so the
+    abandoned thread may keep running until the runtime finishes it. What the
+    caller is guaranteed is that it never blocks past the deadline.
+    """
 
 
 @dataclass(frozen=True)
@@ -116,9 +132,13 @@ class ProviderHealth:
     capabilities: ProviderCapabilities
     reason: str | None = None
     loaded: bool = False
+    #: PR009: when this health report was produced (UTC ISO-8601).
+    last_health_at: str | None = None
 
     def with_latency(self, latency_ms: float) -> "ProviderHealth":
-        return replace(self, latency_ms=latency_ms)
+        """Registry measurement point: stamps the latency *and* the instant."""
+
+        return replace(self, latency_ms=latency_ms, last_health_at=health_timestamp())
 
     def to_dict(self) -> dict[str, object]:
         payload = asdict(self)
@@ -128,13 +148,28 @@ class ProviderHealth:
 
 @dataclass(frozen=True)
 class ProviderJob:
-    """Executor-level job record: spec -> provider -> asset -> job."""
+    """Executor-level job record: spec -> provider -> asset -> job.
+
+    PR009 additions are all optional so a plain `spec -> provider -> asset`
+    run keeps the exact PR007 shape; they only mean something when the retry
+    engine or the fallback chain acted on the execution.
+    """
 
     id: str
     status: str
     provider_id: str
     asset: ProviderAsset
     estimate: ProviderEstimate
+    #: PR009: how many provider attempts the executor spent (1 = first try won).
+    attempts: int = 1
+    #: PR009: set when the asset came from the fallback provider, with the
+    #: reason the requested provider could not produce it. The reason is the
+    #: job's audit trail — a fallback that hides why it happened is a lie.
+    fallback: bool = False
+    fallback_from: str | None = None
+    fallback_reason: str | None = None
+    #: PR009: telemetry snapshot (provider, latency, queue/render time, ...).
+    telemetry: dict[str, object] | None = None
 
     def to_dict(self) -> dict[str, object]:
         payload = asdict(self)

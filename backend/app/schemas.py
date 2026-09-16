@@ -802,6 +802,47 @@ class UniversalProviderResponse(BaseModel):
     capabilities: ProviderCapabilitiesResponse
     reason: str | None = None
     loaded: bool = False
+    #: PR009: when the health report was produced (UTC ISO-8601).
+    last_health_at: str | None = None
+    #: PR009: explicit availability flag (status == "ready").
+    available: bool = False
+
+
+class ProviderTelemetryResponse(BaseModel):
+    """One provider execution as recorded by the executor (PR009)."""
+
+    provider_id: str
+    requested_provider_id: str
+    spec_id: str
+    kind: str
+    success: bool
+    error_code: str | None = None
+    latency_ms: float
+    queue_time_ms: float
+    render_time_ms: float
+    attempts: int = 1
+    fallback: bool = False
+    fallback_reason: str | None = None
+    job_id: str | None = None
+    at: str = ""
+
+
+class ProviderTestResponse(BaseModel):
+    """Outcome of the `/studio/providers` real test button (PR009)."""
+
+    provider_id: str
+    executed_provider_id: str
+    kind: str
+    success: bool
+    fallback: bool
+    fallback_reason: str | None = None
+    error_code: str | None = None
+    attempts: int = 0
+    latency_ms: float = 0.0
+    queue_time_ms: float = 0.0
+    render_time_ms: float = 0.0
+    asset_kind: str = ""
+    asset_bytes: int = 0
 
 
 class GenerationSpecResponse(BaseModel):
@@ -839,6 +880,7 @@ class GenerationSpecResponse(BaseModel):
     cinematic_mode: bool = True
     slow_motion: bool = False
     native_audio: bool = False
+    motion_strength: float = 1.0
     reference_path: str | None = None
     tokens: list[str] = Field(default_factory=list)
     #: Which source won each contested field. Makes a look explainable.

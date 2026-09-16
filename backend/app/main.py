@@ -52,6 +52,9 @@ from .media import MediaError, media
 from .models import Asset, TrainingRun, User, Workspace
 from .provider_capabilities import list_universal_provider_responses, prompt_budget_for_provider
 from .providers import registry as provider_registry
+from .providers.generation_executor import GenerationExecutor
+from .providers.provider_registry import DEFAULT_REGISTRY as UNIVERSAL_REGISTRY
+from .providers.telemetry import default_telemetry_store
 from .prompt_engine import prompt_engine
 from .queue import enqueue, enqueue_lora_training, transition
 from .readiness import readiness
@@ -106,6 +109,7 @@ from .schemas import (
     ShotFamilyResponse, ShotLibraryAuditResponse, ShotPresetResponse,
     CompiledSceneResponse, CoreStoryboardCompileRequest, CoreStoryboardCompileResponse,
     ProviderAdapterResponse, ProviderCatalogueResponse, ProviderHealthResponse,
+    ProviderTelemetryResponse, ProviderTestResponse,
     UniversalProviderResponse,
     CoreStoryboardFindingResponse, CoreStoryboardRequest, CoreStoryboardResponse,
     CoreStoryboardShotResponse,
@@ -269,6 +273,40 @@ def _render_persona_phrase(persona_id: str | None) -> str:
 
 
 render_orchestrator = RenderOrchestrator(persona_phrase=_render_persona_phrase)
+
+# PR009: executor behind the /studio/providers "Teste Real" button. Same
+# registry/retry/timeout/fallback/telemetry stack every render crosses, so the
+# button exercises the real path instead of a separate diagnostic one.
+provider_test_executor = GenerationExecutor()
+
+#: Deterministic seed for provider connectivity tests: the same test spec must
+#: render the same way twice, so a diff means the provider changed.
+PROVIDER_TEST_SEED = 7
+
+
+def _provider_test_kind(provider_id: str) -> GenerationKind:
+    """Video providers are tested with video, everyone else with image."""
+
+    try:
+        capabilities = UNIVERSAL_REGISTRY.capabilities(provider_id)
+    except Exception:  # noqa: BLE001 - unknown ids fall through to image
+        return GenerationKind.IMAGE
+    return GenerationKind.VIDEO if capabilities.supports_video and not capabilities.supports_image else GenerationKind.IMAGE
+
+
+def _provider_test_spec(provider_id: str, kind: GenerationKind) -> GenerationSpec:
+    return GenerationSpec(
+        prompt_original="provider connectivity test",
+        prompt_compiled="BROBOND provider connectivity test — deterministic spec, no creative intent",
+        provider=provider_id,
+        kind=kind,
+        seed=PROVIDER_TEST_SEED,
+        aspect_ratio="1:1",
+        resolution=256,
+        duration=1.0,
+        fps=8,
+        mode="text-to-video" if kind is GenerationKind.VIDEO else "text-to-image",
+    )
 
 
 @app.middleware("http")
@@ -1806,6 +1844,57 @@ def list_universal_providers() -> list[UniversalProviderResponse]:
     """Universal provider health, latency, version and capabilities (PR007)."""
 
     return list_universal_provider_responses()
+
+
+@app.post("/api/v1/providers/{provider_id}/test", response_model=ProviderTestResponse, tags=["providers"])
+def run_provider_real_test(provider_id: str) -> ProviderTestResponse:
+    """PR009 real test: run a deterministic test spec through the full path.
+
+    The spec crosses the same executor every render uses — registry, health
+    gate, retry engine, timeout manager, fallback chain and telemetry — so the
+    answer describes what would really happen to a job, not what the health
+    probe hopes.
+    """
+
+    kind = _provider_test_kind(provider_id)
+    spec = _provider_test_spec(provider_id, kind)
+    output_dir = Path(settings.local_media_dir) / "provider-tests"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    execution = provider_test_executor.execute(
+        spec, output_dir, provider_id=provider_id, job_id=f"provider-test-{spec.spec_id}"
+    )
+    telemetry = execution.telemetry
+    asset_path = Path(execution.asset.path)
+    return ProviderTestResponse(
+        provider_id=provider_id,
+        executed_provider_id=execution.job.provider_id,
+        kind=kind.value,
+        success=telemetry.success if telemetry is not None else True,
+        fallback=execution.job.fallback,
+        fallback_reason=execution.job.fallback_reason,
+        error_code=telemetry.error_code if telemetry is not None else None,
+        attempts=execution.job.attempts,
+        latency_ms=telemetry.latency_ms if telemetry is not None else 0.0,
+        queue_time_ms=telemetry.queue_time_ms if telemetry is not None else 0.0,
+        render_time_ms=telemetry.render_time_ms if telemetry is not None else 0.0,
+        asset_kind=execution.asset.kind,
+        asset_bytes=asset_path.stat().st_size if asset_path.is_file() else 0,
+    )
+
+
+@app.get("/api/v1/providers/telemetry", response_model=list[ProviderTelemetryResponse], tags=["providers"])
+def list_provider_telemetry(limit: int = 50) -> list[ProviderTelemetryResponse]:
+    """Recent provider telemetry records, newest first (PR009).
+
+    Each record carries provider, latency, queue/render time, success and the
+    machine-readable error code the executor classified.
+    """
+
+    bounded = max(1, min(limit, 500))
+    return [
+        ProviderTelemetryResponse(**record.to_dict())
+        for record in default_telemetry_store().recent(bounded)
+    ]
 
 
 @app.get("/api/v1/core/providers", response_model=ProviderCatalogueResponse, tags=["core"])

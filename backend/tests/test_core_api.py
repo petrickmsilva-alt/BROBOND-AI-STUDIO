@@ -259,9 +259,11 @@ def test_route_inventory_only_grew() -> None:
     # 46 after ETAPA 5, 50 after ETAPA 6, 51 after ETAPA 8, 52 after ETAPA 9,
     # 54 after ETAPA 10, 56 after ETAPA 13, 58 after ETAPA 14, 64 after PR003,
     # 65 after PR005 (Director AI production-plan route), 66 after PR007
-    # (`/api/v1/providers`), 72 after PR008 (six `/api/v1/render/*` routes).
+    # (`/api/v1/providers`), 72 after PR008 (six `/api/v1/render/*` routes),
+    # 74 after PR009 (`/api/v1/providers/{id}/test` real-test button and
+    # `/api/v1/providers/telemetry`).
     # The guard is that the number only grows: nothing was ever removed.
-    assert len([route for route in http if route.path.startswith("/api/v1")]) == 72
+    assert len([route for route in http if route.path.startswith("/api/v1")]) == 74
 
 
 # ------------------------------------------------- no generation logic in routes

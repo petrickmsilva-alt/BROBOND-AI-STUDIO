@@ -370,6 +370,11 @@ class GenerationSpec:
     cinematic_mode: bool = True
     slow_motion: bool = False
     native_audio: bool = False
+    #: PR009: motion magnitude the video connector should aim for. A pipeline
+    #: that has no such control filters it out at call time, the same way
+    #: guidance-distilled image pipelines drop `negative_prompt`. Travels
+    #: inside the spec because a provider may receive nothing else.
+    motion_strength: float = 1.0
     #: Resolved local path of the IP-Adapter reference image. `controlnet` names
     #: the mode; this names the file. The worker resolves it from an Asset after
     #: validating workspace ownership.

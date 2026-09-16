@@ -293,7 +293,7 @@ Persona training is validated through `POST /api/v1/personas/{persona_id}/train`
 ## Test
 
 ```bash
-PYTHONPATH=backend pytest backend/tests -q          # 1,324 tests
+PYTHONPATH=backend pytest backend/tests -q          # 1,407 tests
 ```
 
 Coverage:

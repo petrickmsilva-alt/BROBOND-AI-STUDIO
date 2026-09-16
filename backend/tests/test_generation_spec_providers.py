@@ -5,6 +5,9 @@ directly. The end-to-end test at the bottom patches the provider and asserts on
 what the worker actually handed it.
 """
 import inspect
+import sys
+import types as types_module
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -172,32 +175,48 @@ def inference_enabled(monkeypatch):
 
 
 def test_the_worker_hands_the_image_provider_only_a_spec(inference_enabled, monkeypatch, tmp_path) -> None:
-    """The whole point of ETAPA 3, verified through the real worker."""
+    """The whole point of ETAPA 3, verified through the real worker.
+
+    PR009: the worker crosses the universal executor into the real Flux
+    connector, so the seam under test is the connector's pipeline loader and
+    its `generate_image` boundary — still "spec and output dir only".
+    """
 
     from app.queue import process_generation
     from app.schemas import GenerationType, Job
     from app.store import store
 
+    import app.providers.flux_provider as flux_module
+
     received: dict = {}
 
-    class FakeFlux:
-        def __init__(self, model_id: str = "x") -> None:
-            received["model_id"] = model_id
+    class FakeFluxPipeline:
+        def __call__(self, **kwargs):
+            received["pipeline_kwargs"] = kwargs
 
-        def generate(self, spec, output_dir):
-            received["spec"] = spec
-            received["output_dir"] = output_dir
-            received["arg_count"] = 2
-            # ETAPA 14: the worker now checks that a file was really written, so
-            # the fake has to write one. 1024x576 is exactly 16:9, which is the
-            # ratio this job asks for.
-            target = tmp_path / "out.png"
-            target.write_bytes(b"\x89PNG fake")
-            return GenerationOutput(str(target), 1024, 576)
+            def save(path):
+                # ETAPA 14: the worker checks that a file was really written.
+                # 1024x576 is exactly 16:9, the ratio this job asks for.
+                Path(path).write_bytes(b"\x89PNG fake")
 
-    import app.providers.image as image_module
+            return SimpleNamespace(images=[SimpleNamespace(save=save, size=(1024, 576))])
 
-    monkeypatch.setattr(image_module, "FluxDiffusersProvider", FakeFlux)
+    def fake_loader(self, model_id, mode):
+        received["model_id"] = model_id
+        received["mode"] = mode
+        return FakeFluxPipeline()
+
+    monkeypatch.setattr(flux_module.FluxPipelineLoader, "__call__", fake_loader)
+    monkeypatch.setattr(flux_module, "generator_for", lambda seed: ("generator", seed))
+
+    original_generate = flux_module.FluxProvider.generate_image
+
+    def spy_generate(self, spec, output_dir):
+        received["spec"] = spec
+        received["arg_count"] = 2
+        return original_generate(self, spec, output_dir)
+
+    monkeypatch.setattr(flux_module.FluxProvider, "generate_image", spy_generate)
 
     job = store.add_job(
         Job(
@@ -217,28 +236,52 @@ def test_the_worker_hands_the_image_provider_only_a_spec(inference_enabled, monk
     assert spec.steps == 36
     assert spec.seed == 7
     assert received["model_id"] == "black-forest-labs/FLUX.1-dev"
+    assert received["mode"] == "text-to-image"
+    # The pipeline only ever sees the compiled prompt — never a raw one.
+    assert received["pipeline_kwargs"]["prompt"] == spec.prompt_compiled
+    assert received["pipeline_kwargs"]["generator"] == ("generator", 7)
 
 
 def test_the_worker_hands_the_video_provider_only_a_spec(inference_enabled, monkeypatch, tmp_path) -> None:
+    """PR009: the video seam under test is the real Wan connector."""
+
     from app.queue import process_generation
     from app.schemas import GenerationType, Job
     from app.store import store
 
+    import app.providers.wan_provider as wan_module
+
     received: dict = {}
 
-    class FakeWan:
-        def __init__(self, model_id: str = "x") -> None:
-            received["model_id"] = model_id
+    def fake_imwrite(target, frames, fps=None, codec=None):
+        Path(target).write_bytes(b"fake mp4")
 
-        def generate(self, spec, output_dir):
-            received["spec"] = spec
-            target = tmp_path / "out.mp4"
-            target.write_bytes(b"fake mp4")
-            return VideoGenerationOutput(str(target), int(spec.duration), spec.fps)
+    module = types_module.ModuleType("imageio.v3")
+    module.imwrite = fake_imwrite
+    parent = types_module.ModuleType("imageio")
+    parent.v3 = module
+    monkeypatch.setitem(sys.modules, "imageio", parent)
+    monkeypatch.setitem(sys.modules, "imageio.v3", module)
 
-    import app.providers.video as video_module
+    class FakeWanPipeline:
+        def __call__(self, **kwargs):
+            received["pipeline_kwargs"] = kwargs
+            return SimpleNamespace(frames=[[object()]])
 
-    monkeypatch.setattr(video_module, "WanVideoProvider", FakeWan)
+    def fake_loader(self, model_id, pipeline_class_name):
+        received["model_id"] = model_id
+        received["pipeline_class"] = pipeline_class_name
+        return FakeWanPipeline()
+
+    monkeypatch.setattr(wan_module.VideoPipelineLoader, "__call__", fake_loader)
+
+    original_generate = wan_module.WanProvider.generate_video
+
+    def spy_generate(self, spec, output_dir):
+        received["spec"] = spec
+        return original_generate(self, spec, output_dir)
+
+    monkeypatch.setattr(wan_module.WanProvider, "generate_video", spy_generate)
 
     job = store.add_job(
         Job(
@@ -255,49 +298,107 @@ def test_the_worker_hands_the_video_provider_only_a_spec(inference_enabled, monk
     assert spec.kind is GenerationKind.VIDEO
     assert spec.duration == 10.0
     assert spec.aspect_ratio == "9:16"
+    assert received["pipeline_class"] == "WanPipeline"
+    assert received["pipeline_kwargs"]["prompt"] == spec.prompt_compiled
+    assert received["pipeline_kwargs"]["num_frames"] % 4 == 1
 
 
 def test_a_job_is_found_by_its_string_id(inference_enabled, monkeypatch, tmp_path) -> None:
-    """Regression: the worker used to miss every job and report `cancelled`."""
+    """Regression: the worker used to miss every job and report `cancelled`.
+
+    PR009: the seam is the real Flux connector's pipeline loader.
+    """
 
     from app.queue import process_generation
     from app.schemas import GenerationType, Job
     from app.store import store
 
-    import app.providers.image as image_module
+    import app.providers.flux_provider as flux_module
 
-    class FakeFlux:
-        def __init__(self, model_id: str = "x") -> None:
-            pass
+    class FakeFluxPipeline:
+        def __call__(self, **kwargs):
+            def save(path):
+                Path(path).write_bytes(b"\x89PNG fake")
 
-        def generate(self, spec, output_dir):
-            target = tmp_path / "found.png"
-            target.write_bytes(b"\x89PNG fake")
-            return GenerationOutput(str(target), 1024, 576)
+            return SimpleNamespace(images=[SimpleNamespace(save=save, size=(1024, 576))])
 
-    monkeypatch.setattr(image_module, "FluxDiffusersProvider", FakeFlux)
+    monkeypatch.setattr(
+        flux_module.FluxPipelineLoader, "__call__", lambda self, model_id, mode: FakeFluxPipeline()
+    )
+    monkeypatch.setattr(flux_module, "generator_for", lambda seed: None)
 
     job = store.add_job(Job(type=GenerationType.IMAGE, prompt="x", parameters={}))
     assert process_generation(str(job.id))["status"] == "complete"
 
 
-def test_a_provider_failure_marks_the_job_failed(inference_enabled, monkeypatch) -> None:
+def test_an_unavailable_provider_falls_back_to_mock_and_records_the_reason(inference_enabled, monkeypatch) -> None:
+    """PR009 ETAPA 5: a provider that cannot run is not a dead job.
+
+    A persistent retryable failure spends the attempt budget and then the
+    fallback chain (Registry -> MockProvider) produces the asset; the reason
+    is recorded on the job/telemetry instead of being swallowed.
+    """
+
     from app.queue import process_generation
+    from app.providers.retry_policy import RetryPolicy
+    from app.providers.generation_executor import GenerationExecutor
     from app.schemas import GenerationType, Job
     from app.store import store
 
-    import app.providers.image as image_module
+    import app.queue as queue_module
 
-    class BrokenFlux:
-        def __init__(self, model_id: str = "x") -> None:
-            pass
-
-        def generate(self, spec, output_dir):
+    class BrokenFluxPipeline:
+        def __call__(self, **kwargs):
             raise RuntimeError("CUDA GPU is required for the FLUX provider")
 
-    monkeypatch.setattr(image_module, "FluxDiffusersProvider", BrokenFlux)
+    import app.providers.flux_provider as flux_module
+
+    monkeypatch.setattr(
+        flux_module.FluxPipelineLoader, "__call__", lambda self, model_id, mode: BrokenFluxPipeline()
+    )
+    monkeypatch.setattr(flux_module, "generator_for", lambda seed: None)
+
+    # A no-op sleeper keeps the retry budget honest without slowing the suite.
+    fast_executor = GenerationExecutor(retry_engine=_no_sleep_engine())
+    monkeypatch.setattr(queue_module, "generation_executor", fast_executor)
+
+    job = store.add_job(Job(type=GenerationType.IMAGE, prompt="x", parameters={}))
+    result = process_generation(str(job.id))
+
+    assert result["status"] == "complete", result
+    record = fast_executor.telemetry_store.recent(1)[0]
+    assert record.fallback is True
+    assert record.error_code == "generation-error"
+    assert "CUDA" in (record.fallback_reason or "")
+    assert record.provider_id == "mock"
+
+
+def test_a_fatal_provider_error_still_fails_the_job(inference_enabled, monkeypatch) -> None:
+    """PR009: fallback masks unavailability, never a contract bug.
+
+    A fatal error (unsupported operation / invalid spec) must surface as a
+    failed job — silently handing back a mock asset would hide a routing bug.
+    """
+
+    from app.queue import process_generation
+    from app.providers.base_provider import ProviderUnsupported
+    from app.schemas import GenerationType, Job
+    from app.store import store
+
+    import app.providers.flux_provider as flux_module
+
+    def raise_fatal(self, spec, output_dir):
+        raise ProviderUnsupported("provider 'flux-dev' does not support this")
+
+    monkeypatch.setattr(flux_module.FluxProvider, "generate_image", raise_fatal)
 
     job = store.add_job(Job(type=GenerationType.IMAGE, prompt="x", parameters={}))
     result = process_generation(str(job.id))
     assert result["status"] == "failed"
-    assert "CUDA" in result["error"]
+    assert "does not support" in result["error"]
+
+
+def _no_sleep_engine():
+    from app.providers.retry_policy import RetryEngine, RetryPolicy
+
+    return RetryEngine(RetryPolicy(), sleeper=lambda _seconds: None)

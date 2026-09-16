@@ -1295,10 +1295,21 @@ def test_cancel_is_idempotent_and_tenant_scoped() -> None:
     assert again["status"] == "cancelled"
 
 
-def test_retry_reruns_failures_and_refuses_anything_else() -> None:
+def test_retry_reruns_failures_and_refuses_anything_else(monkeypatch) -> None:
+    from app.providers.mock_provider import MockProvider
+
+    # PR009: a missing/unavailable provider no longer kills a batch — the
+    # executor falls back to Mock with the reason recorded. To exercise the
+    # failure/retry flow, make the provider fail *fatally* instead: the one
+    # error class the fallback chain refuses to mask.
+    def explode(self, spec, output_dir):
+        raise ValueError("boom: deterministic scene failure for the retry test")
+
+    monkeypatch.setattr(MockProvider, "generate_image", explode)
+
     _, headers = _register()
     failing = client.post(
-        "/api/v1/render/batches", headers=headers, json=batch_payload(provider="missing-provider")
+        "/api/v1/render/batches", headers=headers, json=batch_payload(provider="mock")
     ).json()["batch_id"]
     client.post(f"/api/v1/render/batches/{failing}/start", headers=headers)
     assert client.get(f"/api/v1/render/batches/{failing}", headers=headers).json()["status"] == "failed"
@@ -1308,6 +1319,9 @@ def test_retry_reruns_failures_and_refuses_anything_else() -> None:
     assert retried.status_code == 200
     assert retried.json()["retried_scenes"] == 2
     assert "kept" in retried.json()["message"] or "Retrying" in retried.json()["message"]
+
+    # Restore the Mock provider: the rest of the test needs healthy renders.
+    monkeypatch.undo()
 
     completed = client.post("/api/v1/render/batches", headers=headers, json=batch_payload()).json()["batch_id"]
     client.post(f"/api/v1/render/batches/{completed}/start", headers=headers)

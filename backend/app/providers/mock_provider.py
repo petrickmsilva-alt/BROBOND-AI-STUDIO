@@ -17,6 +17,7 @@ from .base_provider import (
     STATUS_READY,
     BaseProvider,
 )
+from .common import dimensions_for
 
 MOCK_PROVIDER_ID = "mock"
 MOCK_LABEL = "Mock"
@@ -52,12 +53,16 @@ class MockProvider(BaseProvider):
     def generate_image(self, spec: GenerationSpec, output_dir: str | Path) -> ProviderAsset:
         path = self._path(output_dir, spec, "png")
         path.write_bytes(MOCK_IMAGE_BYTES)
+        # PR009: the mock is the fallback provider, so its geometry honours the
+        # spec's aspect ratio — a fallback asset must survive the same quality
+        # gate a real render crosses. The longest side stays at the mock cap.
+        width, height = dimensions_for(spec.aspect_ratio, min(spec.resolution, DEFAULT_IMAGE_SIZE))
         return ProviderAsset(
             path=str(path),
             kind=GenerationKind.IMAGE.value,
             provider_id=self.provider_id,
-            width=DEFAULT_IMAGE_SIZE,
-            height=DEFAULT_IMAGE_SIZE,
+            width=width,
+            height=height,
             metadata={"fake": True},
         )
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,8 +10,6 @@ from fastapi.testclient import TestClient
 from app.core.contracts import GenerationKind, GenerationSpec
 from app.main import app
 from app.provider_capabilities import list_universal_provider_responses, prompt_budget_for_provider
-from app.providers import image as image_module
-from app.providers import video as video_module
 from app.providers.base_provider import (
     BaseProvider,
     ProviderAsset,
@@ -24,9 +23,6 @@ from app.providers.generation_executor import GenerationExecutor
 from app.providers.mock_provider import MockProvider
 from app.providers.provider_registry import ProviderRegistration, ProviderRegistry, create_default_registry
 from app.providers.wan_provider import WanProvider
-from app.providers.image import GenerationOutput
-from app.providers.video import VideoGenerationOutput
-
 client = TestClient(app)
 
 
@@ -184,7 +180,11 @@ def test_mock_provider_returns_fake_image_video_and_upscale_assets(tmp_path: Pat
     upscaled = provider.upscale(spec(kind=GenerationKind.IMAGE), image.path, tmp_path / "up")
 
     assert Path(image.path).read_bytes()
-    assert image.kind == "image" and image.width == 1024 and image.height == 1024
+    # PR009: the mock honours the spec's aspect ratio (fallback assets must
+    # survive the quality gate); 16:9 at the 1024 mock cap.
+    assert image.kind == "image" and image.width == 1024 and image.height == 576
+    square = provider.generate_image(spec(aspect_ratio="1:1"), tmp_path)
+    assert square.width == 1024 and square.height == 1024
     assert Path(video.path).read_bytes()
     assert video.kind == "video" and video.duration_seconds == 5 and video.fps == 24
     assert Path(upscaled.path).read_bytes()
@@ -192,62 +192,93 @@ def test_mock_provider_returns_fake_image_video_and_upscale_assets(tmp_path: Pat
     assert provider.estimate(spec()).estimated_seconds == 0.1
 
 
-def test_flux_provider_wraps_the_legacy_adapter_without_accepting_prompt_strings(monkeypatch, tmp_path: Path) -> None:
+def test_flux_provider_runs_the_real_connector_without_accepting_prompt_strings(monkeypatch, tmp_path: Path) -> None:
+    """PR009: the connector receives only the spec — the pipeline seam sees it too."""
+
     seen: dict[str, object] = {}
 
-    class FakeFlux:
-        def __init__(self, model_id: str) -> None:
-            seen["model_id"] = model_id
+    class FakePipeline:
+        def __call__(self, **kwargs):
+            seen["kwargs"] = kwargs
+            return SimpleNamespace(images=[SimpleNamespace(save=lambda path: Path(path).write_bytes(b"fake"), size=(1024, 576))])
 
-        def generate(self, received, output_dir):
-            assert isinstance(received, GenerationSpec)
-            seen["spec"] = received
-            target = Path(output_dir) / "flux.png"
-            target.write_bytes(b"fake")
-            return GenerationOutput(str(target), 1024, 576)
+    def fake_loader(model_id: str, mode: str):
+        seen["model_id"] = model_id
+        seen["mode"] = mode
+        return FakePipeline()
 
-        def health(self):
-            return {"available": True, "reason": None, "model_id": "m", "loaded": True}
-
-    monkeypatch.setattr(image_module, "FluxDiffusersProvider", FakeFlux)
-    provider = FluxProvider(model_id="custom-flux")
-    output = provider.generate_image(spec(provider="flux-dev"), tmp_path)
+    provider = FluxProvider(model_id="custom-flux", pipeline_loader=fake_loader)
+    output = provider.generate_image(spec(provider="flux-dev", seed=None), tmp_path)
 
     assert seen["model_id"] == "custom-flux"
+    assert seen["mode"] == "text-to-image"
+    assert seen["kwargs"]["prompt"] == "compiled cinematic prompt"
     assert output.kind == "image"
     assert output.provider_id == "flux-dev"
-    assert provider.health().status == "ready"
+    assert Path(output.path).read_bytes() == b"fake"
+    # Health never raises, even without CUDA.
+    assert provider.health().status in {"ready", "unavailable"}
     with pytest.raises(ProviderUnavailable, match="video generation"):
         provider.generate_video(spec(kind=GenerationKind.VIDEO), tmp_path)
 
 
-def test_wan_provider_wraps_shared_video_logic_without_duplication(monkeypatch, tmp_path: Path) -> None:
+def test_flux_provider_signature_never_accepts_a_prompt_or_parameters() -> None:
+    """The literal ETAPA 3 rule, applied to the PR009 real connector."""
+
+    signature = inspect.signature(FluxProvider.generate_image)
+    assert list(signature.parameters) == ["self", "spec", "output_dir"]
+    assert "prompt" not in signature.parameters
+    assert "parameters" not in signature.parameters
+
+
+def test_wan_provider_runs_the_real_connector_without_duplicating_video_logic(monkeypatch, tmp_path: Path) -> None:
+    """PR009: Wan and Hunyuan still share one generate_video implementation."""
+
     seen: dict[str, object] = {}
 
-    class FakeWan:
-        def __init__(self, model_id: str) -> None:
-            seen["model_id"] = model_id
+    # imageio is a GPU-worker dependency; inject the module the way
+    # test_provider_runtime.py does so the encode path is testable in CI.
+    import sys
+    import types
 
-        def generate(self, received, output_dir):
-            assert isinstance(received, GenerationSpec)
-            seen["spec"] = received
-            target = Path(output_dir) / "wan.mp4"
-            target.write_bytes(b"fake")
-            return VideoGenerationOutput(str(target), int(received.duration), received.fps)
+    def fake_imwrite(target, frames, fps=None, codec=None):
+        seen["fps"] = fps
+        seen["codec"] = codec
+        Path(target).write_bytes(b"fake")
 
-        def health(self):
-            return {"available": True, "reason": None, "model_id": "m", "loaded": True}
+    module = types.ModuleType("imageio.v3")
+    module.imwrite = fake_imwrite
+    parent = types.ModuleType("imageio")
+    parent.v3 = module
+    monkeypatch.setitem(sys.modules, "imageio", parent)
+    monkeypatch.setitem(sys.modules, "imageio.v3", module)
 
-    monkeypatch.setattr(video_module, "WanVideoProvider", FakeWan)
-    provider = WanProvider(model_id="custom-wan")
-    output = provider.generate_video(spec(provider="wan-2.1-t2v", kind=GenerationKind.VIDEO), tmp_path)
+    class FakePipeline:
+        def __call__(self, **kwargs):
+            seen["kwargs"] = kwargs
+            return SimpleNamespace(frames=[[object()]])
+
+    def fake_loader(model_id: str, pipeline_class_name: str):
+        seen["model_id"] = model_id
+        seen["pipeline_class"] = pipeline_class_name
+        return FakePipeline()
+
+    provider = WanProvider(model_id="custom-wan", pipeline_loader=fake_loader)
+    output = provider.generate_video(
+        spec(provider="wan-2.1-t2v", kind=GenerationKind.VIDEO, seed=None), tmp_path
+    )
 
     assert "generate_video" not in WanProvider.__dict__
     assert seen["model_id"] == "custom-wan"
+    assert seen["pipeline_class"] == "WanPipeline"
+    assert seen["kwargs"]["prompt"] == "compiled cinematic prompt"
+    assert seen["kwargs"]["num_frames"] % 4 == 1, "Wan's 4n+1 frame rule"
     assert output.kind == "video"
     assert output.provider_id == "wan-2.1-t2v"
     assert output.duration_seconds == 5
-    assert provider.health().status == "ready"
+    assert output.fps == 24
+    assert Path(output.path).read_bytes() == b"fake"
+    assert provider.health().status in {"ready", "unavailable"}
     with pytest.raises(ProviderUnavailable, match="image generation"):
         provider.generate_image(spec(), tmp_path)
 
