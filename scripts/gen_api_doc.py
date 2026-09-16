@@ -64,6 +64,12 @@ def render() -> str:
     add(f"- **{len(sockets)}** WebSockets")
     add(f"- **{len(by_tag)}** tags\n")
     add("OpenAPI interativo em `/docs` (Swagger) e `/redoc` quando o serviço está no ar.\n")
+    add(
+        "PR006 Storyboard Cinematic Engine não adiciona rotas de render: a UI edita um "
+        "`StoryboardState` versionado sobre o `ProductionPlan` retornado por "
+        "`/api/v1/core/director/production-plan`. PR007 adiciona `/api/v1/providers` "
+        "para health/capabilities do registry universal, sem expor segredos.\n"
+    )
 
     for tag in sorted(by_tag):
         items = by_tag[tag]

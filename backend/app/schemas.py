@@ -370,6 +370,52 @@ class DirectorBriefResponse(BaseModel):
     clarification: str = ""
 
 
+# ---------------------------------------------------------------------------
+# PR005 — Director AI Engine (planning only)
+# ---------------------------------------------------------------------------
+
+
+class DirectorProductionPlanRequest(BaseModel):
+    """Human intention + production controls. This route never renders."""
+
+    user_intent: str = Field(min_length=1, max_length=4000)
+    persona_id: str | None = Field(default=None, max_length=120)
+    platform: str = Field(default="studio", min_length=1, max_length=80)
+    duration: float = Field(default=30.0, gt=0, le=600)
+    mood: str | None = Field(default=None, max_length=40)
+
+
+class DirectorShotPlanResponse(BaseModel):
+    scene_number: int
+    title: str
+    objective: str
+    emotion: str
+    camera: str
+    lens: str
+    lighting: str
+    motion: str
+    duration: float
+    prompt: str
+    negative_prompt: str
+    environment: str
+
+
+class DirectorProductionPlanResponse(BaseModel):
+    id: str
+    title: str
+    concept: str
+    mood: str
+    audience: str
+    platform: str
+    duration: float
+    style: str
+    music: str
+    voice: str
+    persona_id: str | None
+    shots: list[DirectorShotPlanResponse]
+    created_at: datetime
+
+
 class GenerationSpecRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=2000)
     kind: Literal["image", "video"] = "image"
@@ -677,7 +723,7 @@ class CoreStoryboardCompileRequest(BaseModel):
     style: str | None = Field(default=None, max_length=120)
     camera_language: str | None = Field(default=None, max_length=200)
     duration_per_scene: float = Field(default=5.0, gt=0, le=30)
-    provider: str = Field(default="flux-dev", max_length=60)
+    provider: str = Field(default="", max_length=60)
     negative_prompt: str = Field(default="", max_length=600)
 
 
@@ -734,6 +780,28 @@ class ProviderCatalogueResponse(BaseModel):
     defaults: dict[str, str] = Field(
         default_factory=dict, description="What runs when a job names no provider, per kind."
     )
+
+
+class ProviderCapabilitiesResponse(BaseModel):
+    max_resolution: str
+    supports_video: bool
+    supports_image: bool
+    supports_lora: bool
+    supports_upscale: bool
+    supports_seed: bool
+    supports_negative_prompt: bool
+    prompt_budget: int
+
+
+class UniversalProviderResponse(BaseModel):
+    id: str
+    label: str
+    status: str
+    latency_ms: float
+    version: str
+    capabilities: ProviderCapabilitiesResponse
+    reason: str | None = None
+    loaded: bool = False
 
 
 class GenerationSpecResponse(BaseModel):

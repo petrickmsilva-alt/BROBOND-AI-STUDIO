@@ -27,7 +27,7 @@ relatório diz qual era e o que a medição mostrou — inclusive quando a hipó
 | 13 | **Video Timeline** | timeline com transições, validação e `is_rendered` honesto | `ETAPA13_REPORT.md` |
 | 14 | **Quality AI** | `QualityGate` confere o output antes de persistir | `ETAPA14_REPORT.md` |
 | 15 | **UX Premium** | Diretor como porta de entrada; casca sem fatos inventados | `ETAPA15_REPORT.md` |
-| 16 | **Testes 90%** | cobertura 89% → 95%, gate `--fail-under=90` no CI | `ETAPA16_REPORT.md` |
+| 16 | **Testes 95%** | cobertura 89% → 95%; PR005 elevou o gate atual para `--fail-under=95` | `ETAPA16_REPORT.md` |
 | 17 | **Documentação** | docs verificadas contra o código, com guarda anti-drift | `ETAPA17_REPORT.md` |
 
 As etapas 2 e 3 não têm relatório próprio: foram as duas primeiras implementações, executadas
@@ -44,7 +44,7 @@ antes de o formato de relatório ser estabelecido na ETAPA 4. O que entregaram e
 | **P0-2a** | `process_generation` devolvia sempre `cancelled` | **Corrigido na ETAPA 3** |
 | **P0-2b** | `MemoryStore` em memória | **Fechado no PR002 e PR003** — jobs são linhas na tabela `jobs` (migration Alembic `0001`); `JobStore` é o repositório comum da API e do worker. Personas fechadas no PR003: tabela `personas` (migration `0002`) + `repositories/persona_repository.py`. Ver `docs/LIMITATIONS.md` §2 e `docs/PERSONA_ENGINE.md` |
 | **P0-3** | `EventHub.publish` sem chamadores | **Corrigido na ETAPA 11** — `publish_sync`, porque o worker Celery é síncrono e o hub era asyncio-only |
-| **P0-4** | Endpoints sem token; vazamento cross-tenant em `GET /api/v1/queue`; PII em `GET /api/v1/knowledge` | **Fechado no PR002 (ampliado no PR003)** — **28 de 64 rotas** exigem token, 3 o aceitam sem exigir (gerações + `/core/compile`), 33 permanecem públicas por desenho (dados de referência e Core read-only); os 2 WebSockets autenticam por `?token=`; rate limit configurável em login/registro e audit log para ações críticas. Ver `docs/LIMITATIONS.md` §3 |
+| **P0-4** | Endpoints sem token; vazamento cross-tenant em `GET /api/v1/queue`; PII em `GET /api/v1/knowledge` | **Fechado no PR002 (ampliado no PR003)** — **28 de 66 rotas** exigem token, 3 o aceitam sem exigir (gerações + `/core/compile`), 35 permanecem públicas por desenho (dados de referência, `/api/v1/providers` e Core read-only, incluindo `/core/director/production-plan`); os 2 WebSockets autenticam por `?token=`; rate limit configurável em login/registro e audit log para ações críticas. Ver `docs/LIMITATIONS.md` §3 |
 
 ---
 
@@ -58,14 +58,16 @@ Estas regras foram respeitadas em todas as etapas e são verificadas por testes:
    Verificado por análise AST em `test_core_api.py`.
 3. **Todo provider recebe apenas `GenerationSpec`** — nunca prompt solto, nunca `dict` de
    parâmetros.
-4. **O Core não importa framework.** Os **13** componentes são livres de `fastapi`,
+4. **O Core não importa framework.** Os **13** componentes top-level são livres de `fastapi`,
    `starlette`, `sqlalchemy`, `celery`, `boto3` e `pydantic_settings` — verificado por análise
    AST. A guarda `test_core_independence.py` lista **8** deles em `INDEPENDENT_MODULES`, porque
    ela afirma uma propriedade mais forte: importar **sem nenhum irmão do Core**. Os outros
    cinco (`cinematic_library`, `generation_spec_builder`, `persona_memory`, `shot_library`,
    `storyboard_engine`) compõem uns aos outros por desenho, então não satisfazem a propriedade
-   mais forte embora satisfaçam a que importa. Medido, não presumido: adicionar os cinco à
-   lista faz 4 testes falharem.
+   mais forte embora satisfaçam a que importa. PR005 adiciona `core/director/`, também sem
+   frameworks ou providers, como pacote de planejamento composto; PR006 acrescenta nele
+   `StoryboardState`/`StoryboardHistory` para edição de plano, ainda sem providers. Medido,
+   não presumido.
 5. **Nada é inventado.** Nenhum arquivo, job concluído, modelo carregado ou output inexistente
    é afirmado. Quando algo não pôde ser verificado, o relatório diz isso explicitamente.
 6. **Os 22 testes originais continuam passando**, sem modificação. Exceção registrada no
@@ -79,10 +81,10 @@ Estas regras foram respeitadas em todas as etapas e são verificadas por testes:
 
 | Métrica | Valor |
 | --- | --- |
-| Suíte de testes | **1.199** |
-| Cobertura `backend/app` | **95%** (gate CI: 90%) |
-| Módulos em 100% | **28** |
-| Rotas HTTP `/api/v1` | **64** — **31** delas `/api/v1/core/*` |
+| Suíte de testes | **1.246** |
+| Cobertura `backend/app` | **96%** (gate CI: 95%) |
+| Módulos em 100% | **45** |
+| Rotas HTTP `/api/v1` | **66** — **32** delas `/api/v1/core/*` |
 | WebSockets | **2** |
 | Componentes do Core | **13** |
 | Arquivos deletados desde `3708784` | **0** |

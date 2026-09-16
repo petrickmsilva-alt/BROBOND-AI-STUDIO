@@ -16,13 +16,18 @@ result.spec.prompt_compiled   # what a provider will receive
 result.trace.sources          # which source won each contested field
 ```
 
-Every component imports only `core/contracts.py`. Persistence is injected through the
-`PersonaSource` / `StyleSource` / `ShotSource` protocols, so the Core never imports
-SQLAlchemy — ETAPA 4/5/6 plug a PostgreSQL source in without touching Core code.
+The independent seed components import only `core/contracts.py`. Persistence is injected
+through the `PersonaSource` / `StyleSource` / `ShotSource` protocols, so the Core never
+imports SQLAlchemy — ETAPA 4/5/6 plug a PostgreSQL source in without touching Core code.
+PR005's Director AI package composes those pure pieces into a planning artifact, and PR006
+adds a versioned `StoryboardState` editor model. Both stay planning/editing-only without
+importing providers or framework code.
 
 | Endpoint | Purpose |
 | --- | --- |
 | `POST /api/v1/core/direct` | Intention → concept, script, scenes, cameras, music, duration. Never returns a prompt. |
+| `POST /api/v1/core/director/production-plan` | PR005: immutable `ProductionPlan` with 4–8 `ShotPlan` scenes. Planning only; no render. |
+| `/studio/director` | PR006: visual `StoryboardState` editor over the plan — drag/drop, timeline, camera/mood panels, undo/redo and duplicate scene. |
 | `POST /api/v1/core/compile` | Dry run → compiled `GenerationSpec` + resolution trace. Generates nothing. |
 
 `POST /api/v1/storyboards/expand` and `POST /api/v1/prompts/enhance` are unchanged at the
@@ -31,25 +36,29 @@ contract level. `prompt_engine.py` is now a facade over `PromptCompiler`, keepin
 
 ## Provider adapters
 
-`providers/registry.py` decides which adapter runs. `providers/common.py` holds the one
-definition of what the adapters share; `providers/conditioning.py` models ControlNet and
-IP-Adapter as objects with declared requirements.
+PR007 adds the universal GPU Provider Orchestrator. `providers/base_provider.py` defines the
+single runtime contract (`BaseProvider`, capabilities, estimates, health and assets),
+`providers/provider_registry.py` resolves provider IDs/aliases through registrations, and
+`providers/generation_executor.py` executes `GenerationSpec -> Provider -> Asset -> Job`
+without knowing model names.
 
 ```python
-from app.providers import registry
-from app.core.contracts import GenerationKind
+from app.providers import ProviderRegistry, ProviderRegistration, GenerationExecutor
 
-entry = registry.resolve("hunyuan-video", GenerationKind.VIDEO)
-registry.check(entry, GenerationKind.VIDEO)      # refuses planned / remote / wrong kind
-registry.build(entry.provider_id, GenerationKind.VIDEO)
+registry = ProviderRegistry()
+registry.register(ProviderRegistration("mock", "Mock", factory=lambda model_id=None: MockProvider()))
+execution = GenerationExecutor(registry).execute(spec, output_dir="/tmp/out")
 ```
 
-`adapter_class()` resolves the class through `getattr` **at call time**. That is required:
-the worker tests monkeypatch the class on its module, and an early-bound reference would
-defeat the patch.
+The legacy Core catalog remains in `providers/registry.py`: it documents adapter kind,
+status, checkpoint and conditioning compatibility for `/api/v1/core/providers`. Runtime
+health/capability discovery for the universal layer is exposed at `/api/v1/providers` and
+returns status, latency, version and capabilities without secrets.
 
 A provider that cannot run raises `ProviderUnavailable` rather than falling back. Running a
-different model than the one requested is the failure this design exists to prevent.
+different model than the one requested is the failure this design exists to prevent. The
+required `MockProvider` returns fake image/video/upscale artifacts so tests do not need GPU
+weights.
 
 ## Prompt compiler
 
@@ -58,7 +67,8 @@ blocks `SYSTEM_PROMPT.md` declares, in that order, and keeps the negative prompt
 
 ```python
 compiler = PromptCompiler()
-compiler.budget_for("flux-dev")          # 1000 — the budget is the provider's
+compiler.budget_for("any-provider")      # 1000 — provider names are opaque to Core
+compiler.budget_for(budget=1200)         # provider capability resolved at the boundary
 compiler.compile_beats(                  # one prompt per cast scene
     storyboard_engine.as_beats(board),
     brief=board.brief,
@@ -88,6 +98,47 @@ engine.validate(board)   # {'valid': True, 'violations': [], 'attention': [], ..
 `as_beats()` projects the cast storyboard back onto `SceneBeat` with `shot_code` filled in,
 which is what makes the 300-shot library reachable from the existing prompt path. Served by
 `POST /api/v1/core/storyboard`; the pre-existing `/api/v1/storyboards/expand` is unchanged.
+
+## Director AI Engine (PR005)
+
+`core/director/` turns a human brief into a full production plan:
+
+```python
+from app.core.director import DirectorAgent
+
+plan = DirectorAgent().create_production_plan(
+    user_intent="Criar um comercial épico para tênis de corrida",
+    persona_id="persona-123",
+    platform="youtube",
+    duration=45,
+    mood="Epic",
+)
+plan.shots[0].camera     # Dolly, Orbit, Crane, Tracking, Static or Drone
+plan.shots[0].prompt     # planned text only; nothing rendered
+```
+
+`MoodEngine` resolves the six presets declared in `mood_config.py`; `CameraDirector` consumes
+`ShotLibrary` and returns an editable first camera pass. `ProductionPlan` and `ShotPlan` are
+frozen dataclasses, so a created plan is immutable at the backend boundary. Served by
+`POST /api/v1/core/director/production-plan` and documented in `docs/DIRECTOR_AI.md`.
+
+## Storyboard Cinematic Engine (PR006)
+
+`core/director/storyboard_state.py` adds the editable state that sits after a production plan:
+
+```python
+from app.core.director import StoryboardState
+
+state = StoryboardState.from_production_plan(plan, project_id="project-1")
+state = state.reorder_scene(state.scenes[3].id, state.scenes[1].id)
+state = state.apply_mood(state.scenes[0].id, "Neo")
+```
+
+`StoryboardState` carries `project_id`, `production_plan_id`, `scenes`, `version` and
+`updated_at`; every real edit returns a new frozen state with `version + 1`. Scene updates are
+field patches, not scene regeneration. Reorder recalculates `scene_number`, timeline markers
+and total duration. `StoryboardHistory` provides undo/redo with a 50-state cap. Documented in
+`docs/STORYBOARD_ENGINE.md`.
 
 ## Shot library
 
@@ -186,18 +237,22 @@ Errors: `404` unknown persona, `409` rule violation, `422` validation.
 
 ## Provider contract
 
-Since ETAPA 3 a provider receives **only** a `GenerationSpec`:
+Since ETAPA 3 a provider receives **only** a `GenerationSpec`; PR007 universalizes that rule
+for image, video and upscale:
 
 ```python
-class ImageProvider(ABC):
-    def generate(self, spec: GenerationSpec, output_dir: str) -> GenerationOutput: ...
-    def health(self) -> dict[str, Any]: ...
+class BaseProvider(ABC):
+    def generate_image(self, spec: GenerationSpec, output_dir: str | Path) -> ProviderAsset: ...
+    def generate_video(self, spec: GenerationSpec, output_dir: str | Path) -> ProviderAsset: ...
+    def upscale(self, spec: GenerationSpec, asset_path: str | Path, output_dir: str | Path) -> ProviderAsset: ...
+    def health(self) -> ProviderHealth: ...
+    def estimate(self, spec: GenerationSpec) -> ProviderEstimate: ...
 ```
 
 The worker builds the spec with `app.spec_adapter.compile_job(job)`, folds in the resolved
 LoRA and reference paths after validating workspace ownership, and hands that single object
-to the provider. `app/spec_adapter.py` is the only module that knows both `app.schemas.Job`
-and the Core, which is what keeps the Core free of API imports.
+to `GenerationExecutor`. `app/spec_adapter.py` is the only module that knows both
+`app.schemas.Job` and the Core, which is what keeps the Core free of API imports.
 
 Sampling parameters (`resolution`, `guidance_scale`, `steps`, `ip_adapter_scale`, `mode`,
 `cinematic_mode`, `slow_motion`, `native_audio`) travel inside the spec as typed extras
@@ -238,21 +293,23 @@ Persona training is validated through `POST /api/v1/personas/{persona_id}/train`
 ## Test
 
 ```bash
-PYTHONPATH=backend pytest backend/tests -q          # 1,199 tests
+PYTHONPATH=backend pytest backend/tests -q          # 1,246 tests
 ```
 
 Coverage:
 
 ```bash
 coverage run --source=backend/app -m pytest backend/tests -q
-coverage report --skip-empty                        # backend/app/core at 98%
+coverage report --skip-empty                        # backend/app at 96%, core at 98%, providers at 99%
 ```
 
 `core/persona_memory.py`, `core/cinematic_library.py`, `core/shot_library.py`,
 `core/storyboard_engine.py`, `core/prompt_compiler.py` and `core/style_resolver.py` are each
-at 100%, as are `providers/registry.py` and `providers/conditioning.py`. The remaining gaps
-in `providers/` are GPU inference paths that cannot run without torch and diffusers. The directory total is held back by the
-pre-existing unused `core/security.py` at 0% (see `AUDIT.md`).
+at 100%, as are the legacy provider catalog modules `providers/registry.py` and
+`providers/conditioning.py`. The universal PR007 provider layer is covered by
+`test_pr007_provider_orchestrator.py`; the remaining gaps are defensive/provider-unavailable
+branches and GPU inference paths that cannot run without torch and diffusers. The directory
+total is held back by the pre-existing unused `core/security.py` at 0% (see `AUDIT.md`).
 
 The Core test suite is hermetic: `test_core_independence.py` spawns subprocesses with the
 backend root injected explicitly, so it passes with `PYTHONPATH=backend`, without it, and

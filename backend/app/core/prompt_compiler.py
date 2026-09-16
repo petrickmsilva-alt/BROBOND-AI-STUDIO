@@ -45,29 +45,10 @@ DROP_PRIORITY: tuple[str, ...] = (
     "subject",
 )
 
-#: Per-provider prompt budget, in characters. ETAPA 2 carried a single hardcoded
-#: ceiling whose own docstring called it "the provider character budget" while no
-#: provider ever declared one. FLUX degrades well before a video model does, so
-#: the budget is a property of the target rather than of the compiler.
-#:
-#: Keys are the catalogue ids the registry and `GET /api/v1/models/*` expose.
-#: ETAPA 9 introduced this map with a `"wan-video"` key that is *not* a catalogue
-#: id — the real one is `"wan-2.1-t2v"` — so a real video job silently fell back
-#: to the conservative budget. Found in the ETAPA 10 audit and fixed here.
-PROVIDER_PROMPT_BUDGET: dict[str, int] = {
-    "flux-dev": 1000,
-    "flux-1.1-pro-ultra": 1000,
-    "wan-2.1-t2v": 1200,
-    "hunyuan-video": 1200,
-}
-
-#: Tolerated spellings that are not catalogue ids. Kept so a caller using the
-#: shorthand still gets the right budget instead of the conservative fallback.
-PROVIDER_BUDGET_ALIASES: dict[str, str] = {
-    "wan-video": "wan-2.1-t2v",
-}
-
-#: Budget when the provider is unknown. Deliberately the conservative end.
+#: Conservative prompt budget, in characters. PR007 moves model-specific
+#: budgets into provider capabilities, so the Core never names a provider brand
+#: or catalogue id. A caller may pass an explicit numeric budget resolved by the
+#: provider layer; otherwise this safe default is used.
 DEFAULT_PROMPT_BUDGET: int = 1000
 
 _WHITESPACE = re.compile(r"\s+")
@@ -99,31 +80,37 @@ class PromptCompiler:
     default_camera: str = "medium shot, 85mm lens, shallow depth of field"
     default_light: str = "soft volumetric light, teal and amber color grade"
 
-    #: FLUX-class models degrade past roughly this many characters; trimming is
-    #: explicit rather than a silent provider-side truncation.
+    #: Model-side prompt limits vary; trimming is explicit rather than a silent
+    #: provider-side truncation.
     max_prompt_chars: int = 1200
     max_negative_chars: int = 600
 
     # ------------------------------------------------------------------ compile
 
-    def budget_for(self, provider: str | None = None) -> int:
-        """The character budget for a provider, under the compiler's ceiling.
+    def budget_for(self, provider: str | None = None, *, budget: int | None = None) -> int:
+        """The character budget under the compiler's own ceiling.
 
-        `max_prompt_chars` stays the hard ceiling — it is a public, overridable
-        knob and callers rely on being able to lower it. A provider budget can
-        only tighten it, never loosen it, so an unknown provider never gets more
-        room than the compiler was configured to allow.
+        `provider` remains an accepted opaque argument for backwards-compatible
+        callers, but PR007 forbids provider-specific knowledge in the Core. Any
+        model-specific value must arrive as the numeric `budget` resolved by the
+        provider layer.
         """
 
-        name = PROVIDER_BUDGET_ALIASES.get(provider or "", provider or "")
-        provider_budget = PROVIDER_PROMPT_BUDGET.get(name, DEFAULT_PROMPT_BUDGET)
+        provider_budget = DEFAULT_PROMPT_BUDGET if budget is None else int(budget)
         return min(provider_budget, self.max_prompt_chars)
 
-    def compile(self, blocks: PromptBlocks, *, provider: str | None = None) -> CompiledPrompt:
+    def compile(
+        self,
+        blocks: PromptBlocks,
+        *,
+        provider: str | None = None,
+        budget: int | None = None,
+    ) -> CompiledPrompt:
         """Compile structured blocks into the final prompt and negative prompt.
 
-        `provider` selects the character budget. It is optional and defaults to
-        the conservative budget, so every existing caller keeps working.
+        `provider` is opaque to the Core. `budget` may be supplied by the
+        provider registry capabilities; absent that, the conservative default is
+        used so existing callers keep working.
         """
 
         if not blocks.subject.strip():
@@ -131,9 +118,9 @@ class PromptCompiler:
 
         emit = dict(blocks.ordered())
         dropped: list[str] = []
-        budget = self.budget_for(provider)
+        limit = self.budget_for(provider, budget=budget)
         prompt = self._join(emit)
-        while len(prompt) > budget:
+        while len(prompt) > limit:
             victim = next((name for name in DROP_PRIORITY if name in emit and name != "subject"), None)
             if victim is None:
                 break
@@ -141,8 +128,8 @@ class PromptCompiler:
             dropped.append(victim)
             prompt = self._join(emit)
 
-        if len(prompt) > budget:
-            prompt = prompt[:budget]
+        if len(prompt) > limit:
+            prompt = prompt[:limit]
 
         negative = self.compile_negative(blocks.negative)
         return CompiledPrompt(
@@ -171,6 +158,7 @@ class PromptCompiler:
         style: str = "",
         negative: str = "",
         provider: str | None = None,
+        budget: int | None = None,
     ) -> tuple[CompiledPrompt, ...]:
         """Compile a sequence of beats into one prompt per scene.
 
@@ -206,6 +194,7 @@ class PromptCompiler:
                     negative=negative,
                 ),
                 provider=provider,
+                budget=budget,
             )
             for beat in beats
         )

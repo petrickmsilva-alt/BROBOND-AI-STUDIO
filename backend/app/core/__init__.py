@@ -2,8 +2,8 @@
 
 BROBOND CORE — the decision layer.
 
-Thirteen components live here; eight of them import only `contracts`. Each one imports `contracts` and nothing
-else, so any of them can be instantiated and tested alone:
+Thirteen top-level components live here; eight of them import only `contracts`. PR005 adds the
+`core.director` package for production planning and PR006 storyboard editing without changing those legacy boundaries:
 
     MemoryResolver          permanent character identity + versioning
     StyleResolver           the cinematic library (style -> full vocabulary)
@@ -18,6 +18,11 @@ else, so any of them can be instantiated and tested alone:
     QualityGate             structural assessment of a rendered artifact (ETAPA 14)
     GenerationSpecBuilder   the composition root -> GenerationSpec
     JobService              job lifecycle state machine over a JobRepository (PR004-prep)
+
+    core.director           PR005 ProductionPlan, ShotPlan, MoodEngine,
+                            CameraDirector and DirectorAgent (planning only);
+                            PR006 StoryboardState and StoryboardHistory
+                            (plan editing only)
 
 Wiring lives at the application boundary (`app.main`), never between the
 components: GenerationSpecBuilder receives the other four by injection.
@@ -115,6 +120,18 @@ from .timeline import (
     Timeline,
     VideoTimeline,
 )
+from .director import (
+    CameraDirection,
+    CameraDirector,
+    DirectorAgent as ProductionDirectorAgent,
+    MoodEngine,
+    MoodPreset,
+    ProductionPlan,
+    ShotPlan,
+    StoryboardHistory,
+    StoryboardScene,
+    StoryboardState,
+)
 
 __all__ = [
     "ANGLES",
@@ -126,6 +143,8 @@ __all__ = [
     "AudioTrack",
     "BuildResult",
     "CUT",
+    "CameraDirection",
+    "CameraDirector",
     "CinematicLibrary",
     "Clip",
     "CompiledPrompt",
@@ -169,10 +188,14 @@ __all__ = [
     "MOTIVATIONS",
     "MemoryError_",
     "MemoryResolver",
+    "MoodEngine",
+    "MoodPreset",
     "Motivation",
     "PROMPT_BLOCK_ORDER",
     "PUBLISHED_CODES",
     "PASS",
+    "ProductionDirectorAgent",
+    "ProductionPlan",
     "QualityGate",
     "QualityReport",
     "PersonaLedger",
@@ -194,8 +217,12 @@ __all__ = [
     "SeedShotSource",
     "SeedStyleSource",
     "ShotLibrary",
+    "ShotPlan",
     "ShotPreset",
     "ShotResolver",
+    "StoryboardHistory",
+    "StoryboardScene",
+    "StoryboardState",
     "ShotSource",
     "Storyboard",
     "StoryboardEngine",

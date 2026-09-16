@@ -13,12 +13,14 @@ mudar e o documento não for regenerado, a suíte falha.
 
 ## Resumo
 
-- **64** rotas HTTP sob `/api/v1`
-- **31** delas são `/api/v1/core/*` — a camada de decisão
+- **66** rotas HTTP sob `/api/v1`
+- **32** delas são `/api/v1/core/*` — a camada de decisão
 - **2** WebSockets
-- **12** tags
+- **13** tags
 
 OpenAPI interativo em `/docs` (Swagger) e `/redoc` quando o serviço está no ar.
+
+PR006 Storyboard Cinematic Engine não adiciona rotas de render: a UI edita um `StoryboardState` versionado sobre o `ProductionPlan` retornado por `/api/v1/core/director/production-plan`. PR007 adiciona `/api/v1/providers` para health/capabilities do registry universal, sem expor segredos.
 
 ## `assets` — 4
 
@@ -37,7 +39,7 @@ OpenAPI interativo em `/docs` (Swagger) e `/redoc` quando o serviço está no ar
 | `GET` | `/api/v1/auth/me` | get_current_user |
 | `POST` | `/api/v1/auth/register` | Create an account (PR002: rate-limited and audited). |
 
-## `core` — 31
+## `core` — 32
 
 | Método | Rota | Descrição |
 | --- | --- | --- |
@@ -52,6 +54,7 @@ OpenAPI interativo em `/docs` (Swagger) e `/redoc` quando o serviço está no ar
 | `GET` | `/api/v1/core/cinematic/motivations/of` | Which motivations a camera move can claim, and whether it is still. |
 | `POST` | `/api/v1/core/compile` | Compile a GenerationSpec without executing it (dry run). |
 | `POST` | `/api/v1/core/direct` | Turn a plain-language intention into direction. |
+| `POST` | `/api/v1/core/director/production-plan` | Create a Director AI production plan. Planning only; no image generation. |
 | `GET` | `/api/v1/core/personas` | Current identities in the character library, with their version (PR002: identity required). |
 | `GET` | `/api/v1/core/personas/{persona_id}` | A character's full history: every revision, who made it and why (PR002: identity required). |
 | `POST` | `/api/v1/core/personas/{persona_id}/approve` | Promote a planned character to approved (PR002: identity required, audited). |
@@ -121,6 +124,12 @@ OpenAPI interativo em `/docs` (Swagger) e `/redoc` quando o serviço está no ar
 | Método | Rota | Descrição |
 | --- | --- | --- |
 | `POST` | `/api/v1/prompts/enhance` | enhance_prompt |
+
+## `providers` — 1
+
+| Método | Rota | Descrição |
+| --- | --- | --- |
+| `GET` | `/api/v1/providers` | Universal provider health, latency, version and capabilities (PR007). |
 
 ## `queue` — 2
 

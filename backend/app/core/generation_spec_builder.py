@@ -101,7 +101,7 @@ class GenerationSpecBuilder:
         wardrobe: list[str] | None = None,
         style: str | None = None,
         shot: str | None = None,
-        provider: str = "flux-dev",
+        provider: str = "",
         aspect_ratio: str = "16:9",
         fps: int | None = None,
         duration: float = 5.0,
@@ -245,7 +245,7 @@ class GenerationSpecBuilder:
                 output=self.compiler.output_block,
                 negative=str(kwargs.get("negative_prompt") or ""),
             ),
-            provider=kwargs.get("provider") or "flux-dev",
+            provider=kwargs.get("provider") or "",
         )
 
         spec = GenerationSpec(
@@ -264,7 +264,7 @@ class GenerationSpecBuilder:
             aspect_ratio=str(kwargs.get("aspect_ratio") or "16:9"),
             fps=int(resolved_fps),
             duration=float(kwargs.get("duration") or 5.0),
-            provider=str(kwargs.get("provider") or "flux-dev"),
+            provider=str(kwargs.get("provider") or ""),
             seed=_opt_int(kwargs.get("seed")),
             lora=resolved_lora,
             controlnet=str(kwargs.get("controlnet") or "none"),

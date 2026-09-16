@@ -30,9 +30,12 @@ User Intent
 
 ### Componentes implementados (ETAPA 2)
 
-Todos vivem em `backend/app/core/` e importam **apenas** `core/contracts.py`. Nenhum
-importa um par; a composição acontece por injeção no boundary da aplicação
-(`app.main`), nunca entre componentes.
+Os componentes independentes originais vivem em `backend/app/core/` e importam **apenas**
+`core/contracts.py`. Nenhum importa um par; a composição acontece por injeção no boundary da
+aplicação (`app.main`), nunca entre componentes. PR005 acrescenta um pacote de orquestração de
+planejamento em `backend/app/core/director/`; PR006 adiciona nele `StoryboardState` e
+`StoryboardHistory` para edição visual do plano. Esse pacote continua livre de providers e
+frameworks.
 
 | Arquivo | Componente | Responsabilidade única |
 |---|---|---|
@@ -43,6 +46,7 @@ importa um par; a composição acontece por injeção no boundary da aplicação
 | `prompt_compiler.py` | `PromptCompiler` | **Único lugar onde texto de prompt é produzido.** Blocos ordenados + negative prompt. |
 | `director_agent.py` | `DirectorAgent` | Intenção em linguagem natural → conceito, roteiro, cenas, câmeras, música, duração. |
 | `generation_spec_builder.py` | `GenerationSpecBuilder` | Raiz de composição: combina os quatro anteriores e produz o `GenerationSpec`. |
+| `director/storyboard_state.py` | `StoryboardState` | PR006: estado versionado de edição do plano, timeline, drag/reorder, presets de câmera/mood e undo/redo. |
 
 `test_core_independence.py` prova a independência de forma estrutural: cada módulo é
 importado num interpretador fresco, com `app.core.__init__` stubbed, e o teste falha se
@@ -110,6 +114,89 @@ os beats 5-8 repetiam os 1-4 palavra por palavra.
 **`CAMERA_LADDER` continua com quatro** e ciclando: estabelecer → conduzir → intensificar →
 isolar é gramática visual, fixada por teste, não repetição acidental.
 
+## Director AI Engine (PR005)
+
+`backend/app/core/director/` é o pacote de planejamento cinematográfico completo. Ele não
+substitui o `DirectorAgent` histórico de `/core/direct`; ele acrescenta uma saída de produção:
+`ProductionPlan`.
+
+```text
+Human Intent
+  -> MoodEngine
+  -> CameraDirector (ShotLibrary existente)
+  -> Storyboard de 4 a 8 ShotPlan
+  -> PromptCompiler (planejamento textual)
+  -> ProductionPlan imutável
+```
+
+Contratos:
+
+- `ProductionPlan`: `id`, `title`, `concept`, `mood`, `audience`, `platform`, `duration`,
+  `style`, `music`, `voice`, `persona_id`, `shots`, `created_at`.
+- `ShotPlan`: `scene_number`, `title`, `objective`, `emotion`, `camera`, `lens`, `lighting`,
+  `motion`, `duration`, `prompt`, `negative_prompt`, `environment`.
+- `MoodEngine`: presets internos `Luxury`, `Epic`, `Dark`, `Minimal`, `Sport`, `Neo` com LUT,
+  contraste, iluminação, temperatura, ritmo e partículas declarados em `mood_config.py`.
+- `CameraDirector`: escolhe automaticamente `Dolly`, `Orbit`, `Crane`, `Tracking`, `Static` ou
+  `Drone` a partir da `ShotLibrary`; a UI pode editar depois.
+
+Boundary:
+
+- `POST /api/v1/core/director/production-plan` retorna somente planejamento.
+- Nenhum provider FLUX/Wan foi alterado, importado pelo pacote ou executado.
+- Nenhum job de geração é criado por essa rota.
+
+---
+
+## Storyboard Cinematic Engine (PR006)
+
+PR006 fica depois do `ProductionPlan`: ele transforma o storyboard em um editor visual
+versionado, mas continua sem renderização.
+
+```text
+ProductionPlan
+  -> StoryboardState(project_id, production_plan_id, scenes, version, updated_at)
+  -> operações de edição granular
+  -> timeline recalculada
+  -> histórico undo/redo
+```
+
+Contratos:
+
+- `StoryboardState`: estado imutável/versionado do editor. Toda alteração real incrementa
+  `version` e atualiza `updated_at`.
+- `StoryboardScene`: cena editável com `id`, `scene_number`, título, objetivo, emoção,
+  câmera, lente, iluminação, movimento, duração, ambiente, mood, LUT, prompt e negative prompt.
+- `StoryboardHistory`: histórico com `past`, `present`, `future` e limite de 50 estados.
+- `lib/storyboard/storyboard_state.ts`: espelho de frontend usado pelos componentes visuais.
+
+Operações suportadas:
+
+- editar campo da cena sem recriar a cena inteira;
+- reordenar por drag/drop, recalculando `scene_number`, timeline e duração total;
+- aplicar presets de câmera `Hero Walk`, `Orbit`, `Tracking`, `Crane`, `Drone`, `Static` só no
+  bloco CameraDirector (`camera`, `lens`, `lighting`, `motion`);
+- aplicar mood por cena (`Luxury`, `Epic`, `Dark`, `Minimal`, `Sport`, `Neo`) alterando apenas
+  `mood` e `lut`;
+- duplicar cena com novo UUID mantendo câmera e mood;
+- remover cena mantendo o storyboard válido;
+- undo/redo das operações editar, reordenar, duplicar e remover.
+
+Frontend:
+
+```text
+app/studio/director/
+├── StoryboardCanvas.tsx
+├── Timeline.tsx
+├── SceneInspector.tsx
+├── CameraPanel.tsx
+├── MoodPanel.tsx
+└── page.tsx
+```
+
+A API não ganhou rota de render. O editor consome o plano de
+`/api/v1/core/director/production-plan` e mantém as edições em `StoryboardState`.
+
 ---
 
 ## Testes e cobertura (ETAPA 16)
@@ -118,7 +205,7 @@ O piso é imposto no CI, não apenas medido:
 
 ```
 coverage run --source=backend/app -m pytest backend/tests -q
-coverage report --include='backend/app/*' --skip-empty --fail-under=90
+coverage report --include='backend/app/*' --skip-empty --fail-under=95
 ```
 
 ### O denominador tem 100 statements que nunca rodam
@@ -527,6 +614,41 @@ Wan e Hunyuan compartilham `_DiffusersVideoProvider` e diferem só onde os model
 | 16:9 padrão | 832×480 | 1280×720 |
 | `num_inference_steps` | não enviado | enviado (`spec.steps`) |
 
+## GPU Provider Orchestrator (PR007)
+
+PR007 adiciona uma segunda camada acima do catálogo da ETAPA 10: o contrato universal de
+execução em `backend/app/providers/base_provider.py`. O Core continua responsável por decidir
+e compilar `GenerationSpec`; nomes como Flux, Wan, Hunyuan, Kling ou Runway ficam fora de
+`backend/app/core/`.
+
+```text
+GenerationSpec
+  -> ProviderRegistry.get(spec.provider)
+  -> BaseProvider.generate_image/generate_video/upscale(spec, ...)
+  -> ProviderAsset
+  -> Job.asset_url / metadata
+```
+
+Componentes:
+
+| Arquivo | Responsabilidade |
+|---|---|
+| `providers/base_provider.py` | `BaseProvider`, `ProviderCapabilities`, `ProviderEstimate`, `ProviderHealth`, `ProviderAsset`. |
+| `providers/provider_registry.py` | `register()`, `get()`, `list()`, `health_all()` por registro/alias, sem `if/else` por modelo. |
+| `providers/flux_provider.py` | Wrapper universal de imagem; recebe apenas `GenerationSpec`. |
+| `providers/wan_provider.py` | Wrapper universal de vídeo; compartilha `_VideoDiffusersProvider` com Hunyuan para não duplicar lógica. |
+| `providers/mock_provider.py` | Provider fake obrigatório para testes e desenvolvimento sem GPU. |
+| `providers/generation_executor.py` | Orquestra `GenerationSpec -> Registry -> Provider -> Asset -> Job` sem conhecer IDs de provider. |
+
+`GET /api/v1/providers` expõe health, latência, versão e capabilities (`max_resolution`,
+`supports_video`, `supports_image`, `supports_lora`, `supports_upscale`, `supports_seed`,
+`supports_negative_prompt`, `prompt_budget`) sem secrets. A página `/studio/providers` usa
+essa resposta diretamente para mostrar Flux, Wan e Mock e recarregar status pelo botão
+**Testar**.
+
+Prompt budget agora é capability do provider. O compilador aceita um número já resolvido
+pela borda; sem isso, usa o budget conservador global e trata o nome do provider como opaco.
+
 ## Prompt compiler (ETAPA 9)
 
 `SYSTEM_PROMPT.md` declara treze blocos. Até a ETAPA 9 só dez eram emitidos e a junção não
@@ -549,9 +671,10 @@ paleta numa cláusula só, o que impedia descartar um adjetivo sem perder a pale
 `color` **abaixo** de `style`: sob aperto de orçamento, a grade — que é o que mantém uma
 sequência reconhecível entre cortes — sobrevive ao adjetivo.
 
-O orçamento é do provider, não do compilador. `budget_for()` consulta
-`PROVIDER_PROMPT_BUDGET` e o teto `max_prompt_chars` continua sendo limite duro: um
-orçamento de provider só pode apertá-lo, nunca afrouxá-lo.
+O orçamento é do provider, não do compilador. PR007 removeu o mapa
+`PROVIDER_PROMPT_BUDGET` do Core: `budget_for()` trata o provider como opaco e aceita apenas
+um `budget` numérico já resolvido pela camada de provider. O teto `max_prompt_chars` continua
+sendo limite duro: um orçamento de provider só pode apertá-lo, nunca afrouxá-lo.
 
 `compile_beats()` consome a projeção `StoryboardEngine.as_beats()` e devolve um prompt por
 cena. Assina sobre `SceneBeat` — tipo de `contracts` — e não sobre `Storyboard`: o
@@ -763,17 +886,25 @@ transporte troca.
 
 Contrato, adapter, hook, regras e migração: `docs/PROJECT_MEMORY.md`.
 
-## Contrato de provider (ETAPA 3)
+## Contrato de provider (ETAPA 3; universalizado no PR007)
 
 **Todo provider recebe apenas `GenerationSpec`.** A assinatura é o mecanismo de aplicação
-da regra — não existe caminho por onde uma string solta entre:
+da regra — não existe caminho por onde uma string solta entre. A ETAPA 3 introduziu o
+contrato mínimo de imagem; PR007 o substitui na execução por `BaseProvider`, que cobre
+imagem, vídeo, upscale, health e estimate:
 
 ```python
-class ImageProvider(ABC):
+class BaseProvider(ABC):
     @abstractmethod
-    def generate(self, spec: GenerationSpec, output_dir: str) -> GenerationOutput: ...
+    def generate_image(self, spec: GenerationSpec, output_dir: str | Path) -> ProviderAsset: ...
     @abstractmethod
-    def health(self) -> dict[str, Any]: ...
+    def generate_video(self, spec: GenerationSpec, output_dir: str | Path) -> ProviderAsset: ...
+    @abstractmethod
+    def upscale(self, spec: GenerationSpec, asset_path: str | Path, output_dir: str | Path) -> ProviderAsset: ...
+    @abstractmethod
+    def health(self) -> ProviderHealth: ...
+    @abstractmethod
+    def estimate(self, spec: GenerationSpec) -> ProviderEstimate: ...
 ```
 
 Fluxo de um job:
@@ -850,12 +981,13 @@ Regras adicionais aplicadas desde a ETAPA 2, cada uma com teste que falha se for
 | Nenhuma cláusula é emitida duas vezes | `test_a_repeated_clause_is_emitted_once` + `test_no_published_shot_produces_a_duplicated_clause`. |
 | O compilador não conhece o storyboard | `test_compile_beats_takes_only_contract_types` (AST) + `test_core_independence.py`. |
 | O orçamento de provider não afrouxa o teto | `test_a_provider_budget_can_never_loosen_the_compiler_ceiling`. |
+| O Core trata nomes de provider como opacos | `test_core_treats_provider_names_as_opaque_for_budgeting` + `test_core_does_not_name_provider_brands_or_catalogue_ids`. |
 | O adapter é escolhido pelo provider pedido, não pelo tipo do job | `test_asking_for_hunyuan_gets_hunyuan_not_wan` + `test_the_worker_routes_a_video_request_to_the_requested_adapter`. |
 | Um provider indisponível é recusado, nunca substituído | `test_a_planned_or_remote_provider_is_refused_not_substituted` + `test_the_worker_refuses_a_remote_only_provider`. |
 | Campos declarados batem com o código | `test_the_declared_fields_match_the_code` (análise estática; verificado que falha ao reintroduzir o bug). |
 | Os pesos de IP-Adapter combinam com o modelo base | `test_the_flux_ip_adapter_weights_are_flux_weights_not_sdxl`. |
 | Nenhum helper compartilhado volta a ser copiado | `test_the_shared_helpers_are_the_same_object_not_copies` + `test_the_video_adapters_inherit_rather_than_reimplement`. |
-| Todo id do catálogo tem orçamento próprio | `test_every_registered_provider_has_its_own_prompt_budget`. |
+| Todo provider universal declara orçamento em capabilities | `test_prompt_budgets_live_in_provider_capabilities_not_the_core` + `test_provider_capability_helpers_keep_main_thin_and_core_opaque`. |
 | O engine não guarda shots nem reimplementa a biblioteca | `test_the_engine_holds_no_shots_of_its_own` (AST) + `test_the_engine_does_not_reimplement_the_library_rules`. |
 | O engine não reimplementa o Diretor | `test_the_engine_does_not_reimplement_the_director` (sem `FORMAT_KEYWORDS`, `_build_beats` nem `detect_format` locais). |
 | Toda cena nomeia um shot real | `test_every_scene_names_a_real_shot_from_the_library` + `test_the_cast_comes_from_the_expanded_library_not_the_brief`. |
@@ -887,8 +1019,9 @@ Regras adicionais aplicadas desde a ETAPA 2, cada uma com teste que falha se for
 | `POST /api/v1/core/compile` | Dry-run → `GenerationSpecResponse` com `trace`. Não gera mídia nem cria job. |
 | `POST /api/v1/core/storyboard` | Brief → `CoreStoryboardResponse`: sequência escalada, validada, com `beat_sheet`. Não produz prompt nem gera mídia. |
 | `POST /api/v1/core/storyboard/compile` | Brief → `CoreStoryboardCompileResponse`: um prompt compilado por cena, com orçamento aplicado e `dropped` explícito. Não gera mídia. |
-| `GET /api/v1/core/providers` | Catálogo de adapters do registry: kind, status, checkpoint, conditioning. Filtrável por `kind`. |
+| `GET /api/v1/core/providers` | Catálogo de adapters do registry legado: kind, status, checkpoint, conditioning. Filtrável por `kind`. |
 | `GET /api/v1/core/providers/health` | Se cada adapter local pode rodar **nesta máquina agora**. Nunca lança. |
+| `GET /api/v1/providers` | Registry universal PR007: status, latência, versão e capabilities por provider, sem segredos. |
 
 `POST /api/v1/storyboards/expand` e `POST /api/v1/prompts/enhance` mantêm exatamente o
 contrato anterior; apenas a composição saiu da rota e foi para o Core. `prompt_engine.py`

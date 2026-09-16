@@ -15,6 +15,7 @@ from .audit import audit
 from .auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse, auth_rate_limiter, current_user, login, optional_user, register, ws_identity
 from .conditioning import catalog
 from .core.contracts import GenerationKind, GenerationSpec
+from .core.director import CameraDirector, DirectorAgent as ProductionDirectorAgent
 from .core import (
     ASPECT_BY_FORMAT,
     DEFAULT_ASPECT_RATIO,
@@ -49,6 +50,7 @@ from .knowledge import resolve as resolve_knowledge, seed_knowledge
 from .lora import lora_trainer
 from .media import MediaError, media
 from .models import Asset, TrainingRun, User, Workspace
+from .provider_capabilities import list_universal_provider_responses, prompt_budget_for_provider
 from .providers import registry as provider_registry
 from .prompt_engine import prompt_engine
 from .queue import enqueue, enqueue_lora_training, transition
@@ -69,7 +71,8 @@ from .schemas import (
     TimelineFormatResponse,
     TimelineRequest,
     TimelineResponse,
-    AssetResponse, ConditioningRequest, DirectorBriefResponse, DirectorRequest, ExportRequest, ExportResponse,
+    AssetResponse, ConditioningRequest, DirectorBriefResponse, DirectorProductionPlanRequest,
+    DirectorProductionPlanResponse, DirectorRequest, DirectorShotPlanResponse, ExportRequest, ExportResponse,
     EpisodeConsistencyResponse,
     FrameProfileResponse,
     FramingResponse,
@@ -96,6 +99,7 @@ from .schemas import (
     ShotFamilyResponse, ShotLibraryAuditResponse, ShotPresetResponse,
     CompiledSceneResponse, CoreStoryboardCompileRequest, CoreStoryboardCompileResponse,
     ProviderAdapterResponse, ProviderCatalogueResponse, ProviderHealthResponse,
+    UniversalProviderResponse,
     CoreStoryboardFindingResponse, CoreStoryboardRequest, CoreStoryboardResponse,
     CoreStoryboardShotResponse,
     StoryboardRequest, StoryboardResponse, StoryboardScene, VideoGenerationRequest,
@@ -214,6 +218,10 @@ shot_library = ShotLibrary()
 shot_resolver = ShotResolver(SeedShotSource(FULL_SHOT_LIBRARY))
 prompt_compiler = PromptCompiler()
 director_agent = DirectorAgent()
+production_director_agent = ProductionDirectorAgent(
+    camera_director=CameraDirector(shot_library),
+    prompt_compiler=prompt_compiler,
+)
 spec_builder = GenerationSpecBuilder(
     memory=memory_resolver,
     styles=style_resolver,
@@ -1023,6 +1031,26 @@ def direct_intent(request: DirectorRequest) -> DirectorBriefResponse:
     )
 
 
+@app.post(
+    "/api/v1/core/director/production-plan",
+    response_model=DirectorProductionPlanResponse,
+    tags=["core"],
+)
+def create_director_production_plan(request: DirectorProductionPlanRequest) -> DirectorProductionPlanResponse:
+    """Create a Director AI production plan. Planning only; no image generation."""
+
+    plan = production_director_agent.create_production_plan(
+        user_intent=request.user_intent,
+        persona_id=request.persona_id,
+        platform=request.platform,
+        duration=request.duration,
+        mood=request.mood,
+    )
+    payload = plan.to_dict()
+    payload["shots"] = [DirectorShotPlanResponse(**shot.to_dict()) for shot in plan.shots]
+    return DirectorProductionPlanResponse(**payload)
+
+
 @app.post("/api/v1/core/compile", response_model=GenerationSpecResponse, tags=["core"])
 def compile_generation_spec(
     request: GenerationSpecRequest,
@@ -1544,6 +1572,10 @@ def compile_core_storyboard(request: CoreStoryboardCompileRequest) -> CoreStoryb
     )
     persona = memory_resolver.resolve(request.persona_id) if request.persona_id else None
     style = style_resolver.resolve(request.style) if request.style else style_resolver.resolve_default()
+    provider_budget = prompt_budget_for_provider(
+        request.provider,
+        default_budget=prompt_compiler.budget_for(),
+    )
     compiled = prompt_compiler.compile_beats(
         storyboard_engine.as_beats(storyboard),
         brief=storyboard.brief,
@@ -1553,13 +1585,14 @@ def compile_core_storyboard(request: CoreStoryboardCompileRequest) -> CoreStoryb
         style=style_resolver.style_phrase(style),
         negative=request.negative_prompt,
         provider=request.provider,
+        budget=provider_budget,
     )
     report = storyboard_engine.validate(storyboard)
     return CoreStoryboardCompileResponse(
         brief=storyboard.brief,
         format=storyboard.format,
         provider=request.provider,
-        budget=prompt_compiler.budget_for(request.provider),
+        budget=prompt_compiler.budget_for(request.provider, budget=provider_budget),
         scene_count=storyboard.scene_count,
         runtime_seconds=storyboard.runtime_seconds,
         valid=bool(report["valid"]),
@@ -1737,11 +1770,18 @@ def list_quality_rules() -> QualityCapabilitiesResponse:
 
 
 # ---------------------------------------------------------------------------
-# ETAPA 10 — provider adapters: what can run, and what it would run
+# ETAPA 10 / PR007 — provider adapters: what can run, and what it would run
 #
-# The registry is the single source of truth for adapter selection. These routes
-# expose it; they contain no selection logic of their own.
+# The registries are the single source of truth for adapter selection. These
+# routes expose them; they contain no model-name selection logic of their own.
 # ---------------------------------------------------------------------------
+
+
+@app.get("/api/v1/providers", response_model=list[UniversalProviderResponse], tags=["providers"])
+def list_universal_providers() -> list[UniversalProviderResponse]:
+    """Universal provider health, latency, version and capabilities (PR007)."""
+
+    return list_universal_provider_responses()
 
 
 @app.get("/api/v1/core/providers", response_model=ProviderCatalogueResponse, tags=["core"])

@@ -257,6 +257,47 @@ export function directIntent(payload: {
   return post<DirectorBrief>('/api/v1/core/direct', payload);
 }
 
+export type DirectorShotPlan = {
+  scene_number: number;
+  title: string;
+  objective: string;
+  emotion: string;
+  camera: string;
+  lens: string;
+  lighting: string;
+  motion: string;
+  duration: number;
+  prompt: string;
+  negative_prompt: string;
+  environment: string;
+};
+
+export type ProductionPlan = {
+  id: string;
+  title: string;
+  concept: string;
+  mood: string;
+  audience: string;
+  platform: string;
+  duration: number;
+  style: string;
+  music: string;
+  voice: string;
+  persona_id: string | null;
+  shots: DirectorShotPlan[];
+  created_at: string;
+};
+
+export function createProductionPlan(payload: {
+  user_intent: string;
+  persona_id?: string | null;
+  platform: string;
+  duration: number;
+  mood?: 'Luxury' | 'Epic' | 'Dark' | 'Minimal' | 'Sport' | 'Neo' | null;
+}) {
+  return post<ProductionPlan>('/api/v1/core/director/production-plan', payload);
+}
+
 export type StoryboardFinding = { rule: string; status: string; detail: string };
 
 export type CoreStoryboard = {
@@ -343,6 +384,32 @@ export type ProviderAdapter = {
   model_id?: string;
   conditioning?: string[];
 };
+
+export type ProviderCapabilities = {
+  max_resolution: string;
+  supports_video: boolean;
+  supports_image: boolean;
+  supports_lora: boolean;
+  supports_upscale: boolean;
+  supports_seed: boolean;
+  supports_negative_prompt: boolean;
+  prompt_budget: number;
+};
+
+export type UniversalProvider = {
+  id: string;
+  label: string;
+  status: string;
+  latency_ms: number;
+  version: string;
+  capabilities: ProviderCapabilities;
+  reason?: string | null;
+  loaded: boolean;
+};
+
+export function listProviders() {
+  return get<UniversalProvider[]>('/api/v1/providers');
+}
 
 export function providerAdapters(kind?: 'image' | 'video') {
   return get<{ adapters: ProviderAdapter[]; default_image?: string; default_video?: string }>(

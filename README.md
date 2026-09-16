@@ -26,6 +26,7 @@ duration — instead of being handed a prompt field.
 - Video generation (model, duration, format, native audio, cinematic mode)
 - Persona Lab with identity profile and LoRA training status over WebSocket
 - Storyboard cast through `/api/v1/core/storyboard`, showing the shots chosen **and** the findings
+- `/studio/director` now opens a versioned visual storyboard editor with drag/drop, timeline, per-scene camera/mood panels, undo/redo and duplicate scene — editing only, no render
 - Asset library with counts read from the API
 
 The canvas shows the **real** `output_url` of the job, or says plainly that the render failed.
@@ -132,7 +133,9 @@ Pré-requisito: repositório público no GitHub conectado ao seu plano Render
 ## BROBOND CORE
 
 The decision layer lives in `backend/app/core/` and is the only place where creative
-decisions are made. Six components, each importing nothing but `core/contracts.py`:
+decisions are made. The original independent Core components remain in place; PR005
+adds `backend/app/core/director/` for full production planning and PR006 extends it with
+versioned storyboard editing:
 
 | Component | What it owns |
 | --- | --- |
@@ -142,15 +145,22 @@ decisions are made. Six components, each importing nothing but `core/contracts.p
 | `PromptCompiler` | The only place prompt text is produced: ordered blocks + negative prompt |
 | `DirectorAgent` | Plain-language intention → concept, script, scenes, cameras, music, duration |
 | `GenerationSpecBuilder` | The composition root: combines the four above into a `GenerationSpec` |
+| `core/director/ProductionPlan` | Immutable plan: concept, mood, audience, platform, duration, music, voice and shots |
+| `core/director/ShotPlan` | Required scene contract: objective, emotion, camera, lens, lighting, motion and prompt |
+| `core/director/MoodEngine` | Internal presets `Luxury`, `Epic`, `Dark`, `Minimal`, `Sport`, `Neo` from config |
+| `core/director/CameraDirector` | Selects Dolly/Orbit/Crane/Tracking/Static/Drone from the existing Shot Library |
+| `core/director/StoryboardState` | PR006 editor state: versioned scenes, timeline, drag reorder, mood/camera patches and history |
 
 Two rules the test suite enforces:
 
 - **No route contains generation logic.** `POST /api/v1/storyboards/expand` and
   `POST /api/v1/prompts/enhance` keep their exact previous contracts; only the
   composition moved out of the route and into the Core.
-- **No component imports a peer.** `backend/tests/test_core_independence.py` imports each
-  module in a fresh interpreter with `app.core.__init__` stubbed out and fails if a
-  sibling is pulled in. `GenerationSpecBuilder` is the single declared composition root.
+- **No original independent component imports a peer.** `backend/tests/test_core_independence.py`
+  imports each listed module in a fresh interpreter with `app.core.__init__` stubbed out and
+  fails if a sibling is pulled in. `GenerationSpecBuilder` remains the single declared
+  composition root for `GenerationSpec`; PR005/PR006's Director AI package composes
+  planning/editing-only pieces and never calls providers.
 
 New endpoints:
 
@@ -158,6 +168,9 @@ New endpoints:
   receive concept, script, scenes, cameras, music and duration. No technical prompt is
   ever returned. When the intention could follow more than one language, the response
   carries one short `clarification` question instead of a guess.
+- `POST /api/v1/core/director/production-plan` — PR005 Director AI Engine: returns an
+  immutable `ProductionPlan` with 4–8 editable `ShotPlan` scenes. Planning only; no image
+  generation and no provider call.
 - `POST /api/v1/core/compile` — dry run that returns the compiled `GenerationSpec` plus
   the resolution trace (which source won each contested field). Generates no media.
 
@@ -176,33 +189,45 @@ knows both the API schemas and the Core.
 
 ## Provider adapters
 
-`SYSTEM_PROMPT.md` calls the providers *swappable adapters*. A registry makes that literally
-true: it is the single source of truth for which adapter runs, keyed on the provider the job
-asked for rather than on the job type.
+`SYSTEM_PROMPT.md` calls the providers *swappable adapters*. PR007 makes that literal in two
+layers:
+
+1. the legacy Core catalog (`GET /api/v1/core/providers`) still documents adapter kind,
+   status, checkpoint and conditioning compatibility; and
+2. the universal GPU Provider Orchestrator (`GET /api/v1/providers`) exposes runtime health,
+   latency, version and capabilities through one `BaseProvider` contract.
 
 ```text
-GET /api/v1/core/providers
+GET /api/v1/providers
 
-  flux-dev            image  local-provider   black-forest-labs/FLUX.1-dev
-  flux-1.1-pro-ultra  image  remote-provider
-  wan-2.1-t2v         video  local-provider   Wan-AI/Wan2.1-T2V-1.3B-Diffusers
-  hunyuan-video       video  local-provider   hunyuanvideo-community/HunyuanVideo
+  flux-dev      Flux  image:true  video:false  upscale:false  status: ready|unavailable
+  wan-2.1-t2v   Wan   image:false video:true   upscale:false  status: ready|unavailable
+  mock          Mock  image:true  video:true   upscale:true   status: ready
 ```
 
-A provider that cannot run is **refused**, not silently replaced — asking for a remote-only
-or planned provider fails with a reason instead of quietly rendering with a different model.
-`GET /api/v1/core/providers/health` reports whether each local adapter could run on the
-current machine, and never raises.
+The Core never knows provider-specific model names or prompt budgets. It emits a
+`GenerationSpec`; `GenerationExecutor` resolves the requested provider in
+`ProviderRegistry`, calls only `BaseProvider`, and returns a `ProviderAsset` for the persisted
+job. Flux and Wan receive the full spec, never a raw prompt string. The required
+`MockProvider` stays in the registry so tests and local development can run without GPU
+weights or credentials.
+
+A provider that cannot run is **refused**, not silently replaced — asking for a remote-only,
+planned or incompatible provider fails with a reason instead of quietly rendering with a
+different model. Health/capability discovery never exposes secrets.
 
 Adding a provider is one registration, not another branch in the worker:
 
 ```python
-registry.register(ProviderEntry(
-    provider_id="acme-image", label="Acme", kind=GenerationKind.IMAGE,
-    status=STATUS_LOCAL, model_id="acme/v1",
-    module="app.providers.image", attribute="FluxDiffusersProvider",
+provider_registry.register(ProviderRegistration(
+    provider_id="acme-image",
+    label="Acme",
+    factory=lambda model_id=None: AcmeProvider(model_id=model_id),
+    aliases=("acme",),
 ))
 ```
+
+Full PR007 notes: `docs/PROVIDERS.md`.
 
 ## Prompt compiler
 
@@ -217,9 +242,10 @@ SUBJECT · CHARACTER · ENVIRONMENT · ACTION · CAMERA · LENS · LIGHT · COLO
 
 Blocks are deduplicated on join, so a shot preset no longer makes the focal length appear
 twice. Colour is its own block rather than part of `STYLE`, which means a prompt over budget
-drops an adjective before it drops the grade. The budget itself belongs to the provider
-(`flux-dev` 1000, `wan-video` 1200), and anything trimmed is reported in `dropped` — never
-silently.
+drops an adjective before it drops the grade. PR007 keeps provider-specific budgets in
+`ProviderCapabilities.prompt_budget`; the Core compiler accepts only the resolved numeric
+budget and otherwise uses its conservative default. Anything trimmed is reported in
+`dropped` — never silently.
 
 `POST /api/v1/core/storyboard/compile` puts the two together: it casts a brief into shots and
 returns one compiled prompt per scene.
@@ -308,7 +334,7 @@ BROBOND-AI-STUDIO/
 │   ├── app/services/     # service adapters
 │   ├── app/main.py       # composition root: wires the Core, exposes the routes
 │   ├── app/models.py     # SQLAlchemy models
-│   └── tests/            # pytest suite (1,199 tests)
+│   └── tests/            # pytest suite (1,246 tests)
 ├── docker-compose.yml    # local Postgres, Redis and MinIO
 └── requirements.txt      # Python service dependencies
 ```
@@ -346,7 +372,7 @@ What genuinely remains is tracked in two places, both kept honest by tests:
 - **`ROADMAP.md`** — the `- [ ]` items: first GPU-validated render, persisted Personas/Styles/
   Shots, Character and Prompt libraries, episode continuity, multi-tenancy, billing.
 - **`docs/LIMITATIONS.md`** — what cannot be verified on a machine without a GPU, the state
-  that still lives in memory, the 33 of 58 routes without authentication, and the four dead
+  that still lives in memory, the 35 of 66 routes without authentication, and the four dead
   modules from `AUDIT.md` P0-1.
 
 ## Validation
@@ -360,8 +386,8 @@ npm run build
 
 The end-to-end backend test covers registration, authenticated upload, generation job creation, storyboard expansion and asset listing.
 
-The backend suite is **1,199 tests** and total backend coverage is **95%**, held by a `--fail-under=90` gate in CI. The whole
-`backend/app/core/` directory reads 98%. The remainder of the gap is the pre-existing dead
+The backend suite is **1,246 tests** and total backend coverage is **96%**, held by a `--fail-under=95` gate in CI. The whole
+`backend/app/core/` directory reads 98%, with PR005 Director AI and PR006 StoryboardState covered above the 95% floor. The remainder of the gap is the pre-existing dead
 cluster from `AUDIT.md` P0-1 — four modules, 100 statements, that do not import at all; see
 `docs/LIMITATIONS.md` §5. `core/persona_memory.py`,
 `core/cinematic_library.py`, `core/shot_library.py` and `core/storyboard_engine.py` are all
@@ -376,6 +402,6 @@ Suites by area: `test_core_contracts.py`, `test_core_memory_resolver.py`,
 `test_core_cinematic_library.py`, `test_core_cinematic_api.py`,
 `test_core_shot_library.py`, `test_core_shot_api.py`,
 `test_core_storyboard_engine.py`, `test_core_storyboard_api.py`,
-`test_core_prompt_blocks.py`, `test_core_storyboard_compile_api.py` and
-`test_provider_adapters.py`. The independence tests
+`test_core_prompt_blocks.py`, `test_core_storyboard_compile_api.py`,
+`test_pr005_director_ai.py` and `test_provider_adapters.py`. The independence tests
 spawn subprocesses, so the suite takes a few seconds longer than a pure in-process run.
