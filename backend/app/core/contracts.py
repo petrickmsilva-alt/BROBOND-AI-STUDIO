@@ -348,7 +348,7 @@ class GenerationSpec:
     aspect_ratio: str = "16:9"
     fps: int = 24
     duration: float = 5.0
-    provider: str = "flux-dev"
+    provider: str = ""
     seed: int | None = None
     lora: str | None = None
     controlnet: str = "none"

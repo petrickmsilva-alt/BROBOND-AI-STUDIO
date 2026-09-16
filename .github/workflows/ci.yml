@@ -29,14 +29,14 @@ jobs:
             } >> "${GITHUB_STEP_SUMMARY}"
             exit 1
           fi
-      # ETAPA 16: the 90% floor is enforced, not just reported. The denominator
+      # PR005: the 95% floor is enforced, not just reported. The denominator
       # includes the four dead modules from AUDIT.md P0-1 (100 statements, 0%),
       # so this number is conservative by construction — see
       # backend/tests/test_dead_module_boundary.py.
-      - name: Coverage gate (90%)
+      - name: Coverage gate (95%)
         run: |
           PYTHONPATH=backend coverage run --source=backend/app -m pytest backend/tests -q
-          coverage report --include='backend/app/*' --skip-empty --fail-under=90
+          coverage report --include='backend/app/*' --skip-empty --fail-under=95
   frontend:
     runs-on: ubuntu-latest
     steps:
@@ -46,8 +46,8 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
-      # PR004.1: Project Memory contract — behavioral suite (adapter + hook)
-      # with a 95% coverage gate (vitest, scoped to lib/memory/).
-      - name: Frontend contract tests (Project Memory)
+      # PR004.1 + PR006: Project Memory and StoryboardState behavioral suites
+      # with a 95% coverage gate (vitest, scoped to lib/memory/ and lib/storyboard/).
+      - name: Frontend contract tests (Memory + Storyboard)
         run: npm run test:frontend:coverage
       - run: npm run build

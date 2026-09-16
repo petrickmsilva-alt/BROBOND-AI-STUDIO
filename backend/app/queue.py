@@ -25,6 +25,7 @@ from .db import SessionLocal
 from .models import Asset, PersonaImage, TrainingRun
 from .preprocessing import preprocessor
 from .providers import registry as provider_registry
+from .providers.generation_executor import GenerationExecutor
 from .providers.registry import DEFAULTS as PROVIDER_DEFAULTS
 from .schemas import GenerationType, JobStatus
 from .spec_adapter import compile_job, resolve_model_id
@@ -48,6 +49,7 @@ celery_app.conf.update(task_track_started=True, task_serializer="json", result_s
 #: produced it. Shared with the API so a manual assessment and the worker's
 #: verdict can never disagree.
 quality_gate = QualityGate()
+generation_executor = GenerationExecutor()
 
 #: Progress milestones. The worker used to jump from 10 to 100, which gave a
 #: client nothing to render between "it started" and "it finished".
@@ -122,7 +124,7 @@ def _resolve_model_id_for(entry, kind: GenerationKind, spec) -> str:
 
     if kind is GenerationKind.VIDEO:
         if entry.provider_id == PROVIDER_DEFAULTS[GenerationKind.VIDEO]:
-            return settings.video_model_id
+            return settings.video_model_id or entry.model_id
         return entry.model_id
     return resolve_model_id(spec.provider, entry.model_id)
 
@@ -249,10 +251,17 @@ def process_generation(self, job_id: str) -> dict[str, str]:
         provider_registry.check(entry, kind)
         transition(job, progress=PROGRESS_INPUTS_RESOLVED)
         model_id = _resolve_model_id_for(entry, kind, spec)
-        provider = provider_registry.build(entry.provider_id, kind, model_id=model_id)
+        executable_spec = replace(spec, provider=entry.provider_id)
 
         transition(job, progress=PROGRESS_RENDERING)
-        result = provider.generate(spec, settings.weights_dir)
+        execution = generation_executor.execute(
+            executable_spec,
+            settings.weights_dir,
+            provider_id=entry.provider_id,
+            model_id=model_id,
+            job_id=str(job.id),
+        )
+        result = execution.asset
 
         # ETAPA 14: nothing ever looked at what came back. A provider could hand
         # over a path that did not exist, or a frame whose geometry contradicted

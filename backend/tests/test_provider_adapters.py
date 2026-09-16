@@ -567,7 +567,7 @@ def test_the_worker_still_defaults_to_wan_when_no_model_is_named(
         Job(type=GenerationType.VIDEO, prompt="a slow dolly-in", parameters={"mode": "text-to-video"})
     )
     assert process_generation(str(job.id))["status"] == "complete"
-    assert seen["model_id"] == inference_enabled.video_model_id, "the settings knob must keep working"
+    assert seen["model_id"] == (inference_enabled.video_model_id or "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"), "the settings knob must keep working"
 
 
 def test_the_worker_refuses_a_remote_only_provider(inference_enabled) -> None:
@@ -620,22 +620,25 @@ def test_the_settings_video_knob_does_not_leak_into_hunyuan() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_every_registered_provider_has_its_own_prompt_budget() -> None:
-    """ETAPA 9 shipped a budget map keyed on `wan-video`, which is not a
-    catalogue id, so real video jobs fell back to the conservative budget."""
+def test_prompt_budgets_live_in_provider_capabilities_not_the_core() -> None:
+    """PR007 moved model-specific prompt budgets out of the Core."""
 
-    from app.core.prompt_compiler import PROVIDER_PROMPT_BUDGET, PromptCompiler
+    from app.core.prompt_compiler import DEFAULT_PROMPT_BUDGET, PromptCompiler
+    from app.providers import provider_registry as universal_registry
 
     compiler = PromptCompiler()
-    for provider_id in registry.ids():
-        assert provider_id in PROVIDER_PROMPT_BUDGET, provider_id
-        assert compiler.budget_for(provider_id) == PROVIDER_PROMPT_BUDGET[provider_id]
+    assert compiler.budget_for("opaque-provider") == DEFAULT_PROMPT_BUDGET
+    for provider in universal_registry.list():
+        budget = provider.capabilities().prompt_budget
+        assert compiler.budget_for(provider.provider_id, budget=budget) == min(budget, compiler.max_prompt_chars)
 
 
-def test_the_shorthand_still_resolves_through_the_alias() -> None:
+def test_the_shorthand_budget_resolves_through_provider_capabilities() -> None:
     from app.core.prompt_compiler import PromptCompiler
+    from app.providers import provider_registry as universal_registry
 
-    assert PromptCompiler().budget_for("wan-video") == PromptCompiler().budget_for("wan-2.1-t2v")
+    capability = universal_registry.DEFAULT_REGISTRY.capabilities("wan-video")
+    assert PromptCompiler().budget_for("wan-video", budget=capability.prompt_budget) == 1200
 
 
 # ---------------------------------------------------------------------------

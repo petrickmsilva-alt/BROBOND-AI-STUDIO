@@ -257,10 +257,11 @@ def test_route_inventory_only_grew() -> None:
     assert len(websockets) == 2
     # 27 /api/v1 routes before the Core, 29 after ETAPA 2, 37 after ETAPA 4,
     # 46 after ETAPA 5, 50 after ETAPA 6, 51 after ETAPA 8, 52 after ETAPA 9,
-    # 54 after ETAPA 10, 56 after ETAPA 13, 58 after ETAPA 14, 64 after PR003
-    # (six persona-profile routes). The guard is that the number only grows:
-    # nothing was ever removed.
-    assert len([route for route in http if route.path.startswith("/api/v1")]) == 64
+    # 54 after ETAPA 10, 56 after ETAPA 13, 58 after ETAPA 14, 64 after PR003,
+    # 65 after PR005 (Director AI production-plan route), 66 after PR007
+    # (`/api/v1/providers`). The guard is that the number only grows: nothing
+    # was ever removed.
+    assert len([route for route in http if route.path.startswith("/api/v1")]) == 66
 
 
 # ------------------------------------------------- no generation logic in routes
@@ -330,6 +331,7 @@ def test_openapi_documents_the_core_tag() -> None:
         "/api/v1/core/cinematic/motivations/of",
         "/api/v1/core/compile",
         "/api/v1/core/direct",
+        "/api/v1/core/director/production-plan",
         "/api/v1/core/personas",
         "/api/v1/core/personas/{persona_id}",
         "/api/v1/core/personas/{persona_id}/approve",
@@ -353,6 +355,7 @@ def test_openapi_documents_the_core_tag() -> None:
     ]
     assert "GenerationSpecResponse" in spec["components"]["schemas"]
     assert "DirectorBriefResponse" in spec["components"]["schemas"]
+    assert "DirectorProductionPlanResponse" in spec["components"]["schemas"]
 
 
 def test_compiled_prompt_shape_is_stable_across_calls() -> None:

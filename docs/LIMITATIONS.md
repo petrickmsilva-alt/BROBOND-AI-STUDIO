@@ -66,7 +66,7 @@ restou:
 
 ## 3. Autorização (P0-4, fechado no PR002; ampliado no PR003)
 
-**31 de 64 rotas** tocam identidade, e a diferença entre elas importa:
+**31 de 66 rotas** tocam identidade, e a diferença entre elas importa:
 
 - **28** exigem token — `Depends(current_user)`: `/auth/me`, `/knowledge`, `/queue`,
   `/jobs/{id}`, `/jobs/{id}/cancel`, `/assets/upload`, `/assets`,
@@ -82,12 +82,12 @@ restou:
   anônima passa — e o job criado anônima não tem tenant, logo nenhuma
   identidade pode lê-lo de volta (consequência documentada, fixada por
   `test_an_anonymous_job_cannot_be_read_back_with_any_token`).
-- As outras **33** não verificam identidade por desenho: `GET /health`, o bloco
+- As outras **35** não verificam identidade por desenho: `GET /health`, o bloco
   `/system/*`, `/models/*`, `/auth/login`, `/auth/register` (com rate limit),
-  `/prompts/enhance`, `/storyboards/expand` e o Core read-only
-  (`/core/direct`, `/core/cinematic/*`, `/core/shots*`, `/core/storyboard*`,
-  `/core/timeline*`, `/core/quality/*`, `/core/providers*`) — dados de referência
-  e decisões, sem estado de tenant.
+  `/prompts/enhance`, `/storyboards/expand`, `/providers` e o Core read-only
+  (`/core/direct`, `/core/director/production-plan`, `/core/cinematic/*`,
+  `/core/shots*`, `/core/storyboard*`, `/core/timeline*`, `/core/quality/*`,
+  `/core/providers*`) — dados de referência e decisões, sem estado de tenant.
 
 Regras de tenant: um token nunca enxerga job, asset, run ou LoRA de outro
 workspace — as respostas são **404** (não 403), para o id de outro tenant não
@@ -111,7 +111,7 @@ from app.main import app
 import inspect
 n = sum(1 for r in app.routes if isinstance(r, APIRoute) and r.path.startswith('/api/v1')
         and 'user' in inspect.signature(r.endpoint).parameters)
-print(f'{n} de 64 rotas com identidade')"
+print(f'{n} de 66 rotas com identidade')"
 ```
 
 ---
@@ -164,7 +164,8 @@ ressuscitaria um segundo backend que duplica `main.py`. `test_dead_module_bounda
 fronteira: se algum passar a importar, um teste falha.
 
 **Consequência prática:** eles pesam no denominador da cobertura. Com eles, `backend/app` lê
-**95%**; sem eles, 97%. O gate do CI impõe 90% sobre o número conservador.
+**96%**; sem eles, a margem é maior. O gate do CI agora impõe **95%** sobre o número
+conservador.
 
 ---
 

@@ -6,6 +6,108 @@ versões de produto do `ROADMAP.md`.
 
 ---
 
+## [Unreleased] — PR007: GPU PROVIDER ORCHESTRATOR
+
+PR007 cria a camada universal de Providers. O Core agora trata `provider` como identificador
+opaco e não conhece Flux, Wan, Hunyuan, Kling ou Runway; ele apenas produz `GenerationSpec`.
+A comunicação com GPU/providers passa por `BaseProvider`, `ProviderRegistry` e
+`GenerationExecutor`.
+
+### O que mudou
+
+- **Contrato universal** — `backend/app/providers/base_provider.py` define
+  `ProviderCapabilities`, `ProviderEstimate`, `ProviderHealth`, `ProviderAsset` e os métodos
+  abstratos `generate_image`, `generate_video`, `upscale`, `health` e `estimate`.
+- **Registry sem branches por modelo** — `provider_registry.py` registra Flux, Wan, Mock e
+  Hunyuan por factories/aliases e implementa `register()`, `get()`, `list()` e
+  `health_all()`.
+- **Executor provider-agnóstico** — `generation_executor.py` executa
+  `GenerationSpec -> Registry -> Provider -> Asset -> Job` sem conhecer IDs de provider.
+- **Adapters universais** — `flux_provider.py` e `wan_provider.py` recebem somente
+  `GenerationSpec`; Wan/Hunyuan compartilham wrapper de vídeo para evitar lógica duplicada.
+- **Mock obrigatório** — `mock_provider.py` retorna imagem, vídeo e upscale falsos para testes
+  e desenvolvimento sem GPU.
+- **Capabilities na borda** — budgets e capacidades (`max_resolution`, vídeo, imagem, LoRA,
+  upscale, seed e negative prompt) vivem nos providers; o Core aceita apenas budget numérico
+  já resolvido.
+- **API e UI** — `GET /api/v1/providers` retorna status, latência, versão e capabilities sem
+  segredos; `/studio/providers` mostra Flux, Wan e Mock com botão **Testar**.
+- **Testes** — `backend/tests/test_pr007_provider_orchestrator.py` cobre contract, registry,
+  Mock, Flux, Wan, executor, health endpoint, Core decoupling e UI/client.
+
+Documentação nova: `docs/PROVIDERS.md`.
+
+---
+
+## [Unreleased] — PR006: STORYBOARD CINEMATIC ENGINE
+
+O storyboard do Director AI agora é um editor cinematográfico visual e versionado.
+O PR é estritamente de edição do plano: nenhum provider FLUX/Wan foi alterado, nenhum job de
+geração é criado e nenhuma imagem é renderizada.
+
+### O que mudou
+
+- **Entidade versionada** — `StoryboardState` com `project_id`, `production_plan_id`,
+  `scenes[]`, `version` e `updated_at`; toda alteração real incrementa versão e recalcula a
+  timeline.
+- **Cena editável** — `StoryboardScene` permite patch granular de título, objetivo, emoção,
+  câmera, lente, iluminação, movimento, duração e ambiente sem recriar a cena inteira.
+- **Drag & Drop** — `StoryboardCanvas` permite mover cenas; o estado recalcula `scene_number`,
+  `timeline_start`, `timeline_end` e duração total.
+- **Camera Panel** — presets `Hero Walk`, `Orbit`, `Tracking`, `Crane`, `Drone`, `Static`
+  atualizam apenas o bloco CameraDirector (`camera`, `lens`, `lighting`, `motion`).
+- **Mood Panel** — cada cena pode usar `Luxury`, `Epic`, `Dark`, `Minimal`, `Sport` ou `Neo`;
+  a operação altera somente `mood` e `lut` no plano editável.
+- **Timeline** — faixa horizontal com `C1`, `C2`, `C3`, `C4` proporcionais à duração; sliders
+  permitem arrastar duração e recalcular o total.
+- **Undo/Redo** — `StoryboardHistory` guarda até 50 estados para editar, reordenar, duplicar e
+  remover.
+- **Duplicate Scene** — botão duplica a cena com novo UUID, mantendo câmera e mood.
+- **Frontend desacoplado** — `/studio/director` foi dividido em `StoryboardCanvas`, `Timeline`,
+  `SceneInspector`, `CameraPanel` e `MoodPanel`.
+- **Testes** — `backend/tests/test_pr006_storyboard_engine.py` cobre a entidade/histórico e
+  `lib/storyboard/storyboard_state.test.ts` cobre timeline, drag, undo, redo, duplicate,
+  version e scene update. O build e o gate de cobertura de 95% permanecem verdes.
+
+Documentação nova: `docs/STORYBOARD_ENGINE.md`.
+
+---
+
+## [Unreleased] — PR005: DIRECTOR AI ENGINE
+
+O Director AI agora produz um `ProductionPlan` cinematográfico completo a partir de
+linguagem humana. O PR é estritamente de planejamento: nenhum provider FLUX/Wan foi
+alterado, nenhum job de geração é criado e nenhuma imagem é renderizada.
+
+### O que mudou
+
+- **Core novo** — pacote `backend/app/core/director/` com `director_agent.py`,
+  `production_plan.py`, `shot_plan.py`, `mood_engine.py`, `camera_director.py`,
+  `mood_config.py` e `__init__.py`.
+- **Contratos imutáveis** — `ProductionPlan` e `ShotPlan` são dataclasses congeladas;
+  `ShotPlan` exige objetivo, emoção, câmera, lente, iluminação, movimento, duração,
+  prompt, negative prompt e ambiente.
+- **Mood Engine** — presets internos `Luxury`, `Epic`, `Dark`, `Minimal`, `Sport`,
+  `Neo`, configurados fora da lógica com LUT, contraste, iluminação, temperatura,
+  ritmo e partículas.
+- **Camera Director** — consome a `ShotLibrary` existente para selecionar Dolly, Orbit,
+  Crane, Tracking, Static ou Drone como primeira proposta editável.
+- **Director Agent** — `create_production_plan(user_intent, persona_id, platform,
+  duration, *, mood=None)` executa o fluxo Intent → Mood → Style → Shot Sequence →
+  Storyboard → Prompt Compiler → ProductionPlan, gerando 4–8 cenas narrativas sem
+  dividir texto igualmente.
+- **API** — `POST /api/v1/core/director/production-plan` retorna o plano, sem `job_id`
+  e sem `output_url`.
+- **Frontend** — página `/studio/director` com campo grande “O que você quer criar
+  hoje?”, Persona, Plataforma, Duração, Mood e botão “Criar Produção”; os cards do
+  storyboard mostram e permitem editar Cena, Objetivo, Câmera, Lente, Duração e Emoção.
+- **Testes** — `backend/tests/test_pr005_director_ai.py` cobre `DirectorAgent`,
+  `MoodEngine`, `CameraDirector`, `ProductionPlan`, `ShotPlan`, storyboard, rota e UI.
+  O gate backend do CI foi elevado para `coverage report --fail-under=95` e a execução local
+  mede 96% em `backend/app`.
+
+---
+
 ## [Unreleased] — PR004.1: PROJECT MEMORY CONTRACT
 
 Micro PR de padronização: o contrato de Project Memory foi congelado e toda

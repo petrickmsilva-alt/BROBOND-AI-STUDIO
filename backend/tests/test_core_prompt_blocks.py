@@ -208,8 +208,9 @@ def test_the_subject_is_still_never_dropped(compiler):
 # ---------------------------------------------------------------------------
 
 
-def test_each_provider_declares_its_own_budget(compiler):
-    assert compiler.budget_for("flux-dev") < compiler.budget_for("wan-video")
+def test_provider_names_are_opaque_to_the_core_budget(compiler):
+    assert compiler.budget_for("provider-a") == compiler.budget_for("provider-b")
+    assert compiler.budget_for("provider-b", budget=1200) > compiler.budget_for("provider-a")
 
 
 def test_an_unknown_provider_gets_the_conservative_budget(compiler):

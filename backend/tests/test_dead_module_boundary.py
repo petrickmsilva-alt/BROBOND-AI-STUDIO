@@ -107,7 +107,7 @@ def test_the_live_backend_is_well_above_the_target() -> None:
         "backend/app/main.py": 85,
     }
     # The percentages are asserted by the coverage gate in CI
-    # (`coverage report --fail-under=90`); this test pins which modules are
+    # (`coverage report --fail-under=95`); this test pins which modules are
     # expected to hold which floor, so a drop is attributed rather than averaged
     # away by a large well-covered module.
     for relative, floor in live_minimum.items():

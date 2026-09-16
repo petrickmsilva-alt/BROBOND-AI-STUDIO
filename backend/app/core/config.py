@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     inference_enabled: bool = False
     training_enabled: bool = False
     lora_trainer_command: str = ""
-    video_model_id: str = "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
+    video_model_id: str = ""
     weights_dir: str = "weights"
     minio_endpoint: str = "http://localhost:9000"
     minio_access_key: str = "brobond"

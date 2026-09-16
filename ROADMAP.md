@@ -8,11 +8,16 @@ A fundação visual, API, autenticação, jobs, storage, providers, storyboard, 
 
 **Atualização da ETAPA 2 (BROBOND CORE):** a camada de decisão agora existe em
 `backend/app/core/`. Começou com seis componentes (`DirectorAgent`, `MemoryResolver`,
-`PromptCompiler`, `StyleResolver`, `ShotResolver`, `GenerationSpecBuilder`) e chegou a **doze**
-na ETAPA 14, com `PersonaMemory`, `CinematicLibrary`, `ShotLibrary`, `StoryboardEngine`,
-`VideoTimeline` e `QualityGate` — mais o contrato `GenerationSpec` e seus 19 campos
-obrigatórios. Nenhuma rota FastAPI contém lógica de geração. Ver `AUDIT.md` para o ponto de
-partida, `CHANGELOG.md` para o que mudou e `docs/ETAPAS.md` para o índice das 17 etapas.
+`PromptCompiler`, `StyleResolver`, `ShotResolver`, `GenerationSpecBuilder`) e chegou a **treze**
+componentes vivos na PR004-prep, com `PersonaMemory`, `CinematicLibrary`, `ShotLibrary`,
+`StoryboardEngine`, `VideoTimeline`, `QualityGate` e `JobService`. PR005 acrescenta o pacote
+`core/director/` para `ProductionPlan`/`ShotPlan`, `MoodEngine` e `CameraDirector`; PR006
+acrescenta `StoryboardState`/`StoryboardHistory` e o editor visual desacoplado — mais o contrato
+`GenerationSpec` e seus 19 campos obrigatórios. PR007 acrescenta o GPU Provider Orchestrator:
+`BaseProvider`, `ProviderRegistry`, `GenerationExecutor`, `MockProvider` obrigatório e
+`/studio/providers`, mantendo nomes/modelos de provider fora do Core. Nenhuma rota FastAPI contém
+lógica de geração. Ver `AUDIT.md` para o ponto de partida, `CHANGELOG.md` para o que mudou e
+`docs/ETAPAS.md` para o índice das 17 etapas.
 
 **Atualização da ETAPA 3 (GENERATION SPEC):** `GenerationSpec` é agora a única entrada de
 todo provider — `generate(spec, output_dir)`, com `ImageProvider`/`VideoProvider` como ABC.
@@ -22,7 +27,7 @@ worker devolver `cancelled` sem executar nada (P0-2a) foi corrigido.
 **Atualização PR002/PR003 (segurança e persistência):** os P0s pendentes foram
 fechados. **P0-2b** (jobs em memória): `JobRow` + repositório SQL — API e
 worker compartilham a tabela `jobs` (Alembic `0001`). **P0-4** (endpoints
-sem token): 28 de 64 rotas exigem identidade, 3 a aceitam sem exigir e 33 são
+sem token): 28 de 66 rotas exigem identidade, 3 a aceitam sem exigir e 35 são
 públicas por desenho; os 2 WebSockets autenticam por `?token=`. **P0-3** foi
 fechado na ETAPA 11 com `publish_sync`. **P0-1** permanece por decisão:
 quatro módulos mortos e quebrados, não apagados nem ressuscitados. E as
@@ -68,17 +73,18 @@ ponta a ponta: GPU, pesos e providers instalados. Ver `docs/LIMITATIONS.md`.
 - [x] Versioned LoRA assets
 - [x] Knowledge Base persistente no PostgreSQL
 - [x] Memory Resolver API inicial
-- [x] **BROBOND CORE implementado** (`core/`: 6 componentes independentes + `GenerationSpec`)
+- [x] **BROBOND CORE implementado** (`core/`: componentes independentes + `GenerationSpec`; PR005 adiciona pacote de ProductionPlan; PR006 adiciona StoryboardState versionado)
 - [x] **Memory Resolver em cada GenerationSpec** (`persona_id` → frase de identidade no prompt)
-- [x] **Testes 90%** (ETAPA 16: cobertura 89% → 95%, 28 módulos em 100%, gate `--fail-under=90` no CI, fronteira do cluster morto fixada por teste, 3 achados registrados)
-- [x] **UX Premium** (ETAPA 15: Diretor como porta de entrada consumindo `/core/direct`, as 31 rotas Core alcançáveis, casca sem fatos inventados, resultado real em vez de desenho, erros distinguindo offline de rejeição, proxy relativo)
+- [x] **Testes 95%** (ETAPA 16: cobertura 89% → 95%; PR005: cobertura atual 96% e gate `--fail-under=95` no CI, fronteira do cluster morto fixada por teste, 3 achados registrados)
+- [x] **UX Premium** (ETAPA 15 + PR005 + PR006: Diretor como porta de entrada consumindo `/core/direct` e `/core/director/production-plan`, editor `/studio/director` com drag/drop, timeline, câmera/mood por cena e undo/redo, as 32 rotas Core alcançáveis, casca sem fatos inventados, resultado real em vez de desenho, erros distinguindo offline de rejeição, proxy relativo)
 - [x] **Quality AI** (ETAPA 14: `QualityGate` como 12º componente independente, output conferido contra o spec antes de persistir, job que não produziu arquivo deixa de ser `complete`, limites da avaliação declarados em vez de fingidos)
 - [x] **Video Timeline** (ETAPA 13: `VideoTimeline` como 11º componente independente, `media.concat` para montagem, `probe` finalmente parseado, dissolve por continuação de família, plano nunca fingindo arquivo renderizado)
 - [x] **Director AI** (ETAPA 7: arco `documentary` restaurado, escolha de formato por especificidade em vez de ordem de dicionário, empate declarado em vez de decidido em silêncio, ritmo declarado igual ao entregue, oito beats distintos)
 - [x] **Storage MinIO/S3** (ETAPA 12: `download`/`exists`/`delete`/`upload_path`/`ensure_bucket`, os quatro 501 religados, ramo S3 e guard de traversal cobertos, `storage.py` a 100%)
 - [x] **Queue & WebSocket** (ETAPA 11: `transition()` como único ponto de mutação, `EventHub.publish` finalmente com chamador, seis marcos de progresso, buffer de replay, socket push em vez de loop de leitura)
 - [x] **Provider Adapters** (ETAPA 10: registry como fonte única, Hunyuan adicionado, ControlNet/IP-Adapter como objetos, quatro duplicações removidas, provider indisponível recusado em vez de substituído)
-- [x] **Prompt Compiler estruturado** (ETAPA 9: os 13 blocos de `SYSTEM_PROMPT.md`, dedupe entre blocos, cor separada de estilo, orçamento por provider, storyboard compilado cena a cena)
+- [x] **GPU Provider Orchestrator** (PR007: `BaseProvider` universal, `ProviderRegistry`, `GenerationExecutor`, Mock obrigatório, Flux/Wan adapters e `/api/v1/providers` + `/studio/providers`)
+- [x] **Prompt Compiler estruturado** (ETAPA 9 + PR007: os 13 blocos de `SYSTEM_PROMPT.md`, dedupe entre blocos, cor separada de estilo, orçamento numérico vindo das capabilities do provider, storyboard compilado cena a cena)
 - [x] **Director Agent determinístico** (intenção → conceito, roteiro, cenas, câmeras, música, duração)
 - [x] **Style Resolver** com 5 estilos nomeados + padrão + neutro
 - [x] **Shot Resolver** com os 10 códigos publicados
@@ -90,10 +96,12 @@ ponta a ponta: GPU, pesos e providers instalados. Ver `docs/LIMITATIONS.md`.
 
 ## v3.0 — AI Director
 
-- [~] Conversa de direção: trailer, luxo, fashion film, documental *(ETAPA 2 entregou o `DirectorAgent` determinístico e `POST /api/v1/core/direct`, com detecção de formato, paleta e pergunta curta de esclarecimento; falta a conversa multi-turno e o enriquecimento por LLM, cujo hook `LanguageModel` já existe)*
-- [ ] Roteirista automático
-- [ ] Diretor de câmera IA
-- [ ] Ritmo, montagem, música e iluminação por intenção
+- [x] **Director AI Engine / PR005**: intenção humana → `ProductionPlan` imutável, moods internos, câmera automática por Shot Library, storyboard de 4–8 cenas e UI `/studio/director`, sem render e sem providers.
+- [x] **Storyboard Cinematic Engine / PR006**: `StoryboardState` versionado, editor visual desacoplado, drag/drop, timeline proporcional com duração editável por arraste, CameraPanel, MoodPanel, undo/redo e duplicação de cena sem render.
+- [~] Conversa de direção: trailer, luxo, fashion film, documental *(ETAPA 2 entregou o `DirectorAgent` determinístico e `POST /api/v1/core/direct`, PR005 entrega `POST /api/v1/core/director/production-plan`; falta a conversa multi-turno e o enriquecimento por LLM, cujo hook `LanguageModel` já existe)*
+- [~] Roteirista automático persistido e versionado *(PR006 versiona o StoryboardState no editor; persistência server-side continua como evolução futura)*
+- [x] Diretor de câmera IA inicial (PR005: Dolly, Orbit, Crane, Tracking, Static, Drone escolhidos da Shot Library; PR006: presets Hero Walk, Orbit, Tracking, Crane, Drone e Static editáveis por cena)
+- [x] Ritmo, montagem, música e iluminação por intenção no plano (PR005; PR006 permite ajustar duração, iluminação, movimento e mood por cena; ainda sem render)
 - [ ] Voice Clone
 - [ ] Lip Sync
 
