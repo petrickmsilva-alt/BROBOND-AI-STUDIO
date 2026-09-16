@@ -22,7 +22,7 @@ import {
 import {
   Aperture, ArrowUpRight, AlertTriangle, Bell, Box, ChevronDown, CircleHelp, Clapperboard,
   Clock3, Download, Folder, Gauge, Grid2X2, Image as ImageIcon, Layers3, Library,
-  Menu, MessageSquareText, MoreHorizontal, Move3d, Play, Plus, Search, Settings2,
+  Menu, MessageSquareText, MoreHorizontal, Move3d, Network, Play, Plus, Search, Settings2,
   Sparkles, Square, UserRound, WandSparkles, X, Zap, LogIn, LockKeyhole, Film, Music4, Timer,
 } from 'lucide-react';
 
@@ -180,7 +180,7 @@ export default function Home() {
       <div className="nav-label studio-label">STUDIO</div>
       <nav>{[{ id: 'persona', label: 'Personas', icon: UserRound }, { id: 'image', label: 'Image', icon: ImageIcon }, { id: 'video', label: 'Video', icon: Clapperboard }, { id: 'assets', label: 'Projects', icon: Folder }].map(item => { const Icon = item.icon; return <button key={item.id} className={active === item.id ? 'selected' : ''} onClick={() => setActive(item.id)}><Icon size={18} /><span>{item.label}</span>{item.id === 'persona' && <b className="nav-badge">IDENTITY</b>}</button>; })}</nav>
       <div className="nav-label library-label">LIBRARY</div>
-      <nav><button onClick={() => router.push('/studio/personas')}><UserRound size={18} /><span>Persona profiles</span><b className="nav-badge">SQL</b></button><button onClick={() => setActive('assets')}><Library size={18} /><span>All assets</span></button></nav>
+      <nav><button onClick={() => router.push('/studio/personas')}><UserRound size={18} /><span>Persona profiles</span><b className="nav-badge">SQL</b></button><button onClick={() => router.push('/studio/knowledge')}><Network size={18} /><span>Knowledge graph</span><b className="nav-badge">V3.1</b></button><button onClick={() => setActive('assets')}><Library size={18} /><span>All assets</span></button></nav>
       <div className="sidebar-bottom">
         <div className="gpu-card">
           <div className="gpu-head"><span><span className={`status-dot ${gpu?.available ? '' : 'off'}`} /> {gpu === null ? 'Checking…' : gpu.available ? 'GPU ready' : 'No GPU'}</span><MoreHorizontal size={16} /></div>

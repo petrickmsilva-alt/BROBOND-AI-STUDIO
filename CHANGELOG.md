@@ -6,6 +6,54 @@ versões de produto do `ROADMAP.md`.
 
 ---
 
+## [Unreleased] — V3.1: CINEMATIC KNOWLEDGE GRAPH
+
+V3.1 transforma memória em conhecimento relacional: Character, Brand, Campaign,
+Location, Vehicle, Wardrobe e Prop — **todas relacionáveis** — num grafo
+persistente em PostgreSQL, com Relationship Engine (relações bidirecionais),
+Semantic Query determinística e UI `/studio/knowledge`. O Director AI, o
+Provider Registry e o Render Engine **não foram alterados**; a integração é
+apenas enriquecimento de contexto do Memory Resolver — o `GenerationSpec`
+continua com seus 19 campos e um spec compilado com o grafo conectado é
+idêntico a um sem ele (fixado por teste).
+
+### O que mudou
+
+- **Pacote `backend/app/graph/`** (nova camada de aplicação, ETAPA 1) —
+  `graph_models.py` (tabelas `knowledge_graph_nodes` +
+  `knowledge_graph_relationships`), `graph_repository.py` (GraphRepository,
+  o único limite de persistência do grafo), `relationship_engine.py`
+  (vocabulário de relações com rótulo de reverso, validação, vizinhança
+  bidirecional, BFS de caminho mínimo) e `semantic_query.py` (pontuação
+  determinística: "RAM branca" → o Vehicle completo; "Showroom" → o Location).
+- **Catálogo canônico** — Petrick → `dirige` → RAM (branca), Petrick →
+  `veste` → Legacy Jacket, Legacy → `pertence` → BroBond, Showroom →
+  `localizado` → Goiânia e mais; seed idempotente no workspace `global`
+  (somente leitura a partir da superfície de workspace), migration Alembic
+  `0003`.
+- **Memory Resolver (ETAPA 5)** — novo parâmetro opcional `knowledge`
+  (`KnowledgeContextSource` em `core/contracts.py`, vocabulário puro e
+  congelado: `KnowledgeEntity`, `KnowledgeRelation`, `KnowledgeContext`) e
+  novo método `knowledge_context(persona_id)`. Sem source injetado, o
+  resolver comporta-se exatamente como antes.
+- **Rotas** — onze rotas `/api/v1/graph/*` (grafo completo com contagens,
+  CRUD de nós com 409/404/422/403, CRUD de relações, filtros,
+  `/graph/search` semântica e `/graph/vocabulary`) + a rota core
+  `GET /api/v1/core/personas/{persona_id}/knowledge-context`. Todas com
+  `Depends(current_user)`; 45 → 46 rotas exigindo token (guarda atualizada em
+  `test_docs_accuracy.py`).
+- **UI `/studio/knowledge`** (ETAPA 6) — canvas SVG com clusters por tipo de
+  entidade, arestas com seta e rótulo da relação, busca semântica com
+  resultados completos, filtros por tipo e por relação, painel do nó
+  (atributos, relações nas duas direções, criar relação, remover) e criação
+  de nós no workspace.
+- **Testes** — 76 novos testes; pacote `backend/app/graph/` a **100%** de
+  cobertura; suíte total a **1.495** testes (gate CI: 95%, atual: 97%).
+
+Documentação nova: `docs/KNOWLEDGE_GRAPH.md`.
+
+---
+
 ## [Unreleased] — PR009: REAL AI CONNECTORS
 
 PR009 liga os adapters de provider a motores reais (Flux para imagem, Wan 2.1 para

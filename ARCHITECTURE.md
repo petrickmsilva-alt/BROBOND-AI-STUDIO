@@ -11,6 +11,7 @@ Render Engine/  Celery, Redis, GPU workers, FFmpeg, queue lifecycle
 Database/       PostgreSQL, SQLAlchemy, Alembic, workspace metadata
 Assets/         MinIO, signed URLs, local development adapter
 Knowledge Base/ Cinematic Bible, style, characters, shots, prompts, presets
+Knowledge Graph/ persistent entities + relationships (V3.1), semantic query
 ```
 
 ## BROBOND CORE
@@ -196,6 +197,85 @@ app/studio/director/
 
 A API não ganhou rota de render. O editor consome o plano de
 `/api/v1/core/director/production-plan` e mantém as edições em `StoryboardState`.
+
+---
+
+## Cinematic Knowledge Graph (V3.1)
+
+A memória de personagem virou conhecimento relacional: Character, Brand,
+Campaign, Location, Vehicle, Wardrobe e Prop — **todas relacionáveis** — num
+grafo persistente, com busca semântica determinística e UI. Na cadeia da
+arquitetura V3 (`User → Director AI → Knowledge Graph → Storyboard → Prompt
+Compiler → GenerationSpec → …`) o grafo é a fonte de *contexto*: ele não
+comanda cena, não escolhe provider e não produz prompt.
+
+### Onde vive
+
+* `backend/app/graph/` — camada de **aplicação** (importa SQLAlchemy, o que o
+  Core jamais importa): `graph_models.py` (duas tabelas),
+  `graph_repository.py` (o único limite de persistência do grafo, convenção
+  `persona_repo`), `relationship_engine.py` (regras + vocabulário + seed) e
+  `semantic_query.py` (pontuação). `main.py` é o composition root: instância
+  `RelationshipEngine`, `SemanticQuery` e o bridge `_GraphKnowledgeContextSource`.
+* Migration Alembic `0003` (idempotente; downgrade no-op, regra da Bíblia).
+
+### Escopo: catálogo global + workspace
+
+* **Catálogo canônico** no workspace sentinela `global`: Petrick, Jefferson,
+  BroBond, Legacy, Showroom, Goiânia, RAM, Legacy Jacket, Vintage Radio e as
+  oito relações — seed idempotente em cada boot, **somente leitura** pela
+  superfície de workspace (PATCH/DELETE → 403).
+* **Workspace**: nós e relações criados pelo usuário. A vista do workspace é
+  `global + próprio`, e um nó próprio com o mesmo `(tipo, nome)` *especializa*
+  o canônico (o canônico fica atrás dele nas leituras).
+
+### Bidirecionalidade
+
+Uma relação é **uma linha** (`source, relation_type, target`); o rótulo de
+reverso vem do vocabulário (`dirige` ⇄ `é dirigido por`, `pertence a` ⇄
+`possui`, `localizado em` ⇄ `contém`, …). Tipos fora do vocabulário usam o
+par genérico `relacionado a` — a aresta existe, a leitura fica honesta.
+`neighbors()` devolve a vizinhança marcada com `outgoing`/`incoming`, cada
+lado lido do seu ponto de vista. `shortest_path()` é BFS com teto de
+profundidade sobre o grafo não direcionado.
+
+### Semantic Query
+
+Pontuação transparente, sem modelo e sem LLM simulado (mesma regra do
+DirectorAgent): nome exato 100, prefixo 55, substring 40, frase nos
+atributos 25, tokens em nome/atributos/descrição 12/15(+6)/8, com
+normalização de acento e stopword list curta. O resultado é a entidade
+**completa** (atributos + relações nos dois sentidos), nunca um fragmento de
+nome; frase sem correspondência → lista vazia.
+
+### Memory Resolver (ETAPA 5) — só contexto
+
+`core/contracts.py` ganhou o vocabulário puro e congelado
+(`KnowledgeEntity`, `KnowledgeRelation`, `KnowledgeContext` + protocolo
+`KnowledgeContextSource`); `MemoryResolver` ganhou o parâmetro opcional
+`knowledge` e o método `knowledge_context(persona_id)`. Sem source injetado o
+comportamento é o de sempre (retorna `None`). O bridge, no `main.py`, resolve
+o `external_ref` do personagem canônico (`CHAR_PETRICK` → nó Petrick) e devolve
+o `KnowledgeContext` congelado. **`GenerationSpec` não mudou**: um spec
+compilado com o grafo conectado é idêntico ao compilado sem ele — teste fixa
+a igualdade campo a campo (só `spec_id` difere, que é único por construção).
+
+### Superfície de API
+
+Onze rotas `/api/v1/graph/*` (grafo completo com contagens, CRUD de nós e
+relações com 409/404/422/403, filtros, `/graph/search`, `/graph/vocabulary`)
++ `GET /api/v1/core/personas/{persona_id}/knowledge-context` (tag `core`).
+Todas `Depends(current_user)`; isolamento de tenant: a vizinhança de um nó
+canônico compartilhado é `global + workspace do chamador`, nunca a de outro
+workspace (fixado por teste).
+
+### UI `/studio/knowledge`
+
+Canvas SVG com layout determinístico (clusters por tipo de entidade em anel),
+arestas com seta e rótulo da relação, busca semântica com resultados
+completos, filtros por tipo e por relação, painel do nó (atributos, relações
+bidirecionais, nova relação, remoção) e criação de nós. Sem dependência de
+biblioteca de grafo.
 
 ---
 

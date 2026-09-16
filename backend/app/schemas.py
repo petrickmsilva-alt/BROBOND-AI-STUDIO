@@ -1165,3 +1165,116 @@ class RenderRetryResponse(BaseModel):
     status: str
     retried_scenes: int
     message: str
+
+
+# ---------------------------------------------------------------------------
+# V3.1 — Cinematic Knowledge Graph
+# ---------------------------------------------------------------------------
+
+GraphEntityType = Literal["character", "brand", "campaign", "location", "vehicle", "wardrobe", "prop"]
+
+
+class GraphNodeCreateRequest(BaseModel):
+    entity_type: GraphEntityType
+    name: str = Field(min_length=1, max_length=120)
+    description: str = ""
+    attributes: dict[str, str] = Field(default_factory=dict)
+    external_ref: str | None = Field(default=None, max_length=64)
+
+
+class GraphNodeUpdateRequest(BaseModel):
+    """Partial patch: only the fields present are changed."""
+
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    description: str | None = None
+    attributes: dict[str, str] | None = None
+    external_ref: str | None = Field(default=None, max_length=64)
+
+
+class GraphNodeResponse(BaseModel):
+    id: str
+    entity_type: str
+    name: str
+    description: str
+    attributes: dict[str, str]
+    external_ref: str | None = None
+    is_canonical: bool
+    created_at: str
+    updated_at: str | None = None
+
+
+class GraphRelationshipCreateRequest(BaseModel):
+    source_id: str
+    target_id: str
+    relation_type: str = Field(min_length=1, max_length=60)
+    description: str = ""
+
+
+class GraphRelationshipResponse(BaseModel):
+    id: str
+    source_id: str
+    target_id: str
+    relation_type: str
+    display_label: str
+    reverse_relation_type: str
+    description: str
+    is_canonical: bool
+    created_at: str
+    source: GraphNodeResponse
+    target: GraphNodeResponse
+
+
+class GraphNodeDetailResponse(BaseModel):
+    """A node plus its relationships read bidirectionally from its side."""
+
+    node: GraphNodeResponse
+    relationships: list[GraphRelationshipResponse]
+
+
+class KnowledgeGraphResponse(BaseModel):
+    nodes: list[GraphNodeResponse]
+    relationships: list[GraphRelationshipResponse]
+    counts: dict[str, object]
+
+
+class SemanticMatchResponse(BaseModel):
+    """A semantic hit: the complete entity, its score and its context."""
+
+    node: GraphNodeResponse
+    score: int
+    matched_fields: list[str]
+    relationships: list[GraphRelationshipResponse]
+
+
+class SemanticSearchResponse(BaseModel):
+    query: str
+    results: list[SemanticMatchResponse]
+
+
+class KnowledgeEntityResponse(BaseModel):
+    """A graph entity as the Core's `KnowledgeContext` sees it (no ids, no
+    timestamps: the context is vocabulary, not persistence)."""
+
+    entity_type: str
+    name: str
+    description: str
+    attributes: dict[str, str]
+
+
+class KnowledgeRelationResponse(BaseModel):
+    direction: str
+    relation_type: str
+    display_label: str
+    reverse_relation_type: str
+    description: str
+    other: KnowledgeEntityResponse
+
+
+class KnowledgeContextResponse(BaseModel):
+    """MemoryResolver + knowledge graph: the persona's relational context."""
+
+    persona_id: str
+    character: KnowledgeEntityResponse | None
+    relationships: list[KnowledgeRelationResponse]
+    entity_count: int
+    phrase: str

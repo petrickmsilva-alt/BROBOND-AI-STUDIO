@@ -13,14 +13,14 @@ mudar e o documento não for regenerado, a suíte falha.
 
 ## Resumo
 
-- **74** rotas HTTP sob `/api/v1`
-- **32** delas são `/api/v1/core/*` — a camada de decisão
+- **86** rotas HTTP sob `/api/v1`
+- **33** delas são `/api/v1/core/*` — a camada de decisão
 - **3** WebSockets
-- **14** tags
+- **15** tags
 
 OpenAPI interativo em `/docs` (Swagger) e `/redoc` quando o serviço está no ar.
 
-PR006 Storyboard Cinematic Engine não adiciona rotas de render: a UI edita um `StoryboardState` versionado sobre o `ProductionPlan` retornado por `/api/v1/core/director/production-plan`. PR007 adiciona `/api/v1/providers` para health/capabilities do registry universal, sem expor segredos. PR008 adiciona seis rotas `/api/v1/render/*` (lotes de render com identidade) e o WebSocket `/ws/render/{batch_id}` com progresso por push, sem polling.
+PR006 Storyboard Cinematic Engine não adiciona rotas de render: a UI edita um `StoryboardState` versionado sobre o `ProductionPlan` retornado por `/api/v1/core/director/production-plan`. PR007 adiciona `/api/v1/providers` para health/capabilities do registry universal, sem expor segredos. PR008 adiciona seis rotas `/api/v1/render/*` (lotes de render com identidade) e o WebSocket `/ws/render/{batch_id}` com progresso por push, sem polling. V3.1 adiciona o Cinematic Knowledge Graph: onze rotas `/api/v1/graph/*` (nós, relações, vocabulário, busca semântica e o grafo completo — tudo com identidade) e a rota core `/api/v1/core/personas/{persona_id}/knowledge-context`, que expõe o contexto relacional do MemoryResolver sem alterar o GenerationSpec.
 
 ## `assets` — 4
 
@@ -39,7 +39,7 @@ PR006 Storyboard Cinematic Engine não adiciona rotas de render: a UI edita um `
 | `GET` | `/api/v1/auth/me` | get_current_user |
 | `POST` | `/api/v1/auth/register` | Create an account (PR002: rate-limited and audited). |
 
-## `core` — 32
+## `core` — 33
 
 | Método | Rota | Descrição |
 | --- | --- | --- |
@@ -61,6 +61,7 @@ PR006 Storyboard Cinematic Engine não adiciona rotas de render: a UI edita um `
 | `GET` | `/api/v1/core/personas/{persona_id}/continuity` | Whether a character stayed consistent across the given episodes (PR002: identity required). |
 | `GET` | `/api/v1/core/personas/{persona_id}/episodes/{episode_id}/memory` | The identity an episode was actually made with, not the current one (PR002: identity required). |
 | `POST` | `/api/v1/core/personas/{persona_id}/episodes/{episode_id}/snapshot` | Bind the current identity to an episode (PR002: identity required, audited). |
+| `GET` | `/api/v1/core/personas/{persona_id}/knowledge-context` | MemoryResolver + knowledge graph (V3.1): the persona's relational |
 | `POST` | `/api/v1/core/personas/{persona_id}/retire` | Retire a character (PR002: identity required, audited). Episodes already made keep their memory snapshots. |
 | `POST` | `/api/v1/core/personas/{persona_id}/revise` | Apply an attributed edit (PR002: identity required, audited). |
 | `GET` | `/api/v1/core/providers` | Every registered adapter, with its kind, status and checkpoint. |
@@ -95,6 +96,22 @@ PR006 Storyboard Cinematic Engine não adiciona rotas de render: a UI edita um `
 | Método | Rota | Descrição |
 | --- | --- | --- |
 | `GET` | `/api/v1/knowledge` | Search the knowledge base (PR002: identity required). |
+
+## `knowledge-graph` — 11
+
+| Método | Rota | Descrição |
+| --- | --- | --- |
+| `GET` | `/api/v1/graph` | The full graph the caller sees: canonical catalog + own nodes, with |
+| `GET` | `/api/v1/graph/nodes` | Nodes visible to the workspace (canonical + own), with optional filters. |
+| `POST` | `/api/v1/graph/nodes` | Create a workspace-owned entity. Duplicates of (type, name) are 409. |
+| `DELETE` | `/api/v1/graph/nodes/{node_id}` | Remove a workspace-owned node and every relationship touching it. |
+| `GET` | `/api/v1/graph/nodes/{node_id}` | A node plus its relationships read bidirectionally from its side |
+| `PATCH` | `/api/v1/graph/nodes/{node_id}` | Patch a workspace-owned node. Canonical catalog rows are read-only (403). |
+| `GET` | `/api/v1/graph/relationships` | Edges visible to the workspace (canonical + own), with optional filters. |
+| `POST` | `/api/v1/graph/relationships` | Create an edge (Petrick -> dirige -> RAM). Self-loops 422, unknown |
+| `DELETE` | `/api/v1/graph/relationships/{relationship_id}` | Remove a workspace-owned edge; canonical edges are read-only (403). |
+| `GET` | `/api/v1/graph/search` | Semantic query: a human phrase in, complete entities out. |
+| `GET` | `/api/v1/graph/vocabulary` | The curated relation vocabulary — the UI's relation picker. |
 
 ## `models` — 3
 

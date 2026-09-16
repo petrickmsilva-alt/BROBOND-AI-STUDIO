@@ -522,3 +522,97 @@ class LanguageModel(Protocol):
 
     def complete(self, instruction: str, context: str) -> str:
         ...
+
+
+# ---------------------------------------------------------------------------
+# V3.1 — Cinematic Knowledge Graph vocabulary
+#
+# The graph itself (nodes, relationships, persistence) lives at the
+# application boundary (`app/graph/`). The Core only knows this frozen shape,
+# injected through `KnowledgeContextSource`, so the Core still imports no
+# SQLAlchemy and the graph can be swapped without touching the resolver.
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class KnowledgeEntity:
+    """One entity of the cinematic knowledge graph, as the Core sees it."""
+
+    entity_type: str
+    name: str
+    description: str = ""
+    attributes: tuple[tuple[str, str], ...] = ()
+
+
+@dataclass(frozen=True)
+class KnowledgeRelation:
+    """One relationship around an entity, read from the entity's side.
+
+    `direction` is "outgoing" (entity -> other) or "incoming" (other ->
+    entity); `reverse_relation_type` is the label the edge carries when read
+    backwards, which is what makes every relationship bidirectional.
+    """
+
+    direction: str
+    relation_type: str
+    reverse_relation_type: str
+    other: KnowledgeEntity
+    description: str = ""
+
+
+@dataclass(frozen=True)
+class KnowledgeContext:
+    """The relational knowledge attached to a persona.
+
+    `phrase` is a compact human-readable summary (who does what with what);
+    it is *context*, not a prompt block: the Compiler alone produces prompt
+    text, so a `GenerationSpec` compiled with or without a graph is identical.
+    """
+
+    persona_id: str
+    character: KnowledgeEntity | None = None
+    relationships: tuple[KnowledgeRelation, ...] = ()
+    entity_count: int = 0
+    phrase: str = ""
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "persona_id": self.persona_id,
+            "character": {
+                "entity_type": self.character.entity_type,
+                "name": self.character.name,
+                "description": self.character.description,
+                "attributes": dict(self.character.attributes),
+            }
+            if self.character
+            else None,
+            "relationships": [
+                {
+                    "direction": relation.direction,
+                    "relation_type": relation.relation_type,
+                    "reverse_relation_type": relation.reverse_relation_type,
+                    "description": relation.description,
+                    "other": {
+                        "entity_type": relation.other.entity_type,
+                        "name": relation.other.name,
+                        "description": relation.other.description,
+                        "attributes": dict(relation.other.attributes),
+                    },
+                }
+                for relation in self.relationships
+            ],
+            "entity_count": self.entity_count,
+            "phrase": self.phrase,
+        }
+
+
+@runtime_checkable
+class KnowledgeContextSource(Protocol):
+    """Optional bridge from the MemoryResolver to the knowledge graph.
+
+    Implemented at the composition root (`app.main`); `None` keeps the
+    resolver exactly as it was before V3.1.
+    """
+
+    def context_for(self, persona_id: str) -> KnowledgeContext | None:
+        ...

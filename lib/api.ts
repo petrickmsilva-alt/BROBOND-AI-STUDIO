@@ -684,3 +684,125 @@ export function retryRenderBatch(batchId: string) {
     {},
   );
 }
+
+// ---------------------------------------------------------------------------
+// V3.1 — Cinematic Knowledge Graph
+// ---------------------------------------------------------------------------
+
+export type GraphNodeType =
+  | 'character'
+  | 'brand'
+  | 'campaign'
+  | 'location'
+  | 'vehicle'
+  | 'wardrobe'
+  | 'prop';
+
+export type GraphNode = {
+  id: string;
+  entity_type: GraphNodeType;
+  name: string;
+  description: string;
+  attributes: Record<string, string>;
+  external_ref: string | null;
+  is_canonical: boolean;
+  created_at: string;
+  updated_at: string | null;
+};
+
+export type GraphRelationship = {
+  id: string;
+  source_id: string;
+  target_id: string;
+  relation_type: string;
+  display_label: string;
+  reverse_relation_type: string;
+  description: string;
+  is_canonical: boolean;
+  created_at: string;
+  source: GraphNode;
+  target: GraphNode;
+};
+
+export type KnowledgeGraph = {
+  nodes: GraphNode[];
+  relationships: GraphRelationship[];
+  counts: {
+    nodes: number;
+    relationships: number;
+    by_type: Record<string, number>;
+    by_relation: Record<string, number>;
+  };
+};
+
+export type SemanticMatch = {
+  node: GraphNode;
+  score: number;
+  matched_fields: string[];
+  relationships: GraphRelationship[];
+};
+
+export type SemanticSearchResult = {
+  query: string;
+  results: SemanticMatch[];
+};
+
+export function getKnowledgeGraph() {
+  return get<KnowledgeGraph>('/api/v1/graph');
+}
+
+export function createGraphNode(payload: {
+  entity_type: GraphNodeType;
+  name: string;
+  description?: string;
+  attributes?: Record<string, string>;
+  external_ref?: string | null;
+}) {
+  return post<GraphNode>('/api/v1/graph/nodes', payload);
+}
+
+export function updateGraphNode(nodeId: string, payload: {
+  name?: string;
+  description?: string;
+  attributes?: Record<string, string>;
+  external_ref?: string | null;
+}) {
+  return request<GraphNode>(`/api/v1/graph/nodes/${nodeId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export function deleteGraphNode(nodeId: string) {
+  return request<void>(`/api/v1/graph/nodes/${nodeId}`, { method: 'DELETE' });
+}
+
+export function createGraphRelationship(payload: {
+  source_id: string;
+  target_id: string;
+  relation_type: string;
+  description?: string;
+}) {
+  return post<GraphRelationship>('/api/v1/graph/relationships', payload);
+}
+
+export function deleteGraphRelationship(relationshipId: string) {
+  return request<void>(`/api/v1/graph/relationships/${relationshipId}`, { method: 'DELETE' });
+}
+
+export function searchKnowledgeGraph(q: string, entityType?: GraphNodeType) {
+  const params = new URLSearchParams({ q });
+  if (entityType) params.set('entity_type', entityType);
+  return get<SemanticSearchResult>(`/api/v1/graph/search?${params.toString()}`);
+}
+
+export type RelationVocabularyEntry = {
+  type: string;
+  display_label: string;
+  reverse_relation: string;
+  typical: { source: string[]; target: string[] };
+};
+
+export function getRelationVocabulary() {
+  return get<RelationVocabularyEntry[]>('/api/v1/graph/vocabulary');
+}

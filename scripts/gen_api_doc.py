@@ -70,7 +70,11 @@ def render() -> str:
         "`/api/v1/core/director/production-plan`. PR007 adiciona `/api/v1/providers` "
         "para health/capabilities do registry universal, sem expor segredos. PR008 "
         "adiciona seis rotas `/api/v1/render/*` (lotes de render com identidade) e o "
-        "WebSocket `/ws/render/{batch_id}` com progresso por push, sem polling.\n"
+        "WebSocket `/ws/render/{batch_id}` com progresso por push, sem polling. V3.1 "
+        "adiciona o Cinematic Knowledge Graph: onze rotas `/api/v1/graph/*` (nós, "
+        "relações, vocabulário, busca semântica e o grafo completo — tudo com identidade) e a rota "
+        "core `/api/v1/core/personas/{persona_id}/knowledge-context`, que expõe o "
+        "contexto relacional do MemoryResolver sem alterar o GenerationSpec.\n"
     )
 
     for tag in sorted(by_tag):

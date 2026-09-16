@@ -261,9 +261,11 @@ def test_route_inventory_only_grew() -> None:
     # 65 after PR005 (Director AI production-plan route), 66 after PR007
     # (`/api/v1/providers`), 72 after PR008 (six `/api/v1/render/*` routes),
     # 74 after PR009 (`/api/v1/providers/{id}/test` real-test button and
-    # `/api/v1/providers/telemetry`).
+    # `/api/v1/providers/telemetry`), 86 after V3.1 (eleven `/api/v1/graph/*`
+    # routes, including `/api/v1/graph/search` and `/api/v1/graph/vocabulary`,
+    # plus the core knowledge-context route).
     # The guard is that the number only grows: nothing was ever removed.
-    assert len([route for route in http if route.path.startswith("/api/v1")]) == 74
+    assert len([route for route in http if route.path.startswith("/api/v1")]) == 86
 
 
 # ------------------------------------------------- no generation logic in routes
@@ -340,6 +342,7 @@ def test_openapi_documents_the_core_tag() -> None:
         "/api/v1/core/personas/{persona_id}/continuity",
         "/api/v1/core/personas/{persona_id}/episodes/{episode_id}/memory",
         "/api/v1/core/personas/{persona_id}/episodes/{episode_id}/snapshot",
+        "/api/v1/core/personas/{persona_id}/knowledge-context",
         "/api/v1/core/personas/{persona_id}/retire",
         "/api/v1/core/personas/{persona_id}/revise",
         "/api/v1/core/providers",

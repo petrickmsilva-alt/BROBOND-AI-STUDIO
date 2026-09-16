@@ -296,14 +296,17 @@ def _identity_dependency(route) -> str | None:
 
 
 def test_the_authorisation_count_is_the_real_one(inventory) -> None:
-    """37 of 72 routes touch identity — 34 require it, 3 do not (PR003/PR005/PR008).
+    """49 of 86 routes touch identity — 46 require it, 3 do not (PR003/PR005/PR008/V3.1).
 
     PR002 closed the P0-2 exposure: 25 of 58 (22 required, 3 optional).
     PR003 added the six persona-profile routes, all `Depends(current_user)`;
     PR005 added a public planning route and PR007 added public provider health:
     31 of 66 (28 required, 3 optional). PR008 adds the six render routes, all
     `Depends(current_user)` (renders persist to the caller's workspace): 37
-    of 72 (34 required, 3 optional). Before PR002 the numbers were 10
+    of 72 (34 required, 3 optional). V3.1 adds the twelve knowledge-graph
+    routes, all `Depends(current_user)` (the graph is workspace-scoped
+    product data, including the core knowledge-context route): 49 of 86
+    (46 required, 3 optional). Before PR002 the numbers were 10
     (6 required, 4 optional). The prose and the guard move together, because
     the three numbers drift independently of each other. The three WebSockets
     are also authenticated, through the `token` query parameter (see
@@ -316,7 +319,7 @@ def test_the_authorisation_count_is_the_real_one(inventory) -> None:
     optional = len([k for k in kinds if k == "optional_user"])
     touching = required + optional
 
-    assert required == 34, f"rotas exigindo token mudaram: {required}"
+    assert required == 46, f"rotas exigindo token mudaram: {required}"
     assert optional == 3, f"rotas com identidade opcional mudaram: {optional}"
 
     text = _read(LIMITATIONS)

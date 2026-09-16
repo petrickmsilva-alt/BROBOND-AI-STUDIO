@@ -43,6 +43,17 @@ o fluxo de jobs foi desacoplado do PostgreSQL — `core/job_service.py`
 injeção sem tocar Core, rotas ou worker. O que ainda impede geração real
 ponta a ponta: GPU, pesos e providers instalados. Ver `docs/LIMITATIONS.md`.
 
+**Atualização V3.1 (Cinematic Knowledge Graph):** a memória de personagem
+virou conhecimento relacional. O pacote `backend/app/graph/` (GraphRepository,
+Relationship Engine, Semantic Query) persiste Character, Brand, Campaign,
+Location, Vehicle, Wardrobe e Prop — todas relacionáveis — com catálogo
+canônico no workspace `global` (somente leitura) e nós do workspace por cima;
+o `MemoryResolver` ganhou `knowledge_context(persona_id)` por injeção de
+`KnowledgeContextSource` (vocabulário puro em `core/contracts.py`), sem
+alterar o `GenerationSpec`; UI `/studio/knowledge` com grafo, busca semântica
+("RAM branca" → o Vehicle completo) e filtros. Director AI, Provider Registry
+e Render Engine intactos. Ver `docs/KNOWLEDGE_GRAPH.md`.
+
 ## v1.0 — Workspace local
 
 - [x] Interface premium
@@ -106,6 +117,16 @@ ponta a ponta: GPU, pesos e providers instalados. Ver `docs/LIMITATIONS.md`.
 - [x] Ritmo, montagem, música e iluminação por intenção no plano (PR005; PR006 permite ajustar duração, iluminação, movimento e mood por cena; ainda sem render)
 - [ ] Voice Clone
 - [ ] Lip Sync
+
+## v3.1 — Cinematic Knowledge Graph
+
+- [x] **Graph Repository / ETAPA 1**: `backend/app/graph/` com as quatro peças nomeadas (`graph_models.py`, `graph_repository.py`, `relationship_engine.py`, `semantic_query.py`); persistência em PostgreSQL (migration `0003`), catálogo canônico idempotente no workspace `global` e nós por workspace.
+- [x] **Entidades / ETAPA 2**: Character, Brand, Campaign, Location, Vehicle, Wardrobe, Prop — **todas relacionáveis** (qualquer par de tipos é legal; o vocabulário só sugere pares típicos).
+- [x] **Relationship Engine / ETAPA 3**: relações tipadas com rótulo de reverso (bidirecionalidade: uma linha no banco, duas leituras) — Petrick → `dirige` → RAM, Petrick → `veste` → Legacy Jacket, Legacy → `pertence` → BroBond, Showroom → `localizado` → Goiânia; validação (sem self-loop, extremidades existentes, duplicata 409) e BFS de caminho mínimo.
+- [x] **Semantic Query / ETAPA 4**: pontuação determinística sem modelo — "RAM branca" → o Vehicle completo (atributos + relações); "Showroom" → o Location; frase desconhecida → resposta vazia, nunca chute.
+- [x] **Memory Resolver / ETAPA 5**: `knowledge_context(persona_id)` por injeção (`KnowledgeContextSource`); **sem alterar o GenerationSpec** — spec compilado com grafo conectado é idêntico ao sem ele (teste fixa a igualdade campo a campo).
+- [x] **UI `/studio/knowledge` / ETAPA 6**: grafo com nós, arestas e rótulos, busca semântica com resultados completos, filtros por tipo e por relação, painel do nó com ações (ligar, remover).
+- [x] **Testes / ETAPA 7**: 76 novos testes; pacote `graph/` a 100%; suíte a 1.495 testes com gate de 95% (atual: 97%).
 
 ## v4.0 — Escala
 

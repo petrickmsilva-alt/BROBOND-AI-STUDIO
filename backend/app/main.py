@@ -46,6 +46,18 @@ from .core import (
 from .core.config import settings
 from .db import SessionLocal, get_db
 from .events import EVENT_CANCELLED, TERMINAL_STATUSES, hub, job_event
+from .graph import (
+    GLOBAL_WORKSPACE_ID,
+    GraphConflictError,
+    GraphNotFoundError,
+    GraphValidationError,
+    RelationshipEngine,
+    SemanticQuery,
+    display_label,
+    graph_repo,
+    relationship_vocabulary,
+    reverse_relation,
+)
 from .knowledge import resolve as resolve_knowledge, seed_knowledge
 from .lora import lora_trainer
 from .media import MediaError, media
@@ -121,6 +133,18 @@ from .schemas import (
     RenderBatchResponse,
     RenderBatchSummaryResponse,
     RenderRetryResponse,
+    GraphNodeCreateRequest,
+    GraphNodeDetailResponse,
+    GraphNodeResponse,
+    GraphNodeUpdateRequest,
+    GraphRelationshipCreateRequest,
+    GraphRelationshipResponse,
+    KnowledgeContextResponse,
+    KnowledgeEntityResponse,
+    KnowledgeGraphResponse,
+    KnowledgeRelationResponse,
+    SemanticMatchResponse,
+    SemanticSearchResponse,
 )
 from .repositories import PersonaRepositoryError, persona_repo
 from .job_service import job_service
@@ -224,7 +248,91 @@ class _PersistentPersonaProfileSource:
         return persona_repo.to_profile(row) if row is not None else None
 
 
-memory_resolver = MemoryResolver(_CompositePersonaSource(persona_ledger), profile_source=_PersistentPersonaProfileSource())
+# V3.1: Cinematic Knowledge Graph — persistent relational knowledge (Character,
+# Brand, Campaign, Location, Vehicle, Wardrobe, Prop, every type relatable).
+# It sits beside the Core, never inside it: Director AI, Provider Registry and
+# Render Engine are untouched, and the graph enriches the MemoryResolver with
+# context only — a GenerationSpec compiled with a wired graph is identical to
+# one compiled without it. The canonical catalog (Petrick, RAM, Legacy,
+# BroBond, Showroom, Goiânia...) seeds into the global workspace on import;
+# the call is idempotent, the same way `seed_knowledge` runs on every boot.
+knowledge_engine = RelationshipEngine(graph_repo)
+knowledge_semantic = SemanticQuery(graph_repo)
+knowledge_engine.seed_canonical()
+
+
+def _knowledge_phrase(node, views) -> str:
+    """A compact, honest summary of a character's context: who does what with
+    what, read from the character's side (outgoing label or reverse label)."""
+
+    parts = []
+    for view in views:
+        if view.direction == "outgoing":
+            parts.append(f"{node.name} {display_label(view.relationship.relation_type)} {view.other.name}")
+        else:
+            parts.append(f"{node.name} {view.reverse_relation_type} {view.other.name}")
+    if not parts:
+        return f"{node.name} has no relationships in the knowledge graph yet."
+    return "; ".join(parts) + "."
+
+
+class _GraphKnowledgeContextSource:
+    """V3.1: the Core's `KnowledgeContextSource`, implemented at the boundary.
+
+    The Core never imports the graph package (or SQLAlchemy): a persona id
+    lands here, the bridge resolves the canonical character node through its
+    `external_ref` (the "CHAR_PETRICK" link), and the Relationship Engine
+    builds the frozen `KnowledgeContext` around it. A persona id absent from
+    the catalog (e.g. a workspace persona created after V3.1) yields None —
+    "no context", not a guess. Planned characters in the catalog (Jefferson)
+    resolve with an empty relationship list: absence of edges is data.
+    """
+
+    def context_for(self, persona_id: str):
+        from .core.contracts import KnowledgeContext, KnowledgeEntity, KnowledgeRelation
+
+        node = graph_repo.find_character_by_external_ref(persona_id)
+        if node is None:
+            return None
+        footprint = knowledge_engine.context_for_character(node.id)
+        if footprint is None:
+            return None
+        views = footprint["relationships"]
+        character = KnowledgeEntity(
+            entity_type=node.entity_type,
+            name=node.name,
+            description=node.description,
+            attributes=tuple(sorted(node.attributes.items())),
+        )
+        relationships = tuple(
+            KnowledgeRelation(
+                direction=view.direction,
+                relation_type=view.relationship.relation_type,
+                reverse_relation_type=view.reverse_relation_type,
+                other=KnowledgeEntity(
+                    entity_type=view.other.entity_type,
+                    name=view.other.name,
+                    description=view.other.description,
+                    attributes=tuple(sorted(view.other.attributes.items())),
+                ),
+                description=view.relationship.description,
+            )
+            for view in views
+        )
+        return KnowledgeContext(
+            persona_id=persona_id,
+            character=character,
+            relationships=relationships,
+            entity_count=len({view.other.id for view in views}),
+            phrase=_knowledge_phrase(node, views),
+        )
+
+
+memory_resolver = MemoryResolver(
+    _CompositePersonaSource(persona_ledger),
+    profile_source=_PersistentPersonaProfileSource(),
+    knowledge=_GraphKnowledgeContextSource(),
+)
 style_resolver = StyleResolver()
 # ETAPA 6: the resolver serves the full 300-shot library. SEED_SHOTS (the ten
 # published presets) stays untouched; the expansion is composed in here, at the
@@ -2221,3 +2329,374 @@ async def render_progress(websocket: WebSocket, batch_id: str) -> None:
             return
     finally:
         render_hub.unsubscribe(batch_id, queue)
+
+
+# ---------------------------------------------------------------------------
+# V3.1 — Cinematic Knowledge Graph
+#
+# Routes delegate to the graph package (repository + Relationship Engine +
+# Semantic Query): no domain logic lives here. All routes require identity
+# (Bible §16): the graph is workspace-scoped product data, and the canonical
+# catalog rows are read-only from the workspace surface.
+# ---------------------------------------------------------------------------
+
+
+def _graph_node_response(node) -> GraphNodeResponse:
+    data = node.to_dict()
+    return GraphNodeResponse(
+        id=data["id"],
+        entity_type=data["entity_type"],
+        name=data["name"],
+        description=data["description"],
+        attributes=data["attributes"],
+        external_ref=data["external_ref"],
+        is_canonical=data["is_canonical"],
+        created_at=data["created_at"] or "",
+        updated_at=data["updated_at"],
+    )
+
+
+def _graph_relationship_response(row) -> GraphRelationshipResponse:
+    return GraphRelationshipResponse(
+        id=row.id,
+        source_id=row.source_node_id,
+        target_id=row.target_node_id,
+        relation_type=row.relation_type,
+        display_label=display_label(row.relation_type),
+        reverse_relation_type=reverse_relation(row.relation_type),
+        description=row.description,
+        is_canonical=row.workspace_id == GLOBAL_WORKSPACE_ID,
+        created_at=row.created_at.isoformat() if row.created_at else "",
+        source=_graph_node_response(graph_repo.get_node(row.source_node_id)),
+        target=_graph_node_response(graph_repo.get_node(row.target_node_id)),
+    )
+
+
+def _graph_workspace_or_400(db: Session, user: User) -> Workspace:
+    workspace = _workspace_for(db, user)
+    if workspace is None:
+        raise HTTPException(status_code=400, detail="no workspace available for this account")
+    return workspace
+
+
+@app.get("/api/v1/graph", response_model=KnowledgeGraphResponse, tags=["knowledge-graph"])
+def get_knowledge_graph(user: User = Depends(current_user), db: Session = Depends(get_db)) -> KnowledgeGraphResponse:
+    """The full graph the caller sees: canonical catalog + own nodes, with
+    every edge carrying both readings (relation and reverse relation)."""
+
+    workspace = _graph_workspace_or_400(db, user)
+    nodes, relationships = graph_repo.workspace_view(workspace.id)
+    by_type: dict[str, int] = {}
+    by_relation: dict[str, int] = {}
+    for node in nodes:
+        by_type[node.entity_type] = by_type.get(node.entity_type, 0) + 1
+    for row in relationships:
+        by_relation[row.relation_type] = by_relation.get(row.relation_type, 0) + 1
+    return KnowledgeGraphResponse(
+        nodes=[_graph_node_response(node) for node in nodes],
+        relationships=[_graph_relationship_response(row) for row in relationships],
+        counts={
+            "nodes": len(nodes),
+            "relationships": len(relationships),
+            "by_type": by_type,
+            "by_relation": by_relation,
+        },
+    )
+
+
+@app.get("/api/v1/graph/vocabulary", tags=["knowledge-graph"])
+def graph_relation_vocabulary(user: User = Depends(current_user)) -> list[dict[str, object]]:
+    """The curated relation vocabulary — the UI's relation picker.
+
+    Each entry carries the display label, the reverse label and the typical
+    (source, target) types, which are hints only: every pair is legal."""
+
+    return relationship_vocabulary()
+
+
+@app.get("/api/v1/graph/nodes", response_model=list[GraphNodeResponse], tags=["knowledge-graph"])
+def list_graph_nodes(
+    entity_type: str | None = Query(default=None, description="one of: character, brand, campaign, location, vehicle, wardrobe, prop"),
+    q: str | None = Query(default=None, description="free-text filter over name, description and attributes"),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> list[GraphNodeResponse]:
+    """Nodes visible to the workspace (canonical + own), with optional filters."""
+
+    workspace = _graph_workspace_or_400(db, user)
+    return [_graph_node_response(node) for node in graph_repo.list_nodes(workspace_id=workspace.id, entity_type=entity_type, q=q)]
+
+
+@app.post("/api/v1/graph/nodes", response_model=GraphNodeResponse, status_code=201, tags=["knowledge-graph"])
+def create_graph_node(
+    request: GraphNodeCreateRequest,
+    http_request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> GraphNodeResponse:
+    """Create a workspace-owned entity. Duplicates of (type, name) are 409."""
+
+    workspace = _graph_workspace_or_400(db, user)
+    try:
+        node = graph_repo.create_node(
+            workspace.id,
+            request.entity_type,
+            request.name,
+            description=request.description,
+            attributes=request.attributes,
+            external_ref=request.external_ref,
+        )
+    except GraphValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except GraphConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    audit(
+        db,
+        actor=user,
+        action="graph.node.created",
+        resource_type="knowledge_graph_node",
+        resource_id=node.id,
+        workspace_id=workspace.id,
+        detail={"entity_type": node.entity_type, "name": node.name},
+        request=http_request,
+    )
+    return _graph_node_response(node)
+
+
+@app.get("/api/v1/graph/nodes/{node_id}", response_model=GraphNodeDetailResponse, tags=["knowledge-graph"])
+def get_graph_node_detail(
+    node_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> GraphNodeDetailResponse:
+    """A node plus its relationships read bidirectionally from its side
+    (outgoing edges with their label, incoming edges with the reverse one)."""
+
+    workspace = _graph_workspace_or_400(db, user)
+    node = graph_repo.get_node(node_id)
+    if node is None or (node.workspace_id != GLOBAL_WORKSPACE_ID and node.workspace_id != workspace.id):
+        raise HTTPException(status_code=404, detail=f"node {node_id} not found")
+    views = knowledge_engine.neighbors(workspace.id, node.id)
+    return GraphNodeDetailResponse(
+        node=_graph_node_response(node),
+        relationships=[_graph_relationship_response(view.relationship) for view in views],
+    )
+
+
+@app.patch("/api/v1/graph/nodes/{node_id}", response_model=GraphNodeResponse, tags=["knowledge-graph"])
+def update_graph_node(
+    node_id: str,
+    request: GraphNodeUpdateRequest,
+    http_request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> GraphNodeResponse:
+    """Patch a workspace-owned node. Canonical catalog rows are read-only (403)."""
+
+    workspace = _graph_workspace_or_400(db, user)
+    try:
+        node = graph_repo.update_node(
+            workspace.id,
+            node_id,
+            name=request.name,
+            description=request.description,
+            attributes=request.attributes,
+            external_ref=request.external_ref,
+        )
+    except GraphNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except GraphConflictError as exc:
+        raise HTTPException(status_code=403 if exc.code == "read-only" else 409, detail=str(exc)) from exc
+    audit(
+        db,
+        actor=user,
+        action="graph.node.updated",
+        resource_type="knowledge_graph_node",
+        resource_id=node.id,
+        workspace_id=workspace.id,
+        detail={"name": node.name},
+        request=http_request,
+    )
+    return _graph_node_response(node)
+
+
+@app.delete("/api/v1/graph/nodes/{node_id}", status_code=204, tags=["knowledge-graph"])
+def delete_graph_node(
+    node_id: str,
+    http_request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """Remove a workspace-owned node and every relationship touching it."""
+
+    workspace = _graph_workspace_or_400(db, user)
+    try:
+        graph_repo.delete_node(workspace.id, node_id)
+    except GraphNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except GraphConflictError as exc:
+        raise HTTPException(status_code=403 if exc.code == "read-only" else 409, detail=str(exc)) from exc
+    audit(
+        db,
+        actor=user,
+        action="graph.node.deleted",
+        resource_type="knowledge_graph_node",
+        resource_id=node_id,
+        workspace_id=workspace.id,
+        request=http_request,
+    )
+
+
+@app.get("/api/v1/graph/relationships", response_model=list[GraphRelationshipResponse], tags=["knowledge-graph"])
+def list_graph_relationships(
+    relation_type: str | None = Query(default=None),
+    source_id: str | None = Query(default=None),
+    target_id: str | None = Query(default=None),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> list[GraphRelationshipResponse]:
+    """Edges visible to the workspace (canonical + own), with optional filters."""
+
+    workspace = _graph_workspace_or_400(db, user)
+    return [
+        _graph_relationship_response(row)
+        for row in graph_repo.list_relationships(
+            workspace.id,
+            relation_type=relation_type,
+            source_node_id=source_id,
+            target_node_id=target_id,
+        )
+    ]
+
+
+@app.post("/api/v1/graph/relationships", response_model=GraphRelationshipResponse, status_code=201, tags=["knowledge-graph"])
+def create_graph_relationship(
+    request: GraphRelationshipCreateRequest,
+    http_request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> GraphRelationshipResponse:
+    """Create an edge (Petrick -> dirige -> RAM). Self-loops 422, unknown
+    endpoints 404, duplicate edges 409."""
+
+    workspace = _graph_workspace_or_400(db, user)
+    try:
+        row = knowledge_engine.connect(
+            workspace.id,
+            request.source_id,
+            request.target_id,
+            request.relation_type,
+            description=request.description,
+        )
+    except GraphValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except GraphNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except GraphConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    audit(
+        db,
+        actor=user,
+        action="graph.relationship.created",
+        resource_type="knowledge_graph_relationship",
+        resource_id=row.id,
+        workspace_id=workspace.id,
+        detail={"source_id": row.source_node_id, "target_id": row.target_node_id, "relation_type": row.relation_type},
+        request=http_request,
+    )
+    return _graph_relationship_response(row)
+
+
+@app.delete("/api/v1/graph/relationships/{relationship_id}", status_code=204, tags=["knowledge-graph"])
+def delete_graph_relationship(
+    relationship_id: str,
+    http_request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+):
+    """Remove a workspace-owned edge; canonical edges are read-only (403)."""
+
+    workspace = _graph_workspace_or_400(db, user)
+    try:
+        knowledge_engine.disconnect(workspace.id, relationship_id)
+    except GraphNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except GraphConflictError as exc:
+        raise HTTPException(status_code=403 if exc.code == "read-only" else 409, detail=str(exc)) from exc
+    audit(
+        db,
+        actor=user,
+        action="graph.relationship.deleted",
+        resource_type="knowledge_graph_relationship",
+        resource_id=relationship_id,
+        workspace_id=workspace.id,
+        request=http_request,
+    )
+
+
+@app.get("/api/v1/graph/search", response_model=SemanticSearchResponse, tags=["knowledge-graph"])
+def search_knowledge(
+    q: str = Query(min_length=1, description='human phrase, e.g. "RAM branca" or "Showroom"'),
+    entity_type: str | None = Query(default=None, description="restrict the search to one entity type"),
+    limit: int = Query(default=5, ge=1, le=20),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> SemanticSearchResponse:
+    """Semantic query: a human phrase in, complete entities out.
+
+    "RAM branca" returns the full Vehicle (attributes + relationships);
+    "Showroom" returns the Location. Deterministic scoring — no model is
+    loaded, no match is invented: an unknown phrase answers with zero results.
+    """
+
+    workspace = _graph_workspace_or_400(db, user)
+    results = [
+        SemanticMatchResponse(
+            node=_graph_node_response(match.node),
+            score=match.score,
+            matched_fields=list(match.matched_fields),
+            relationships=[_graph_relationship_response(view.relationship) for view in match.relationships],
+        )
+        for match in knowledge_semantic.search(workspace.id, q, entity_type=entity_type, limit=limit)
+    ]
+    return SemanticSearchResponse(query=q, results=results)
+
+
+@app.get(
+    "/api/v1/core/personas/{persona_id}/knowledge-context",
+    response_model=KnowledgeContextResponse,
+    tags=["core"],
+)
+def persona_knowledge_context(
+    persona_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> KnowledgeContextResponse:
+    """MemoryResolver + knowledge graph (V3.1): the persona's relational
+    context. Enrichment only — the `GenerationSpec` contract is untouched;
+    what changes is what the studio can *show and use* around a persona."""
+
+    persona = memory_resolver.resolve(persona_id)
+    if persona is None:
+        raise HTTPException(status_code=404, detail=f"persona {persona_id} not found")
+    context = memory_resolver.knowledge_context(persona_id)
+    if context is None:
+        raise HTTPException(status_code=404, detail=f"persona {persona_id} has no knowledge graph context")
+    payload = context.to_dict()
+    return KnowledgeContextResponse(
+        persona_id=persona_id,
+        character=KnowledgeEntityResponse(**payload["character"]) if payload["character"] else None,
+        relationships=[
+            KnowledgeRelationResponse(
+                direction=relation["direction"],
+                relation_type=relation["relation_type"],
+                display_label=display_label(relation["relation_type"]),
+                reverse_relation_type=relation["reverse_relation_type"],
+                description=relation["description"],
+                other=KnowledgeEntityResponse(**relation["other"]),
+            )
+            for relation in payload["relationships"]
+        ],
+        entity_count=context.entity_count,
+        phrase=context.phrase,
+    )

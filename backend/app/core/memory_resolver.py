@@ -14,6 +14,8 @@ from dataclasses import replace
 
 from .contracts import (
     PERSONA_IDENTITY_FIELDS,
+    KnowledgeContext,
+    KnowledgeContextSource,
     PersonaMemory,
     PersonaProfile,
     PersonaProfileSource,
@@ -87,11 +89,24 @@ class MemoryResolver:
     injection. When no profile source is present, `resolve_persona` derives
     the profile from the identity alone, so the pre-PR003 call graph behaves
     exactly as it did.
+
+    V3.1: an optional `KnowledgeContextSource` injects the Cinematic
+    Knowledge Graph: `knowledge_context(persona_id)` returns the persona's
+    relational context (who drives what, wears what, appears where) — pure
+    context enrichment. It never touches `identity_phrase` or the
+    `GenerationSpec`: a spec compiled with a wired graph is byte-identical to
+    one compiled without it.
     """
 
-    def __init__(self, source: PersonaSource | None = None, profile_source: PersonaProfileSource | None = None) -> None:
+    def __init__(
+        self,
+        source: PersonaSource | None = None,
+        profile_source: PersonaProfileSource | None = None,
+        knowledge: KnowledgeContextSource | None = None,
+    ) -> None:
         self._source: PersonaSource = source or SeedPersonaSource()
         self._profile_source: PersonaProfileSource | None = profile_source
+        self._knowledge: KnowledgeContextSource | None = knowledge
 
     # ------------------------------------------------------------------ lookup
 
@@ -136,6 +151,20 @@ class MemoryResolver:
 
     def catalog(self) -> list[PersonaMemory]:
         return self._source.search()
+
+    def knowledge_context(self, persona_id: str | None) -> KnowledgeContext | None:
+        """V3.1: the persona's relational context from the knowledge graph.
+
+        Returns the frozen `KnowledgeContext` (character + relationships +
+        a compact phrase) when a knowledge source is wired and the persona is
+        present in the graph. Returns `None` — never raises — when no id is
+        given, no source is injected, or the persona is not in the graph, so
+        a resolver built the pre-V3.1 way behaves exactly as it did.
+        """
+
+        if not persona_id or self._knowledge is None:
+            return None
+        return self._knowledge.context_for(persona_id)
 
     def is_generable(self, persona_id: str | None) -> bool:
         """Only an approved identity may drive a generation."""

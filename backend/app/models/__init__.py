@@ -17,6 +17,11 @@ from ..db import Base
 from .job import JobRow  # noqa: F401  (re-export, owned by models/job.py)
   # noqa: F401  (re-export, owned by models/job.py)
 
+# V3.1: the knowledge graph's tables live with the graph package; importing
+# them here registers them on `Base.metadata` so Alembic and any
+# `create_all` see the same schema the ORM uses.
+from app.graph.graph_models import GraphNode, GraphRelationship  # noqa: F401
+
 
 class User(Base):
     __tablename__ = "users"

@@ -64,11 +64,11 @@ restou:
 
 ---
 
-## 3. Autorização (P0-4, fechado no PR002; ampliado no PR003 e no PR008)
+## 3. Autorização (P0-4, fechado no PR002; ampliado no PR003, no PR008 e no V3.1)
 
-**37 de 74 rotas** tocam identidade, e a diferença entre elas importa:
+**49 de 86 rotas** tocam identidade, e a diferença entre elas importa:
 
-- **34** exigem token — `Depends(current_user)`: `/auth/me`, `/knowledge`, `/queue`,
+- **46** exigem token — `Depends(current_user)`: `/auth/me`, `/knowledge`, `/queue`,
   `/jobs/{id}`, `/jobs/{id}/cancel`, `/assets/upload`, `/assets`,
   `/assets/download/{object_key:path}`, `/assets/{id}/conditioning`,
   `/assets/{id}/export`, `POST /personas`, `GET /personas` (listagem, PR003),
@@ -76,9 +76,12 @@ restou:
   `/personas/{id}/train`,
   `/personas/{id}/training/{run_id}`, `/personas/{id}/loras`,
   `/personas/{id}/images` (GET/POST — referências, PR003), todo o bloco
-  `/api/v1/core/personas/*` (8 rotas, identidade de personagem = PII) e todo o
+  `/api/v1/core/personas/*` (9 rotas, identidade de personagem = PII; V3.1
+  adiciona `knowledge-context`) e todo o
   bloco `/api/v1/render/*` (6 rotas, PR008 — renders persistem no workspace de
-  quem chamou, então anônimo é recusado).
+  quem chamou, então anônimo é recusado) — e todo o bloco `/api/v1/graph/*`
+  (11 rotas, V3.1 — o knowledge graph é dado de produto do workspace: anônimo
+  não enxerga o catálogo).
 - **3** aceitam token mas **não exigem** — `Depends(optional_user)`:
   `/generations/images`, `/generations/videos`, `/core/compile`. Uma chamada
   anônima passa — e o job criado anônima não tem tenant, logo nenhuma
