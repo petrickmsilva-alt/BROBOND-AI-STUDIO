@@ -604,11 +604,14 @@ def test_the_route_contains_no_lifecycle_logic_of_its_own() -> None:
     raise AssertionError("queue_events is not defined")
 
 
-def test_both_websockets_are_still_declared() -> None:
+def test_all_websockets_are_still_declared() -> None:
     from fastapi.routing import APIWebSocketRoute
 
     paths = {route.path for route in app.routes if isinstance(route, APIWebSocketRoute)}
     assert paths == {
         "/api/v1/queue/events/{job_id}",
         "/api/v1/personas/{persona_id}/training/events/{run_id}",
+        # PR008: the render progress socket is a third declaration, not a
+        # replacement — the queue and training sockets are untouched.
+        "/ws/render/{batch_id}",
     }

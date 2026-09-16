@@ -254,14 +254,14 @@ def test_route_inventory_only_grew() -> None:
 
     http = [route for route in app.routes if isinstance(route, APIRoute)]
     websockets = [route for route in app.routes if isinstance(route, APIWebSocketRoute)]
-    assert len(websockets) == 2
+    assert len(websockets) == 3
     # 27 /api/v1 routes before the Core, 29 after ETAPA 2, 37 after ETAPA 4,
     # 46 after ETAPA 5, 50 after ETAPA 6, 51 after ETAPA 8, 52 after ETAPA 9,
     # 54 after ETAPA 10, 56 after ETAPA 13, 58 after ETAPA 14, 64 after PR003,
     # 65 after PR005 (Director AI production-plan route), 66 after PR007
-    # (`/api/v1/providers`). The guard is that the number only grows: nothing
-    # was ever removed.
-    assert len([route for route in http if route.path.startswith("/api/v1")]) == 66
+    # (`/api/v1/providers`), 72 after PR008 (six `/api/v1/render/*` routes).
+    # The guard is that the number only grows: nothing was ever removed.
+    assert len([route for route in http if route.path.startswith("/api/v1")]) == 72
 
 
 # ------------------------------------------------- no generation logic in routes

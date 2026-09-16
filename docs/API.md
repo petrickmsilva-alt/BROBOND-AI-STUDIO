@@ -13,14 +13,14 @@ mudar e o documento não for regenerado, a suíte falha.
 
 ## Resumo
 
-- **66** rotas HTTP sob `/api/v1`
+- **72** rotas HTTP sob `/api/v1`
 - **32** delas são `/api/v1/core/*` — a camada de decisão
-- **2** WebSockets
-- **13** tags
+- **3** WebSockets
+- **14** tags
 
 OpenAPI interativo em `/docs` (Swagger) e `/redoc` quando o serviço está no ar.
 
-PR006 Storyboard Cinematic Engine não adiciona rotas de render: a UI edita um `StoryboardState` versionado sobre o `ProductionPlan` retornado por `/api/v1/core/director/production-plan`. PR007 adiciona `/api/v1/providers` para health/capabilities do registry universal, sem expor segredos.
+PR006 Storyboard Cinematic Engine não adiciona rotas de render: a UI edita um `StoryboardState` versionado sobre o `ProductionPlan` retornado por `/api/v1/core/director/production-plan`. PR007 adiciona `/api/v1/providers` para health/capabilities do registry universal, sem expor segredos. PR008 adiciona seis rotas `/api/v1/render/*` (lotes de render com identidade) e o WebSocket `/ws/render/{batch_id}` com progresso por push, sem polling.
 
 ## `assets` — 4
 
@@ -138,6 +138,17 @@ PR006 Storyboard Cinematic Engine não adiciona rotas de render: a UI edita um `
 | `POST` | `/api/v1/jobs/{job_id}/cancel` | Cancel one of the caller's jobs (PR002: identity required). |
 | `GET` | `/api/v1/queue` | List the caller's generation queue (PR001: real data, no seed; PR002: identity required). |
 
+## `render` — 6
+
+| Método | Rota | Descrição |
+| --- | --- | --- |
+| `GET` | `/api/v1/render/batches` | List the caller's render batches, newest first (PR008: identity required). |
+| `POST` | `/api/v1/render/batches` | Create a render batch from a Director storyboard (PR008: identity required). |
+| `GET` | `/api/v1/render/batches/{batch_id}` | Read one of the caller's render batches with per-scene progress (PR008). |
+| `POST` | `/api/v1/render/batches/{batch_id}/cancel` | Cancel a render batch (PR008: identity required). |
+| `POST` | `/api/v1/render/batches/{batch_id}/retry` | Retry the failed/cancelled scenes of a finished batch (PR008). |
+| `POST` | `/api/v1/render/batches/{batch_id}/start` | Start rendering a queued batch in the background (PR008: identity required). |
+
 ## `storyboards` — 1
 
 | Método | Rota | Descrição |
@@ -159,3 +170,4 @@ PR006 Storyboard Cinematic Engine não adiciona rotas de render: a UI edita um `
 | --- | --- |
 | `/api/v1/personas/{persona_id}/training/events/{run_id}` | training_events |
 | `/api/v1/queue/events/{job_id}` | Stream a job's transitions until it reaches a terminal state. |
+| `/ws/render/{batch_id}` | Push a batch's render events until the terminal one. No polling. |

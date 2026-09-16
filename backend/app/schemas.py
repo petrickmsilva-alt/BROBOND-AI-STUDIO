@@ -990,3 +990,136 @@ class QualityCapabilitiesResponse(BaseModel):
     note: str
     spec_fields_known: int
     rules: list[QualityRuleResponse]
+
+
+# ---------------------------------------------------------------------------
+# PR008 — Cinematic Render Engine
+#
+# The batch create request carries the Director plan inline: production plans
+# are planning artifacts (PR005/PR006) and are not persisted server-side, so
+# the client sends the storyboard it wants rendered.
+# ---------------------------------------------------------------------------
+
+
+class RenderSceneRequest(BaseModel):
+    """One storyboard scene to render, as planned by the Director."""
+
+    scene_number: int = Field(ge=1, le=64)
+    title: str = Field(min_length=1, max_length=200)
+    objective: str = Field(min_length=1, max_length=2000)
+    emotion: str = Field(default="", max_length=200)
+    camera: str = Field(default="", max_length=500)
+    lens: str = Field(default="", max_length=200)
+    lighting: str = Field(default="", max_length=500)
+    motion: str = Field(default="", max_length=500)
+    duration: float = Field(default=5.0, gt=0, le=600)
+    environment: str = Field(default="", max_length=1000)
+    mood: str = Field(default="", max_length=120)
+    negative_prompt: str = Field(default="", max_length=2000)
+    seed: int | None = Field(default=None, ge=0)
+
+
+class RenderBatchCreateRequest(BaseModel):
+    """Create a render batch from an inline Director plan."""
+
+    scenes: list[RenderSceneRequest] = Field(min_length=1, max_length=64)
+    kind: Literal["image", "video"] = "image"
+    #: Opaque provider id resolved by the registry ("" = kind default).
+    provider: str = Field(default="", max_length=80)
+    project_id: str = Field(default="default-project", max_length=120)
+    production_plan_id: str | None = Field(default=None, max_length=120)
+    storyboard_version: int | None = Field(default=None, ge=1)
+    persona_id: str | None = Field(default=None, max_length=120)
+    style: str = Field(default="", max_length=500)
+    mood: str = Field(default="", max_length=120)
+    aspect_ratio: Literal["16:9", "1:1", "9:16", "4:3", "3:4"] = "16:9"
+    fps: int = Field(default=24, ge=1, le=120)
+    #: Base seed; scenes without their own seed get base + index.
+    seed: int | None = Field(default=None, ge=0)
+
+
+class RenderAssetResponse(BaseModel):
+    scene_id: str
+    scene_number: int
+    kind: str
+    object_key: str
+    url: str
+    thumbnail_key: str
+    thumbnail_url: str
+    metadata_key: str
+    metadata_url: str
+    prompt: str
+    seed: int | None = None
+    provider_id: str
+    spec_id: str
+    width: int = 0
+    height: int = 0
+    duration_seconds: float = 0.0
+    fps: int = 0
+
+
+class RenderSceneResponse(BaseModel):
+    scene_id: str
+    scene_number: int
+    title: str
+    status: str
+    progress: int
+    spec_id: str | None = None
+    asset: RenderAssetResponse | None = None
+    job: dict | None = None
+    error: str | None = None
+    started_at: str | None = None
+    finished_at: str | None = None
+
+
+class RenderBatchResponse(BaseModel):
+    batch_id: str
+    workspace_id: str
+    project_id: str
+    kind: str
+    provider: str
+    status: str
+    scenes: list[RenderSceneResponse] = Field(default_factory=list)
+    production_plan_id: str | None = None
+    storyboard_version: int | None = None
+    persona_id: str | None = None
+    style: str = ""
+    aspect_ratio: str = "16:9"
+    fps: int = 24
+    seed: int | None = None
+    created_at: str
+    started_at: str | None = None
+    finished_at: str | None = None
+    eta_seconds: float = 0.0
+    progress: int = 0
+    scene_count: int = 0
+    completed_scenes: int = 0
+    failed_scenes: int = 0
+    current_scene_id: str | None = None
+    current_scene_number: int | None = None
+
+
+class RenderBatchSummaryResponse(BaseModel):
+    """Queue UI row: everything the list needs, without per-scene payloads."""
+
+    batch_id: str
+    project_id: str
+    kind: str
+    provider: str
+    status: str
+    progress: int
+    scene_count: int
+    completed_scenes: int
+    failed_scenes: int
+    current_scene_number: int | None = None
+    eta_seconds: float = 0.0
+    created_at: str
+    started_at: str | None = None
+    finished_at: str | None = None
+
+
+class RenderRetryResponse(BaseModel):
+    batch_id: str
+    status: str
+    retried_scenes: int
+    message: str

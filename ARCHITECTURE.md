@@ -649,6 +649,33 @@ essa resposta diretamente para mostrar Flux, Wan e Mock e recarregar status pelo
 Prompt budget agora é capability do provider. O compilador aceita um número já resolvido
 pela borda; sem isso, usa o budget conservador global e trata o nome do provider como opaco.
 
+## Cinematic Render Engine (PR008)
+
+PR008 conecta o Director AI ao Generation Executor: o storyboard vira imagens e vídeos
+reais. O pacote `backend/app/render/` orquestra o fluxo sem conhecer nenhum provider —
+a única dependência voltada a providers é o `GenerationExecutor` (PR007).
+
+```text
+ProductionPlan / StoryboardState
+  -> SceneRenderer (+ PromptCompiler) -> GenerationSpec (uma por cena)
+  -> GenerationExecutor -> Registry -> Provider -> ProviderAsset + ProviderJob
+  -> RenderAssetPipeline -> PNG/MP4 + thumbnail + metadata (AssetStore)
+```
+
+Componentes:
+
+| Arquivo | Responsabilidade |
+|---|---|
+| `render/render_batch.py` | `RenderBatch`/`RenderScene` com estados `queued/running/rendering/completed/failed/cancelled`, progresso independente por cena e `RenderBatchStore` em memória. |
+| `render/scene_renderer.py` | `SceneRenderer`: cena → `GenerationSpec` via `PromptCompiler`, com os campos obrigatórios persona, style, mood, camera, lens, lighting, motion, seed, aspect_ratio e duration. |
+| `render/render_orchestrator.py` | `RenderOrchestrator`: cria lotes do plano, executa cena a cena pelo executor, publica progresso e trata cancel/retry. |
+| `render/progress.py` | `RenderProgressHub`: push thread-safe dos cinco eventos (`batch_started`, `scene_started`, `scene_progress`, `scene_completed`, `batch_completed`), sem polling. |
+| `render/asset_pipeline.py` | `RenderAssetPipeline`: persiste principal + thumbnail + metadados (prompt, seed, provider) pelo `StorageService`, com linhas `Asset` quando há sessão. |
+
+Seis rotas `/api/v1/render/*` (todas com identidade) e o WebSocket `/ws/render/{batch_id}`
+alimentam a tela `/studio/render`: storyboard, progresso, cena atual, ETA, preview,
+download e Fila com Cancelar/Repetir. Detalhes em `docs/RENDER_ENGINE.md`.
+
 ## Prompt compiler (ETAPA 9)
 
 `SYSTEM_PROMPT.md` declara treze blocos. Até a ETAPA 9 só dez eram emitidos e a junção não

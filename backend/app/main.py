@@ -5,7 +5,7 @@ from pathlib import Path
 import time
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, File, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from sqlalchemy import select
@@ -55,6 +55,13 @@ from .providers import registry as provider_registry
 from .prompt_engine import prompt_engine
 from .queue import enqueue, enqueue_lora_training, transition
 from .readiness import readiness
+from .render import (
+    EVENT_BATCH_COMPLETED as RENDER_TERMINAL_EVENT,
+    SceneRenderInput,
+    render_hub,
+    render_store,
+)
+from .render.render_orchestrator import RenderOrchestrator, default_persona_phrase
 from .storage import storage
 from .system import gpu_info
 from .schemas import (
@@ -106,6 +113,10 @@ from .schemas import (
     StyleExplanationResponse,
     TimeQualityResponse,
     TrainingStatusResponse,
+    RenderBatchCreateRequest,
+    RenderBatchResponse,
+    RenderBatchSummaryResponse,
+    RenderRetryResponse,
 )
 from .repositories import PersonaRepositoryError, persona_repo
 from .job_service import job_service
@@ -245,6 +256,19 @@ video_timeline = VideoTimeline(max_runtime_seconds=MAX_RUNTIME_SECONDS)
 # ETAPA 14: the same gate the worker runs, exposed for assessment on demand. One
 # instance so a manual check and the worker's verdict cannot disagree.
 quality_gate = QualityGate()
+
+# PR008: the Cinematic Render Engine. The orchestrator resolves persona
+# identity through the same MemoryResolver the spec builder uses, so a locked
+# persona renders the same phrase it compiles with everywhere else.
+def _render_persona_phrase(persona_id: str | None) -> str:
+    if not persona_id:
+        return default_persona_phrase(None)
+    persona = memory_resolver.resolve(persona_id)
+    phrase = memory_resolver.identity_phrase(persona) if persona is not None else ""
+    return phrase or default_persona_phrase(persona_id)
+
+
+render_orchestrator = RenderOrchestrator(persona_phrase=_render_persona_phrase)
 
 
 @app.middleware("http")
@@ -1830,3 +1854,281 @@ def check_provider_health() -> list[ProviderHealthResponse]:
             )
         )
     return reports
+
+
+# ---------------------------------------------------------------------------
+# PR008 — Cinematic Render Engine: storyboard in, real assets out
+#
+# These routes only translate HTTP <-> orchestrator calls. Planning lives in
+# the Director, prompt text in the PromptCompiler, execution in the
+# GenerationExecutor and bytes in the AssetStore — nothing is decided here.
+# ---------------------------------------------------------------------------
+
+
+def _render_inputs_for_request(request: RenderBatchCreateRequest) -> list[SceneRenderInput]:
+    """Map the inline Director plan onto per-scene render inputs."""
+
+    phrase = render_orchestrator.persona_phrase_for(request.persona_id)
+    return [
+        SceneRenderInput(
+            scene_number=scene.scene_number,
+            title=scene.title,
+            objective=scene.objective,
+            persona=phrase,
+            style=request.style,
+            mood=scene.mood or request.mood,
+            camera=scene.camera,
+            lens=scene.lens,
+            lighting=scene.lighting,
+            motion=scene.motion,
+            environment=scene.environment,
+            negative_prompt=scene.negative_prompt,
+            seed=scene.seed,
+            aspect_ratio=request.aspect_ratio,
+            duration=scene.duration,
+        )
+        for scene in request.scenes
+    ]
+
+
+@app.post("/api/v1/render/batches", response_model=RenderBatchResponse, status_code=201, tags=["render"])
+def create_render_batch(
+    request: RenderBatchCreateRequest,
+    http_request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> RenderBatchResponse:
+    """Create a render batch from a Director storyboard (PR008: identity required).
+
+    The batch is planning plus queued scenes — nothing renders until `start`.
+    Assets are persisted to the caller's workspace, so anonymous callers are
+    refused (a render without a tenant would have nowhere to store).
+    """
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    try:
+        batch = render_orchestrator.create_batch(
+            _render_inputs_for_request(request),
+            workspace_id=workspace.id,
+            project_id=request.project_id,
+            kind=request.kind,
+            provider=request.provider,
+            production_plan_id=request.production_plan_id,
+            storyboard_version=request.storyboard_version,
+            persona_id=request.persona_id,
+            style=request.style,
+            aspect_ratio=request.aspect_ratio,
+            fps=request.fps,
+            seed=request.seed,
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    audit(
+        db,
+        actor=user,
+        action="render.batch.created",
+        resource_type="render_batch",
+        resource_id=batch.batch_id,
+        workspace_id=workspace.id,
+        detail={"scenes": batch.scene_count, "kind": batch.kind, "provider": batch.provider},
+        request=http_request,
+    )
+    return RenderBatchResponse(**batch.to_dict())
+
+
+@app.get("/api/v1/render/batches", response_model=list[RenderBatchSummaryResponse], tags=["render"])
+def list_render_batches(user: User = Depends(current_user), db: Session = Depends(get_db)) -> list[RenderBatchSummaryResponse]:
+    """List the caller's render batches, newest first (PR008: identity required)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        return []
+    summaries: list[RenderBatchSummaryResponse] = []
+    for batch in render_store.list_for_workspace(workspace.id):
+        payload = batch.to_dict()
+        summaries.append(
+            RenderBatchSummaryResponse(
+                batch_id=batch.batch_id,
+                project_id=batch.project_id,
+                kind=batch.kind,
+                provider=batch.provider,
+                status=batch.status,
+                progress=batch.progress,
+                scene_count=batch.scene_count,
+                completed_scenes=batch.completed_scenes,
+                failed_scenes=batch.failed_scenes,
+                current_scene_number=payload["current_scene_number"],  # type: ignore[arg-type]
+                eta_seconds=batch.eta_seconds,
+                created_at=batch.created_at,
+                started_at=batch.started_at,
+                finished_at=batch.finished_at,
+            )
+        )
+    return summaries
+
+
+@app.get("/api/v1/render/batches/{batch_id}", response_model=RenderBatchResponse, tags=["render"])
+def get_render_batch(batch_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> RenderBatchResponse:
+    """Read one of the caller's render batches with per-scene progress (PR008)."""
+
+    workspace = _workspace_for(db, user)
+    batch = render_store.get_for_workspace(batch_id, workspace.id) if workspace else None
+    if batch is None:
+        raise HTTPException(status_code=404, detail="Render batch not found")
+    return RenderBatchResponse(**batch.to_dict())
+
+
+@app.post("/api/v1/render/batches/{batch_id}/start", response_model=RenderBatchResponse, status_code=202, tags=["render"])
+def start_render_batch(
+    batch_id: str,
+    http_request: Request,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> RenderBatchResponse:
+    """Start rendering a queued batch in the background (PR008: identity required).
+
+    202 means accepted, not finished: the response shows the batch as queued
+    and progress arrives over `/ws/render/{batch_id}`. A batch that already
+    started is refused with 409 — finished batches go through `retry`.
+    """
+
+    workspace = _workspace_for(db, user)
+    batch = render_store.get_for_workspace(batch_id, workspace.id) if workspace else None
+    if batch is None:
+        raise HTTPException(status_code=404, detail="Render batch not found")
+    if batch.status != "queued":
+        raise HTTPException(status_code=409, detail=f"Batch is {batch.status}; only queued batches can start")
+    background_tasks.add_task(render_orchestrator.run_batch, batch_id, db_session_factory=SessionLocal)
+    audit(
+        db,
+        actor=user,
+        action="render.batch.started",
+        resource_type="render_batch",
+        resource_id=batch.batch_id,
+        workspace_id=workspace.id if workspace else None,
+        request=http_request,
+    )
+    return RenderBatchResponse(**batch.to_dict())
+
+
+@app.post("/api/v1/render/batches/{batch_id}/cancel", response_model=RenderBatchResponse, tags=["render"])
+def cancel_render_batch(
+    batch_id: str, http_request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
+) -> RenderBatchResponse:
+    """Cancel a render batch (PR008: identity required).
+
+    Idempotent: cancelling a finished batch returns its state unchanged. The
+    running scene finishes; every other pending scene is marked cancelled.
+    """
+
+    workspace = _workspace_for(db, user)
+    batch = render_orchestrator.cancel(batch_id, workspace.id) if workspace else None
+    if batch is None:
+        raise HTTPException(status_code=404, detail="Render batch not found")
+    audit(
+        db,
+        actor=user,
+        action="render.batch.cancelled",
+        resource_type="render_batch",
+        resource_id=batch.batch_id,
+        workspace_id=workspace.id if workspace else None,
+        request=http_request,
+    )
+    return RenderBatchResponse(**batch.to_dict())
+
+
+@app.post("/api/v1/render/batches/{batch_id}/retry", response_model=RenderRetryResponse, tags=["render"])
+def retry_render_batch(
+    batch_id: str,
+    http_request: Request,
+    background_tasks: BackgroundTasks,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> RenderRetryResponse:
+    """Retry the failed/cancelled scenes of a finished batch (PR008).
+
+    Completed scenes are never re-rendered. Refused with 409 while the batch
+    is still active, or when there is nothing left to retry.
+    """
+
+    workspace = _workspace_for(db, user)
+    batch = render_store.get_for_workspace(batch_id, workspace.id) if workspace else None
+    if batch is None:
+        raise HTTPException(status_code=404, detail="Render batch not found")
+    if not batch.is_terminal:
+        raise HTTPException(status_code=409, detail=f"Batch is {batch.status}; only finished batches can retry")
+    _, reset = render_orchestrator.retry(batch_id, workspace.id)
+    if not reset:
+        raise HTTPException(status_code=409, detail="Nothing to retry: every scene already completed")
+    background_tasks.add_task(render_orchestrator.run_batch, batch_id, db_session_factory=SessionLocal)
+    audit(
+        db,
+        actor=user,
+        action="render.batch.retried",
+        resource_type="render_batch",
+        resource_id=batch.batch_id,
+        workspace_id=workspace.id if workspace else None,
+        detail={"retried_scenes": reset},
+        request=http_request,
+    )
+    return RenderRetryResponse(
+        batch_id=batch.batch_id,
+        status=batch.status,
+        retried_scenes=reset,
+        message=f"Retrying {reset} scene(s); completed scenes are kept",
+    )
+
+
+@app.websocket("/ws/render/{batch_id}")
+async def render_progress(websocket: WebSocket, batch_id: str) -> None:
+    """Push a batch's render events until the terminal one. No polling.
+
+    The client sends nothing: it receives a `snapshot` with the full batch,
+    replays the buffered history, then awaits live events (`batch_started`,
+    `scene_started`, `scene_progress`, `scene_completed`, `batch_completed`)
+    until `batch_completed` closes the stream.
+
+    PR008: authenticated like the other sockets — the bearer token rides the
+    `token` query parameter and a batch the caller does not own closes with
+    the same 1008 reason an unknown batch gets.
+    """
+
+    with SessionLocal() as db:
+        user = ws_identity(websocket.query_params.get("token"), db)
+        if not user:
+            await websocket.close(code=1008, reason="Authentication required")
+            return
+        workspace = db.scalar(select(Workspace).where(Workspace.owner_id == user.id))
+        batch = render_store.get_for_workspace(batch_id, workspace.id) if workspace else None
+        if batch is None:
+            await websocket.close(code=1008, reason="Render batch not found")
+            return
+    # Subscribe before reading history: anything published in between lands in
+    # both, and the identity filter below drops the duplicate. Missing an
+    # event is not an option; a duplicate would be.
+    queue = render_hub.subscribe(batch_id)
+    try:
+        await websocket.accept()
+        try:
+            await websocket.send_json({"event": "snapshot", "batch": batch.to_dict()})
+            history = render_hub.history(batch_id)
+            seen = {id(event) for event in history}
+            for event in history:
+                await websocket.send_json(event)
+            if batch.is_terminal:
+                return
+            while True:
+                event = await queue.get()
+                if id(event) in seen:
+                    continue
+                seen.add(id(event))
+                await websocket.send_json(event)
+                if event.get("event") == RENDER_TERMINAL_EVENT:
+                    return
+        except WebSocketDisconnect:
+            return
+    finally:
+        render_hub.unsubscribe(batch_id, queue)
