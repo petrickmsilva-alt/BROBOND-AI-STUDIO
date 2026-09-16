@@ -8,7 +8,7 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
-    include: ['lib/memory/**/*.test.ts', 'lib/memory/**/*.test.tsx', 'lib/storyboard/**/*.test.ts', 'lib/graph/**/*.test.ts'],
+    include: ['lib/memory/**/*.test.ts', 'lib/memory/**/*.test.tsx', 'lib/storyboard/**/*.test.ts', 'lib/graph/**/*.test.ts', 'lib/api.network.test.ts'],
     coverage: {
       provider: 'v8',
       include: ['lib/memory/project_memory.ts', 'lib/memory/use_project_memory.ts', 'lib/storyboard/storyboard_state.ts', 'lib/graph/layout.ts'],

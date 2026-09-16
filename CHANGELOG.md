@@ -6,6 +6,37 @@ versões de produto do `ROADMAP.md`.
 
 ---
 
+## [Unreleased] — PR009.2: FRONTEND NETWORK RECONCILIATION
+
+Diagnóstico reproduzível do "API Offline" com a API respondendo 200.
+**Nenhuma feature, nenhum provider, nenhuma arquitetura alterados** — a
+correção fica proposta no relatório, não aplicada.
+
+- **Auditoria** — o literal `'offline'` nasce em exatamente dois `catch` de
+  `lib/api.ts` (linhas 84 e 179) e engole três classes distintas: rede real
+  (`TypeError`), CORS bloqueado (`TypeError: Failed to fetch` — a API
+  respondeu 200 e o browser esconde) e timeout (`TimeoutError`/`AbortError`
+  do `AbortSignal.timeout(10000)` — API viva, cold start do free tier).
+  Base de URL: `API_URL = NEXT_PUBLIC_API_URL ?? ''` verbatim, sem
+  transformação — **MATCH** absoluto com o `render.yaml`
+  (`https://brobond-ai-api.onrender.com`).
+- **Trace real** — `scripts/network_trace.mjs` mede as chamadas da UI contra
+  o proxy same-origin (health/readiness/gpu **200**), a API direta
+  (preflight CORS **400** para origem fora da allow-list local = o mecanismo
+  do falso offline, **200 + echo** para origem permitida) e as URLs de
+  produção (egress do sandbox bloqueado — registrado como inconclusivo).
+  Resultado em `docs/NETWORK_TRACE.md`.
+- **Testes e2e** — `lib/api.network.test.ts` (17 testes, vitest): API online,
+  500, 401, 502, 204, DNS inválido, conexão recusada, CORS e timeout, mais a
+  construção exata da URL base e as rotas de status da Home — "offline" só
+  em rede real, mais as duas conflações documentadas.
+- **Relatório** — `docs/NETWORK_RECONCILIATION_REPORT.md` com o bloco
+  MATCH/MISMATCH, primeira chamada da Home, rota que falha, stack real dos
+  erros e a correção proposta (distinguir timeout, orçamento maior para as
+  rotas de status, proxy same-origin no Render).
+
+---
+
 ## [Unreleased] — PR009.1: HEALTH CHECK RECONCILIATION
 
 Hotfix de reconciliação entre as rotas de health do FastAPI e o
