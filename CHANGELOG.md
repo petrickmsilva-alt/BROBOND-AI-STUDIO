@@ -6,6 +6,43 @@ versões de produto do `ROADMAP.md`.
 
 ---
 
+## [Unreleased] — V3.2: CHARACTER CONTINUITY ENGINE
+
+V3.2 congela o que cada personagem é, veste, onde está, o que dirige e como
+soa — por campanha, com override por episódio, fingerprint visual e
+histórico imutável de episódios. O Director, o Provider Registry e o Render
+Engine não foram alterados — o resolver devolve um `ContinuityContext` e
+nunca reescreve o `GenerationSpec`.
+
+### O que mudou
+
+- **Pacote `backend/app/continuity/`** — `identity_lock.py` (6 campos
+  congelados + kernel do pacote: erro único, fingerprint canônico,
+  normalização de chaves), `wardrobe_lock.py` (roupa + acessórios/cores/
+  sapatos/relógio, troca por episódio), `location_lock.py` (showroom/
+  estúdio/rua + cidade/iluminação base), `vehicle_lock.py` (veículo/cor +
+  placa opcional/rodas/acabamento), `voice_lock.py` (perfil/emoção/
+  velocidade/intensidade) e `continuity_resolver.py`
+  (`resolve(persona_id, campaign_id, episode)` → `ContinuityContext` com
+  snapshots, frases, fingerprints, missing, drift e consistent).
+- **Migração Alembic `0004`** — tabelas `continuity_locks` (upsert com
+  `version`, episódio 0 = padrão da campanha) e `continuity_episodes`
+  (snapshot congelado do resolver), idempotente.
+- **Rotas** — treze endpoints `/api/v1/continuity/*` com identidade (PUT+GET
+  por lock com `source_episode`, `GET /resolve`, `POST`/`GET /episodes` com
+  auto-numeração), 404 para id estrangeiro ou lock ausente, 409 em episódio
+  duplicado, audit em cada mutação.
+- **UI `/studio/continuity`** — escopo persona/campanha/episódio, cinco cards
+  de lock (ver/editar/fingerprint/versão/origem), painel do contexto
+  resolvido e histórico com **Criar novo episódio**; erros distinguem
+  offline, anônimo e rejeição.
+- **Testes** — 200 testes novos (`test_continuity_*.py`, 4 arquivos); pacote
+  `backend/app/continuity/` em 100% de cobertura.
+
+Documentação nova: `docs/CHARACTER_CONTINUITY.md`.
+
+---
+
 ## [Unreleased] — V3.1: CINEMATIC KNOWLEDGE GRAPH
 
 V3.1 conecta personagens, marcas, campanhas, lugares, veículos, figurino e

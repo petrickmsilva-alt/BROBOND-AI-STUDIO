@@ -88,6 +88,9 @@ async function request<T>(path: string, init: RequestInit, timeoutMs = DEFAULT_T
 const get = <T>(path: string) => request<T>(path, { method: 'GET' });
 const post = <T>(path: string, payload: unknown) =>
   request<T>(path, { method: 'POST', body: JSON.stringify(payload ?? {}) });
+// V3.2: continuity locks upsert idempotently, so they speak PUT.
+const put = <T>(path: string, payload: unknown) =>
+  request<T>(path, { method: 'PUT', body: JSON.stringify(payload ?? {}) });
 
 /** Absolute WebSocket URL for a path, derived from wherever the page is served.
 
@@ -812,4 +815,172 @@ export function graphCharacterContext(name: string) {
 
 export function seedGraphDemo() {
   return post<GraphSeedReport>('/api/v1/graph/seed', {});
+}
+
+// ---------------------------------------------------------------------------
+// V3.2 — Character Continuity Engine
+// ---------------------------------------------------------------------------
+
+export interface ContinuityIdentity {
+  persona_id: string;
+  face: string;
+  hair: string;
+  beard: string;
+  body: string;
+  skin: string;
+  age_appearance: string;
+  fingerprint: string;
+  version: number;
+  updated_at: string;
+}
+
+export interface ContinuityWardrobe {
+  persona_id: string;
+  campaign_id: string;
+  /** Where the lock was written; null means the campaign default. */
+  source_episode: number | null;
+  outfit: string;
+  accessories: string;
+  colors: string;
+  shoes: string;
+  watch: string;
+  fingerprint: string;
+  version: number;
+  updated_at: string;
+}
+
+export interface ContinuityLocation {
+  persona_id: string;
+  campaign_id: string;
+  source_episode: number | null;
+  showroom: string;
+  studio: string;
+  street: string;
+  city: string;
+  base_lighting: string;
+  fingerprint: string;
+  version: number;
+  updated_at: string;
+}
+
+export interface ContinuityVehicle {
+  persona_id: string;
+  campaign_id: string;
+  source_episode: number | null;
+  vehicle: string;
+  color: string;
+  plate: string;
+  wheels: string;
+  finish: string;
+  fingerprint: string;
+  version: number;
+  updated_at: string;
+}
+
+export interface ContinuityVoice {
+  persona_id: string;
+  voice_profile: string;
+  default_emotion: string;
+  speed: string;
+  intensity: string;
+  fingerprint: string;
+  version: number;
+  updated_at: string;
+}
+
+export interface ContinuityContextResult {
+  persona_id: string;
+  campaign_id: string;
+  episode: number;
+  identity: ContinuityIdentity | null;
+  wardrobe: ContinuityWardrobe | null;
+  location: ContinuityLocation | null;
+  vehicle: ContinuityVehicle | null;
+  voice: ContinuityVoice | null;
+  phrases: string[];
+  fingerprints: Record<string, string>;
+  missing: string[];
+  drift: string[];
+  consistent: boolean;
+  block: string;
+}
+
+export interface ContinuityEpisode {
+  id: string;
+  workspace_id: string;
+  persona_id: string;
+  campaign_id: string;
+  episode: number;
+  title: string;
+  notes: string;
+  snapshot: Record<string, unknown>;
+  created_at: string;
+}
+
+export function lockContinuityIdentity(payload: Record<string, unknown>) {
+  return put<ContinuityIdentity>('/api/v1/continuity/identity', payload);
+}
+
+export function getContinuityIdentity(personaId: string) {
+  return get<ContinuityIdentity>(`/api/v1/continuity/identity/${encodeURIComponent(personaId)}`);
+}
+
+export function lockContinuityWardrobe(payload: Record<string, unknown>) {
+  return put<ContinuityWardrobe>('/api/v1/continuity/wardrobe', payload);
+}
+
+export function getContinuityWardrobe(params: { persona_id: string; campaign_id?: string; episode?: number }) {
+  const query = new URLSearchParams({ persona_id: params.persona_id });
+  if (params.campaign_id) query.set('campaign_id', params.campaign_id);
+  if (params.episode !== undefined) query.set('episode', String(params.episode));
+  return get<ContinuityWardrobe>(`/api/v1/continuity/wardrobe?${query.toString()}`);
+}
+
+export function lockContinuityLocation(payload: Record<string, unknown>) {
+  return put<ContinuityLocation>('/api/v1/continuity/location', payload);
+}
+
+export function getContinuityLocation(params: { persona_id: string; campaign_id?: string; episode?: number }) {
+  const query = new URLSearchParams({ persona_id: params.persona_id });
+  if (params.campaign_id) query.set('campaign_id', params.campaign_id);
+  if (params.episode !== undefined) query.set('episode', String(params.episode));
+  return get<ContinuityLocation>(`/api/v1/continuity/location?${query.toString()}`);
+}
+
+export function lockContinuityVehicle(payload: Record<string, unknown>) {
+  return put<ContinuityVehicle>('/api/v1/continuity/vehicle', payload);
+}
+
+export function getContinuityVehicle(params: { persona_id: string; campaign_id?: string; episode?: number }) {
+  const query = new URLSearchParams({ persona_id: params.persona_id });
+  if (params.campaign_id) query.set('campaign_id', params.campaign_id);
+  if (params.episode !== undefined) query.set('episode', String(params.episode));
+  return get<ContinuityVehicle>(`/api/v1/continuity/vehicle?${query.toString()}`);
+}
+
+export function lockContinuityVoice(payload: Record<string, unknown>) {
+  return put<ContinuityVoice>('/api/v1/continuity/voice', payload);
+}
+
+export function getContinuityVoice(personaId: string) {
+  return get<ContinuityVoice>(`/api/v1/continuity/voice/${encodeURIComponent(personaId)}`);
+}
+
+export function resolveContinuity(params: { persona_id: string; campaign_id?: string; episode?: number }) {
+  const query = new URLSearchParams({ persona_id: params.persona_id });
+  if (params.campaign_id) query.set('campaign_id', params.campaign_id);
+  if (params.episode !== undefined) query.set('episode', String(params.episode));
+  return get<ContinuityContextResult>(`/api/v1/continuity/resolve?${query.toString()}`);
+}
+
+export function createContinuityEpisode(payload: Record<string, unknown>) {
+  return post<ContinuityEpisode>('/api/v1/continuity/episodes', payload);
+}
+
+export function listContinuityEpisodes(params?: { persona_id?: string; campaign_id?: string }) {
+  const query = new URLSearchParams();
+  if (params?.persona_id) query.set('persona_id', params.persona_id);
+  if (params?.campaign_id) query.set('campaign_id', params.campaign_id);
+  const suffix = query.toString();
+  return get<ContinuityEpisode[]>(`/api/v1/continuity/episodes${suffix ? `?${suffix}` : ''}`);
 }

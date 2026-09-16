@@ -731,6 +731,32 @@ source de grafo — o enriquecimento é explícito por rota. Doze rotas
 `/api/v1/graph/*` (tag `graph`), todas com identidade, e a UI
 `/studio/knowledge`. Detalhes em `docs/KNOWLEDGE_GRAPH.md`.
 
+## Character Continuity Engine (V3.2)
+
+V3.2 congela o que cada personagem é, veste, onde está, o que dirige e como
+soa — duas tabelas (`continuity_locks`, `continuity_episodes`, migração
+`0004`), cinco locks framework-free e um resolver em
+`backend/app/continuity/`:
+
+```text
+PUT /continuity/{identity|wardrobe|location|vehicle|voice} -> lock + fingerprint
+GET /continuity/resolve?persona_id&campaign_id&episode    -> ContinuityContext
+POST /continuity/episodes                                 -> snapshot congelado
+episode -> campaign default -> persona-global             (cadeia de fallback)
+```
+
+Cada lock valida, normaliza e deriva um fingerprint SHA-256/16hex dos campos
+congelados; `identity_lock.py` hospeda o kernel do pacote (erro único,
+fingerprint canônico, normalização de chaves). Identity/Voice são
+persona-globais; Wardrobe/Location/Vehicle aceitam override por episódio
+(episódio `0` = padrão da campanha). O `ContinuityResolver` lê pelo protocolo
+`ContinuityStore` (o repositório o vincula a um workspace) e devolve
+snapshots tipados, frases em ordem fixa, `missing`, `drift` e `consistent` —
+sem tocar `GenerationSpec`, Director, Registry ou Render. Episódios congelam
+o contexto resolvido e nunca se movem com re-locks. Treze rotas
+`/api/v1/continuity/*` (tag `continuity`), todas com identidade, e a UI
+`/studio/continuity`. Detalhes em `docs/CHARACTER_CONTINUITY.md`.
+
 ## Prompt compiler (ETAPA 9)
 
 `SYSTEM_PROMPT.md` declara treze blocos. Até a ETAPA 9 só dez eram emitidos e a junção não
@@ -1066,6 +1092,7 @@ Regras adicionais aplicadas desde a ETAPA 2, cada uma com teste que falha se for
 | O Core trata nomes de provider como opacos | `test_core_treats_provider_names_as_opaque_for_budgeting` + `test_core_does_not_name_provider_brands_or_catalogue_ids`. |
 | O adapter é escolhido pelo provider pedido, não pelo tipo do job | `test_asking_for_hunyuan_gets_hunyuan_not_wan` + `test_the_worker_routes_a_video_request_to_the_requested_adapter`. |
 | Um provider indisponível é recusado, nunca substituído | `test_a_planned_or_remote_provider_is_refused_not_substituted` + `test_the_worker_refuses_a_remote_only_provider`. |
+| Continuidade enriquece, nunca reescreve o `GenerationSpec` | `ContinuityResolver` devolve `ContinuityContext` (V3.2); `test_continuity_resolver.py` + `test_continuity_api.py` fixam contexto, fallback e snapshots sem importar Director, Registry ou Render. |
 | Campos declarados batem com o código | `test_the_declared_fields_match_the_code` (análise estática; verificado que falha ao reintroduzir o bug). |
 | Os pesos de IP-Adapter combinam com o modelo base | `test_the_flux_ip_adapter_weights_are_flux_weights_not_sdxl`. |
 | Nenhum helper compartilhado volta a ser copiado | `test_the_shared_helpers_are_the_same_object_not_copies` + `test_the_video_adapters_inherit_rather_than_reimplement`. |

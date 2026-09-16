@@ -57,18 +57,18 @@ restou:
 | `app/store.py` → personas (Legacy) | `dict` em memória, sem call sites desde o PR003 | Mantido pela Regra de Ouro; a leitura/escrita é 100% SQL via repositório |
 | `app/store.py` → jobs (facade) | delega a `JobService`/`JobRepository` | Superfície histórica mantida para call sites e testes; sem dependência de banco |
 | `app/core/*` seeds | personas, estilos e shots são dados injetáveis via `Protocol` | Sem tabela `Styles`/`Shots` no Postgres; editar pelo produto não persiste |
-| `app/core/memory_resolver.py` ledger | episódios de continuidade em memória | Continuidade entre episódios não sobrevive a restart |
+| `app/core/memory_resolver.py` ledger | snapshots de episódio em memória | O ledger do Core continua in-memory; **a V3.2 fecha a continuidade de produto**: locks e episódios são linhas em `continuity_locks`/`continuity_episodes` (migration `0004`) e sobrevivem a restart — fixado por `test_continuity_*.py` |
 | `app/auth.py` `_auth_attempts` | janela do rate limit por IP | In-memory e por processo: com múltiplas instâncias da API o orçamento se multiplica. O próximo passo declarado é um store compartilhado (Redis) — não simulado, apenas declarado |
 
 **Verificar:** `sed -n '1,20p' backend/app/store.py`
 
 ---
 
-## 3. Autorização (P0-4, fechado no PR002; ampliado no PR003, no PR008 e na V3.1)
+## 3. Autorização (P0-4, fechado no PR002; ampliado no PR003, no PR008, na V3.1 e na V3.2)
 
-**49 de 86 rotas** tocam identidade, e a diferença entre elas importa:
+**62 de 99 rotas** tocam identidade, e a diferença entre elas importa:
 
-- **46** exigem token — `Depends(current_user)`: `/auth/me`, `/knowledge`, `/queue`,
+- **59** exigem token — `Depends(current_user)`: `/auth/me`, `/knowledge`, `/queue`,
   `/jobs/{id}`, `/jobs/{id}/cancel`, `/assets/upload`, `/assets`,
   `/assets/download/{object_key:path}`, `/assets/{id}/conditioning`,
   `/assets/{id}/export`, `POST /personas`, `GET /personas` (listagem, PR003),
@@ -80,7 +80,10 @@ restou:
   bloco `/api/v1/render/*` (6 rotas, PR008 — renders persistem no workspace de
   quem chamou, então anônimo é recusado),
   e todo o bloco `/api/v1/graph/*` (12 rotas, V3.1 — o grafo é dado de tenant,
-  como personas: anônimo é recusado e id estrangeiro responde 404).
+  como personas: anônimo é recusado e id estrangeiro responde 404),
+  e todo o bloco `/api/v1/continuity/*` (13 rotas, V3.2 — locks e episódios
+  são dados de tenant, como personas: anônimo é recusado e id estrangeiro
+  responde 404).
 - **3** aceitam token mas **não exigem** — `Depends(optional_user)`:
   `/generations/images`, `/generations/videos`, `/core/compile`. Uma chamada
   anônima passa — e o job criado anônima não tem tenant, logo nenhuma
@@ -117,7 +120,7 @@ from app.main import app
 import inspect
 n = sum(1 for r in app.routes if isinstance(r, APIRoute) and r.path.startswith('/api/v1')
         and 'user' in inspect.signature(r.endpoint).parameters)
-print(f'{n} de 86 rotas com identidade')"
+print(f'{n} de 99 rotas com identidade')"
 ```
 
 ---

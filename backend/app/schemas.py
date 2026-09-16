@@ -1258,3 +1258,169 @@ class GraphSeedResponse(BaseModel):
     created_edges: int
     skipped_nodes: int
     skipped_edges: int
+
+
+# ---------------------------------------------------------------------------
+# V3.2 — Character Continuity Engine
+# ---------------------------------------------------------------------------
+
+
+class ContinuityPersonaRequest(BaseModel):
+    """Persona-global scope: identity and voice resolve in every campaign."""
+
+    persona_id: str = Field(min_length=1, max_length=120)
+
+
+class ContinuityScopeRequest(BaseModel):
+    """Campaign scope with an optional per-episode override (None = default)."""
+
+    persona_id: str = Field(min_length=1, max_length=120)
+    campaign_id: str = Field(default="default", max_length=120)
+    episode: int | None = Field(default=None, ge=1)
+
+
+class ContinuityIdentityRequest(ContinuityPersonaRequest):
+    face: str = Field(default="", max_length=500)
+    hair: str = Field(default="", max_length=500)
+    beard: str = Field(default="", max_length=500)
+    body: str = Field(default="", max_length=500)
+    skin: str = Field(default="", max_length=500)
+    age_appearance: str = Field(default="", max_length=500)
+
+
+class ContinuityIdentityResponse(BaseModel):
+    persona_id: str
+    face: str = ""
+    hair: str = ""
+    beard: str = ""
+    body: str = ""
+    skin: str = ""
+    age_appearance: str = ""
+    fingerprint: str = ""
+    version: int = 1
+    updated_at: str = ""
+
+
+class ContinuityWardrobeRequest(ContinuityScopeRequest):
+    outfit: str = Field(default="", max_length=500)
+    accessories: str = Field(default="", max_length=500)
+    colors: str = Field(default="", max_length=500)
+    shoes: str = Field(default="", max_length=500)
+    watch: str = Field(default="", max_length=500)
+
+
+class ContinuityWardrobeResponse(BaseModel):
+    persona_id: str
+    campaign_id: str
+    #: Where the returned lock was written; None means campaign default.
+    source_episode: int | None = None
+    outfit: str = ""
+    accessories: str = ""
+    colors: str = ""
+    shoes: str = ""
+    watch: str = ""
+    fingerprint: str = ""
+    version: int = 1
+    updated_at: str = ""
+
+
+class ContinuityLocationRequest(ContinuityScopeRequest):
+    showroom: str = Field(default="", max_length=500)
+    studio: str = Field(default="", max_length=500)
+    street: str = Field(default="", max_length=500)
+    city: str = Field(default="", max_length=500)
+    base_lighting: str = Field(default="", max_length=500)
+
+
+class ContinuityLocationResponse(BaseModel):
+    persona_id: str
+    campaign_id: str
+    #: Where the returned lock was written; None means campaign default.
+    source_episode: int | None = None
+    showroom: str = ""
+    studio: str = ""
+    street: str = ""
+    city: str = ""
+    base_lighting: str = ""
+    fingerprint: str = ""
+    version: int = 1
+    updated_at: str = ""
+
+
+class ContinuityVehicleRequest(ContinuityScopeRequest):
+    vehicle: str = Field(default="", max_length=500)
+    color: str = Field(default="", max_length=500)
+    plate: str = Field(default="", max_length=120)
+    wheels: str = Field(default="", max_length=500)
+    finish: str = Field(default="", max_length=500)
+
+
+class ContinuityVehicleResponse(BaseModel):
+    persona_id: str
+    campaign_id: str
+    #: Where the returned lock was written; None means campaign default.
+    source_episode: int | None = None
+    vehicle: str = ""
+    color: str = ""
+    plate: str = ""
+    wheels: str = ""
+    finish: str = ""
+    fingerprint: str = ""
+    version: int = 1
+    updated_at: str = ""
+
+
+class ContinuityVoiceRequest(ContinuityPersonaRequest):
+    voice_profile: str = Field(default="", max_length=500)
+    default_emotion: str = Field(default="", max_length=500)
+    speed: str = Field(default="", max_length=120)
+    intensity: str = Field(default="", max_length=120)
+
+
+class ContinuityVoiceResponse(BaseModel):
+    persona_id: str
+    voice_profile: str = ""
+    default_emotion: str = ""
+    speed: str = ""
+    intensity: str = ""
+    fingerprint: str = ""
+    version: int = 1
+    updated_at: str = ""
+
+
+class ContinuityResolveResponse(BaseModel):
+    persona_id: str
+    campaign_id: str
+    episode: int
+    identity: ContinuityIdentityResponse | None = None
+    wardrobe: ContinuityWardrobeResponse | None = None
+    location: ContinuityLocationResponse | None = None
+    vehicle: ContinuityVehicleResponse | None = None
+    voice: ContinuityVoiceResponse | None = None
+    phrases: list[str] = Field(default_factory=list)
+    fingerprints: dict[str, str] = Field(default_factory=dict)
+    missing: list[str] = Field(default_factory=list)
+    drift: list[str] = Field(default_factory=list)
+    consistent: bool = False
+    block: str = ""
+
+
+class ContinuityEpisodeCreate(BaseModel):
+    persona_id: str = Field(min_length=1, max_length=120)
+    campaign_id: str = Field(default="default", max_length=120)
+    #: Omitted means "the next episode number" (max + 1, or 1).
+    episode: int | None = Field(default=None, ge=1)
+    title: str = Field(default="", max_length=160)
+    notes: str = Field(default="", max_length=2000)
+
+
+class ContinuityEpisodeResponse(BaseModel):
+    id: str
+    workspace_id: str
+    persona_id: str
+    campaign_id: str
+    episode: int
+    title: str = ""
+    notes: str = ""
+    snapshot: dict[str, Any] = Field(default_factory=dict)
+    created_at: str = ""
