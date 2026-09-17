@@ -798,6 +798,35 @@ do Core); o ZIP é servido pela rota autenticada de assets. Sete rotas
 `/api/v1/campaigns/*` (tag `campaign`), todas com identidade, e a UI
 `/studio/campaigns`. Detalhes em `docs/CAMPAIGN_BUILDER.md`.
 
+## Quality AI Engine (V3.4)
+
+Um render entra, um veredito honesto 0–100 sai. Cinco módulos em
+`backend/app/quality/` com a mesma regra de camadas de `campaign/` e
+`continuity/` — `quality_score` (oito critérios ponderados e configuráveis,
+agregação pura), `quality_rules` (bandas < 70 retry / 70–84 revisão manual /
+85+ aprovado / 95+ masterpiece, findings e recomendação de upscale),
+`quality_engine` (heurísticas medidas do arquivo/spec reais + sinais de
+detector externo), `quality_models` (tabela `quality_reports`, migração
+`0006`) e `quality_repository` (única fronteira com o banco).
+
+```text
+POST /quality/assets/{id}/assess   -> score 0-100 + relatório persistido + badge no Asset
+GET  /quality/assets/{id}/report   -> último relatório (404 = nunca avaliado)
+GET  /quality/assets/{id}/history  -> todas as avaliações, append-only
+POST /quality/assets/{id}/decision -> registra regenerate/upscale/approve (nunca executa)
+GET  /quality/config               -> critérios, pesos default, bandas (público)
+```
+
+A regra de honestidade do `SYSTEM_PROMPT.md` vale para o score: cada critério
+declara a origem (`measured` ou `detector`) e critério não medido é excluído
+da média ponderada e listado em `unmeasured`, nunca zerado. O gate estrutural
+`core/quality.py` (ETAPA 14) permanece intocado — ele decide se o artefato
+existe; este domínio julga quão bom é. O motor só recomenda: retry, upscale e
+aprovação são decisões do operador, registradas com audit. O último veredito
+é desnormalizado em `assets.quality_score`/`quality_status`/`quality_report`/
+`quality_version` na mesma transação do relatório. UI em `/studio/quality`.
+Detalhes em `docs/QUALITY_ENGINE.md`.
+
 ## Prompt compiler (ETAPA 9)
 
 `SYSTEM_PROMPT.md` declara treze blocos. Até a ETAPA 9 só dez eram emitidos e a junção não

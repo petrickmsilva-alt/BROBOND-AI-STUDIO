@@ -68,6 +68,8 @@ def test_fresh_database_gets_the_full_schema(temp_database) -> None:
         # V3.3 (migration 0005): the Campaign Builder tables.
         "campaigns", "campaign_briefs", "campaign_episodes", "campaign_assets",
         "campaign_exports",
+        # V3.4 (migration 0006): the Quality AI Engine report history.
+        "quality_reports",
     ):
         assert expected in tables, f"{expected} missing from a fresh schema"
 

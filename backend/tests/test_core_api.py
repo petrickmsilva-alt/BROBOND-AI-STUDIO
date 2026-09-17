@@ -264,9 +264,10 @@ def test_route_inventory_only_grew() -> None:
     # `/api/v1/providers/telemetry`), 86 after V3.1 (twelve `/api/v1/graph/*`
     # Cinematic Knowledge Graph routes), 99 after V3.2 (thirteen
     # `/api/v1/continuity/*` Character Continuity Engine routes), 106 after
-    # V3.3 (seven `/api/v1/campaigns/*` Campaign Builder routes).
+    # V3.3 (seven `/api/v1/campaigns/*` Campaign Builder routes), 111 after
+    # V3.4 (five `/api/v1/quality/*` Quality AI Engine routes).
     # The guard is that the number only grows: nothing was ever removed.
-    assert len([route for route in http if route.path.startswith("/api/v1")]) == 106
+    assert len([route for route in http if route.path.startswith("/api/v1")]) == 111
 
 
 # ------------------------------------------------- no generation logic in routes

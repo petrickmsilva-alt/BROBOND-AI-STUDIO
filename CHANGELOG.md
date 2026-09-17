@@ -6,6 +6,50 @@ versões de produto do `ROADMAP.md`.
 
 ---
 
+## [Unreleased] — V3.4: QUALITY AI ENGINE
+
+Um render entra, um veredito honesto 0–100 sai. **Provider Registry e
+Director AI intocados** (pré-requisitos do sprint): o motor avalia outputs,
+não escolhe providers nem planeja cenas — e **só recomenda**, nunca executa
+retry, upscale ou aprovação automaticamente.
+
+- **ETAPA 1** — domínio `backend/app/quality/` em cinco módulos com a mesma
+  regra de camadas de `campaign/` e `continuity/`: `quality_score` (critérios,
+  pesos, agregação ponderada, puro), `quality_rules` (bandas, findings,
+  recomendações, puro), `quality_engine` (heurísticas `measured` + sinais
+  `detector`, puro + Pillow), `quality_models` (a tabela) e
+  `quality_repository` (única fronteira com o banco).
+- **ETAPA 2** — score 0–100 sobre oito critérios (Face, Hands, Eyes,
+  Composition, Lighting, Color, Motion, Prompt Fidelity), cada peso
+  configurável por chamada ou por injeção; zero números mágicos — toda
+  constante é nomeada. Motion é só-vídeo; imagem é julgada em 7 critérios.
+  A regra de honestidade do `SYSTEM_PROMPT.md` vale para o score: cada número
+  declara a origem (`measured` do arquivo/spec real, `detector` externo) e
+  critério não medido é **excluído da média e listado**, nunca zerado.
+- **ETAPA 3** — relatório persistente com `overall_score`, `issues[]`,
+  `strengths[]`, `suggestions[]`, `retry_recommended`, `upscale_recommended`:
+  linha append-only em `quality_reports` (migração `0006`) + documento
+  completo junto ao Asset, gravados numa única transação.
+- **ETAPA 4** — bandas de decisão: < 70 retry, 70–84 revisão manual, 85+
+  aprovado, 95+ masterpiece; upscale recomendado só para render aprovado com
+  lado curto < 1024px. Recomendação, nunca execução — a decisão do operador
+  (`regenerate`/`upscale`/`approve`) é registrada no relatório com audit.
+- **ETAPA 5** — UI `/studio/quality`: score radial SVG, radar chart sobre os
+  critérios medidos, problemas/sugestões e os botões Regenerar, Upscale e
+  Aprovar (que registram e dizem na tela que nada foi disparado).
+- **ETAPA 6** — Asset Library: `assets.quality_score`, `quality_status`,
+  `quality_report`, `quality_version` desnormalizados (NULL = nunca avaliado),
+  expostos em `GET /api/v1/assets` e no badge da lista.
+- **ETAPA 7** — 121 testes novos (score, rules, engine/report, decision,
+  persistence, API ponta a ponta) com o pacote `backend/app/quality/` em
+  **100% de cobertura** (piso do sprint: 98%). Suíte total: 2.076.
+- **ETAPA 8** — `docs/QUALITY_ENGINE.md`, `docs/API.md` regenerado (111
+  rotas), `ARCHITECTURE.md`, `ROADMAP.md`, `docs/ETAPAS.md` e
+  `docs/LIMITATIONS.md` atualizados e verificados por
+  `test_docs_accuracy.py`.
+
+---
+
 ## [Unreleased] — V3.2.1: NETWORK RELIABILITY LAYER
 
 A correção proposta no PR009.2, agora implementada. **Nenhuma funcionalidade

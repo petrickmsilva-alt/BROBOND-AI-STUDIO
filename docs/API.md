@@ -13,10 +13,10 @@ mudar e o documento não for regenerado, a suíte falha.
 
 ## Resumo
 
-- **106** rotas HTTP sob `/api/v1`
+- **111** rotas HTTP sob `/api/v1`
 - **32** delas são `/api/v1/core/*` — a camada de decisão
 - **3** WebSockets
-- **17** tags
+- **18** tags
 
 OpenAPI interativo em `/docs` (Swagger) e `/redoc` quando o serviço está no ar.
 
@@ -179,6 +179,16 @@ PR006 Storyboard Cinematic Engine não adiciona rotas de render: a UI edita um `
 | `GET` | `/api/v1/providers` | Universal provider health, latency, version and capabilities (PR007). |
 | `GET` | `/api/v1/providers/telemetry` | Recent provider telemetry records, newest first (PR009). |
 | `POST` | `/api/v1/providers/{provider_id}/test` | PR009 real test: run a deterministic test spec through the full path. |
+
+## `quality` — 5
+
+| Método | Rota | Descrição |
+| --- | --- | --- |
+| `POST` | `/api/v1/quality/assets/{asset_id}/assess` | Score one asset 0–100 on the eight weighted criteria and persist the report (V3.4). |
+| `POST` | `/api/v1/quality/assets/{asset_id}/decision` | Record the operator's choice — regenerate, upscale or approve (V3.4). |
+| `GET` | `/api/v1/quality/assets/{asset_id}/history` | Every assessment of one asset, newest first — history is append-only (V3.4). |
+| `GET` | `/api/v1/quality/assets/{asset_id}/report` | The asset's latest persisted quality report (V3.4). |
+| `GET` | `/api/v1/quality/config` | The engine's public contract: criteria, default weights, bands, sources (V3.4). |
 
 ## `queue` — 2
 

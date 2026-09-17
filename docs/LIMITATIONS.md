@@ -64,11 +64,11 @@ restou:
 
 ---
 
-## 3. Autorização (P0-4, fechado no PR002; ampliado no PR003, no PR008, na V3.1, na V3.2 e na V3.3)
+## 3. Autorização (P0-4, fechado no PR002; ampliado no PR003, no PR008, na V3.1, na V3.2, na V3.3 e na V3.4)
 
-**69 de 106 rotas** tocam identidade, e a diferença entre elas importa:
+**73 de 111 rotas** tocam identidade, e a diferença entre elas importa:
 
-- **66** exigem token — `Depends(current_user)`: `/auth/me`, `/knowledge`, `/queue`,
+- **70** exigem token — `Depends(current_user)`: `/auth/me`, `/knowledge`, `/queue`,
   `/jobs/{id}`, `/jobs/{id}/cancel`, `/assets/upload`, `/assets`,
   `/assets/download/{object_key:path}`, `/assets/{id}/conditioning`,
   `/assets/{id}/export`, `POST /personas`, `GET /personas` (listagem, PR003),
@@ -86,15 +86,20 @@ restou:
   responde 404),
   e todo o bloco `/api/v1/campaigns/*` (7 rotas, V3.3 — campanhas, briefs,
   entregáveis, timeline e exports são dados de tenant, como personas:
-  anônimo é recusado e id estrangeiro responde 404).
+  anônimo é recusado e id estrangeiro responde 404),
+  e as 4 rotas de asset em `/api/v1/quality/*` (V3.4 — relatórios de
+  qualidade avaliam e marcam assets do workspace, como personas: anônimo é
+  recusado e id estrangeiro responde 404).
 - **3** aceitam token mas **não exigem** — `Depends(optional_user)`:
   `/generations/images`, `/generations/videos`, `/core/compile`. Uma chamada
   anônima passa — e o job criado anônima não tem tenant, logo nenhuma
   identidade pode lê-lo de volta (consequência documentada, fixada por
   `test_an_anonymous_job_cannot_be_read_back_with_any_token`).
-- As outras **37** não verificam identidade por desenho: `GET /health`, o bloco
+- As outras **38** não verificam identidade por desenho: `GET /health`, o bloco
   `/system/*`, `/models/*`, `/auth/login`, `/auth/register` (com rate limit),
-  `/prompts/enhance`, `/storyboards/expand`, `/providers` e o Core read-only
+  `/prompts/enhance`, `/storyboards/expand`, `/providers`, `/quality/config`
+  (V3.4 — critérios, pesos default e bandas do motor, dados de referência sem
+  estado de tenant) e o Core read-only
   (`/core/direct`, `/core/director/production-plan`, `/core/cinematic/*`,
   `/core/shots*`, `/core/storyboard*`, `/core/timeline*`, `/core/quality/*`,
   `/core/providers*`) — dados de referência e decisões, sem estado de tenant.
@@ -123,7 +128,7 @@ from app.main import app
 import inspect
 n = sum(1 for r in app.routes if isinstance(r, APIRoute) and r.path.startswith('/api/v1')
         and 'user' in inspect.signature(r.endpoint).parameters)
-print(f'{n} de 106 rotas com identidade')"
+print(f'{n} de 111 rotas com identidade')"
 ```
 
 ---
