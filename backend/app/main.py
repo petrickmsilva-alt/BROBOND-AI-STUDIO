@@ -266,6 +266,26 @@ def _bootstrap_database(retries: int = 12, delay_seconds: float = 5.0) -> None:
     raise RuntimeError(f"database bootstrap failed after {retries} attempts: {last_error}")
 
 
+def _warn_if_ephemeral_database() -> None:
+    """Render sets the `RENDER` environment variable on every service. If the
+    API is running there but still on the SQLite fallback, `BROBOND_DATABASE_URL`
+    was never injected (e.g. the service was created by hand instead of from
+    `render.yaml`), and every deploy or restart silently wipes all data. Make
+    that impossible to miss in the deploy log."""
+    import os
+
+    if os.environ.get("RENDER") and settings.database_url.startswith("sqlite"):
+        print(
+            "[brobond] WARNING: running on Render with the SQLite fallback — "
+            "BROBOND_DATABASE_URL is not set, so ALL DATA IS LOST on every "
+            "deploy or restart. Attach the managed Postgres (see render.yaml: "
+            "envVars.BROBOND_DATABASE_URL fromDatabase brobond-studio-db) or "
+            "set BROBOND_DATABASE_URL in the service's environment settings.",
+            flush=True,
+        )
+
+
+_warn_if_ephemeral_database()
 _bootstrap_database()
 
 # ---------------------------------------------------------------------------
