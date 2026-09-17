@@ -4,7 +4,11 @@ pydantic==2.10.5
 pydantic-settings==2.7.1
 email-validator==2.2.0
 sqlalchemy==2.0.36
+# SQLAlchemy normalizes Render postgres:// URLs to postgresql+psycopg://.
+psycopg[binary]==3.2.1
 asyncpg==0.30.0
+# backend/app/main.py applies Alembic migrations at startup.
+alembic==1.13.3
 redis==5.2.1
 celery==5.4.0
 # backend/app/storage.py drives S3/MinIO through the AWS SDK; the `minio` client
@@ -12,6 +16,8 @@ celery==5.4.0
 boto3==1.43.94
 minio==7.2.15
 python-multipart==0.0.20
+# Image preprocessing and quality checks import PIL lazily.
+Pillow>=10.4.0
 # backend/app/auth.py imports `jwt` and catches `jwt.PyJWTError`; python-jose
 # below is used only by the unused backend/app/core/security.py. Both are pinned
 # because the live module needs PyJWT specifically.
