@@ -111,6 +111,7 @@ Pré-requisito: repositório público no GitHub conectado ao seu plano Render
 
 1. Render → *New → Web Service* → selecione o repositório → runtime **Node**, build `npm ci && npm run build`, start `npm start`, health check `/`, env var `NEXT_PUBLIC_API_URL=https://brobond-ai-api.onrender.com`. O `npm run build` é obrigatório: `.next/` está no `.gitignore`, então sem ele o `next start` falha com *Could not find a production build in the '.next' directory*.
 2. *New → Web Service* → runtime **Docker**, Dockerfile `Dockerfile.api`, health check `/api/v1/health`, env vars: `BROBOND_DATABASE_URL` (connection string do Postgres), `BROBOND_JWT_SECRET` (qualquer string longa), `BROBOND_CORS_ORIGINS=https://brobond-studio-web.onrender.com`.
+   - Se optar pelo runtime **Python** em vez de Docker, use root directory `backend`, build `pip install -r requirements.txt` e start `uvicorn app.main:app --host 0.0.0.0 --port $PORT`. O backend inclui `backend/runtime.txt` e `backend/.python-version` pinando Python 3.12.8 para evitar o default Python 3.14 do Render, que força build nativo de `pydantic-core`/Rust.
 3. *New → PostgreSQL* (free) e copie a connection string para `BROBOND_DATABASE_URL` do serviço da API.
 4. Em cada serviço, mantenha **Auto-Deploy** habilitado.
 
