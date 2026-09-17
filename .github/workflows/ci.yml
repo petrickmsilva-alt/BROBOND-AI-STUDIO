@@ -37,6 +37,121 @@ jobs:
         run: |
           PYTHONPATH=backend coverage run --source=backend/app -m pytest backend/tests -q
           coverage report --include='backend/app/*' --skip-empty --fail-under=95
+
+  # ---------------------------------------------------------------------------
+  # PR010.0 — PLATFORM FREEZE. Three required guards.
+  #
+  # They run in their own job, in parallel with `backend`, on purpose: an
+  # architectural regression must be readable as "Architecture Guard failed"
+  # in the checks list, not buried inside a 2,100-test run. They are fast
+  # (seconds — pure AST and one in-memory app build), so the duplication with
+  # the full suite costs nothing and buys a diagnosis at a glance.
+  # ---------------------------------------------------------------------------
+  architecture-guard:
+    name: Architecture Guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      # ETAPA 1 + 2: the manifest is the source of truth and the import graph
+      # must match it. Director -/-> Providers, Quality -/-> Render,
+      # Providers -/-> Director, Campaign -/-> Quality — direct and transitive.
+      - name: Architecture boundaries match docs/ARCHITECTURE_MANIFEST.md
+        run: |
+          set -o pipefail
+          if ! PYTHONPATH=backend pytest backend/tests/test_architecture_boundaries.py -q 2>&1 | tee /tmp/arch.log; then
+            {
+              echo "## Architecture Guard failed"
+              echo "A module crossed a boundary declared in docs/ARCHITECTURE_MANIFEST.md."
+              echo "Either revert the coupling, or declare it in the manifest AND in"
+              echo "backend/tests/test_architecture_boundaries.py (ALLOWED)."
+              echo '```'
+              grep -E "^(FAILED|ERROR)" /tmp/arch.log | head -25 || true
+              echo '```'
+              echo '```'
+              tail -25 /tmp/arch.log
+              echo '```'
+            } >> "${GITHUB_STEP_SUMMARY}"
+            exit 1
+          fi
+
+  import-boundary-guard:
+    name: Import Boundary Guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      # The independence properties that predate the freeze and must survive it:
+      # no Core component imports a peer, the Core imports no framework, the
+      # dead cluster stays dead, and the contracts package is the only
+      # definition of the shared vocabulary (ETAPA 4).
+      - name: Core independence, dead-module boundary and contract uniqueness
+        run: |
+          set -o pipefail
+          if ! PYTHONPATH=backend pytest \
+              backend/tests/test_core_independence.py \
+              backend/tests/test_dead_module_boundary.py \
+              backend/tests/test_event_catalog.py \
+              -q 2>&1 | tee /tmp/imports.log; then
+            {
+              echo "## Import Boundary Guard failed"
+              echo "A Core component imported a peer or a framework, the dead cluster"
+              echo "came back to life, or an event was emitted without being registered"
+              echo "in docs/EVENT_CATALOG.md."
+              echo '```'
+              grep -E "^(FAILED|ERROR)" /tmp/imports.log | head -25 || true
+              echo '```'
+              echo '```'
+              tail -25 /tmp/imports.log
+              echo '```'
+            } >> "${GITHUB_STEP_SUMMARY}"
+            exit 1
+          fi
+
+  api-snapshot-guard:
+    name: API Snapshot Guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install -r requirements.txt
+      # ETAPA 3: the public surface (routes, WebSockets, models, auth) is
+      # frozen in docs/API_SNAPSHOT.json. Changing it is allowed; changing it
+      # by accident is not.
+      - name: Public API matches docs/API_SNAPSHOT.json
+        run: |
+          set -o pipefail
+          if ! PYTHONPATH=backend pytest backend/tests/test_api_snapshot.py -q 2>&1 | tee /tmp/snapshot.log; then
+            {
+              echo "## API Snapshot Guard failed"
+              echo "The public API no longer matches the committed snapshot."
+              echo "If the change is intended, regenerate it and review the diff:"
+              echo '```bash'
+              echo "PYTHONPATH=backend python scripts/gen_api_snapshot.py > docs/API_SNAPSHOT.json"
+              echo '```'
+              echo '```'
+              grep -E "^(FAILED|ERROR)" /tmp/snapshot.log | head -25 || true
+              echo '```'
+              echo '```'
+              tail -25 /tmp/snapshot.log
+              echo '```'
+            } >> "${GITHUB_STEP_SUMMARY}"
+            exit 1
+          fi
+      # The snapshot must be reproducible from the application, not hand-edited.
+      - name: Snapshot is byte-identical to a fresh generation
+        run: |
+          PYTHONPATH=backend python scripts/gen_api_snapshot.py > /tmp/API_SNAPSHOT.json
+          diff -u docs/API_SNAPSHOT.json /tmp/API_SNAPSHOT.json
+
   frontend:
     runs-on: ubuntu-latest
     steps:
