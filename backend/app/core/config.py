@@ -1,11 +1,31 @@
 """Environment-backed settings for local and hosted deployments."""
-from pydantic import field_validator
+import os
+
+from pydantic import AliasChoices, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+#: PR009.4 — the development-only fallback. It must never survive on Render:
+#: the model validator below refuses to boot production on SQLite.
+SQLITE_DEV_FALLBACK = "sqlite:///./brobond.db"
+
+
+def _running_on_render() -> bool:
+    """True when the process runs on Render (the platform sets `RENDER=true`
+    on every service). Accepts the usual truthy spellings defensively."""
+    return os.environ.get("RENDER", "").strip().lower() in {"true", "1", "yes", "on"}
 
 
 class Settings(BaseSettings):
     app_name: str = "BROBOND AI STUDIO API"
-    database_url: str = "sqlite:///./brobond.db"
+    #: PR009.4 — read priority: BROBOND_DATABASE_URL, then DATABASE_URL (the
+    #: name PaaS providers inject by convention), then the SQLite dev
+    #: fallback. `AliasChoices` is ordered: the first environment variable
+    #: found wins, so an explicit BROBOND_DATABASE_URL always beats a
+    #: platform-injected DATABASE_URL.
+    database_url: str = Field(
+        default=SQLITE_DEV_FALLBACK,
+        validation_alias=AliasChoices("BROBOND_DATABASE_URL", "DATABASE_URL"),
+    )
     redis_url: str = "redis://localhost:6379/0"
     queue_enabled: bool = False
     storage_enabled: bool = False
@@ -54,6 +74,38 @@ class Settings(BaseSettings):
         if isinstance(value, str) and value.startswith(("postgres://", "postgresql://")):
             value = "postgresql+psycopg://" + value.split("://", 1)[1]
         return value
+
+    @model_validator(mode="after")
+    def refuse_sqlite_on_render(self) -> "Settings":
+        """PR009.4: production never boots on SQLite.
+
+        On Render (`RENDER=true`) the database URL must come from the
+        environment — `BROBOND_DATABASE_URL` or `DATABASE_URL`. If neither is
+        set the app previously fell back to an ephemeral SQLite file inside
+        the container and silently lost all data on every deploy. Now it
+        refuses to start instead.
+        """
+
+        if _running_on_render() and self.database_url.startswith("sqlite"):
+            raise RuntimeError(
+                "Refusing to start on Render with a SQLite database: data "
+                "would be wiped on every deploy or restart. Set "
+                "BROBOND_DATABASE_URL (or DATABASE_URL) to the managed "
+                "Postgres connection string — see render.yaml "
+                "(envVars.BROBOND_DATABASE_URL fromDatabase brobond-studio-db) "
+                "and docs/DEPLOYMENT.md."
+            )
+        return self
+
+    def is_production_database(self) -> bool:
+        """PR009.4: True only when the configured database is PostgreSQL."""
+        return self.database_url.startswith(("postgresql", "postgres"))
+
+    def database_banner(self) -> str:
+        """PR009.4: the startup banner line — unmissable, never plain INFO."""
+        if self.is_production_database():
+            return "🟢 PostgreSQL Connected"
+        return "🔴 SQLite Development Mode"
 
     @field_validator("jwt_secret")
     @classmethod
