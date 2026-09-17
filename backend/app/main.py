@@ -18,6 +18,7 @@ from .core.contracts import GenerationKind, GenerationSpec, GraphContext
 from .core.director import CameraDirector, DirectorAgent as ProductionDirectorAgent
 from .core import (
     ASPECT_BY_FORMAT,
+    ASPECT_RATIOS as CORE_ASPECT_RATIOS,
     DEFAULT_ASPECT_RATIO,
     DEFAULT_RESOLUTION,
     RESOLUTIONS,
@@ -63,6 +64,30 @@ from .campaign import (
     UnknownCampaignError,
     campaign_service,
 )
+from .quality import (
+    APPROVED_AT,
+    CRITERIA as QUALITY_CRITERIA,
+    DEFAULT_WEIGHTS as QUALITY_DEFAULT_WEIGHTS,
+    IMAGE_CRITERIA,
+    ISSUE_BELOW,
+    KIND_IMAGE,
+    KIND_VIDEO,
+    MASTERPIECE_AT,
+    MediaFacts,
+    QUALITY_ENGINE_VERSION,
+    QUALITY_STATUSES,
+    QualityEngine,
+    QualityScorer,
+    QualityValidationError,
+    RETRY_BELOW,
+    SOURCES as QUALITY_SOURCES,
+    STRENGTH_AT,
+    UPSCALE_SHORT_SIDE_BELOW,
+    UnknownReportError,
+    VIDEO_CRITERIA,
+    quality_repo,
+)
+from .quality import UnknownAssetError as UnknownQualityAssetError
 from .core.config import settings
 from .db import SessionLocal, get_db
 from .events import EVENT_CANCELLED, TERMINAL_STATUSES, hub, job_event
@@ -188,6 +213,11 @@ from .schemas import (
     CampaignExportResponse,
     CampaignResponse,
     CampaignDetailResponse,
+    QualityAssessAssetRequest,
+    QualityAssetReportResponse,
+    QualityConfigResponse,
+    QualityCriterionResponse,
+    QualityDecisionRequest,
 )
 from .repositories import PersonaRepositoryError, persona_repo
 from .job_service import job_service
@@ -327,6 +357,12 @@ video_timeline = VideoTimeline(max_runtime_seconds=MAX_RUNTIME_SECONDS)
 # ETAPA 14: the same gate the worker runs, exposed for assessment on demand. One
 # instance so a manual check and the worker's verdict cannot disagree.
 quality_gate = QualityGate()
+
+# V3.4: the Quality AI Engine — the aesthetic layer on top of the structural
+# gate. One default instance for the common path; a request that re-balances
+# weights builds its own engine so a caller's table never leaks into another
+# request. It recommends only; nothing here executes a retry or an upscale.
+quality_engine = QualityEngine()
 
 # PR008: the Cinematic Render Engine. The orchestrator resolves persona
 # identity through the same MemoryResolver the spec builder uses, so a locked
@@ -715,7 +751,21 @@ def list_assets(user: User = Depends(current_user), db: Session = Depends(get_db
     if not workspace:
         return []
     assets = db.scalars(select(Asset).where(Asset.workspace_id == workspace.id).order_by(Asset.created_at.desc())).all()
-    return [AssetResponse(id=a.id, name=a.name, kind=a.kind, object_key=a.object_key, url=storage.signed_url(a.object_key), created_at=a.created_at) for a in assets]
+    return [
+        AssetResponse(
+            id=a.id,
+            name=a.name,
+            kind=a.kind,
+            object_key=a.object_key,
+            url=storage.signed_url(a.object_key),
+            created_at=a.created_at,
+            # V3.4: the latest quality verdict rides along (ETAPA 6).
+            quality_score=a.quality_score,
+            quality_status=a.quality_status,
+            quality_version=a.quality_version,
+        )
+        for a in assets
+    ]
 
 
 @app.get("/api/v1/assets/download/{object_key:path}", tags=["assets"])
@@ -3545,3 +3595,226 @@ def export_campaign(
         request=http_request,
     )
     return _campaign_export_payload(export)
+
+
+# ---------------------------------------------------------------------------
+# V3.4 — Quality AI Engine: score, report, recommendation. Never execution.
+#
+# The engine composes the quality domain (`app/quality/*`); these routes hand
+# facts in and map reports out, so no scoring logic lives in the HTTP layer.
+# The structural gate (`/core/quality/*`, ETAPA 14) is untouched: it says
+# whether an artifact exists at all, this block says how good it is — and
+# every recommendation waits for a human at /studio/quality.
+# ---------------------------------------------------------------------------
+
+
+def _quality_report_payload(view) -> QualityAssetReportResponse:
+    report = view.report
+    return QualityAssetReportResponse(
+        id=view.id,
+        asset_id=view.asset_id,
+        kind=view.kind,
+        overall_score=view.overall_score,
+        status=view.status,
+        retry_recommended=view.retry_recommended,
+        upscale_recommended=view.upscale_recommended,
+        issues=list(report.get("issues", [])),
+        strengths=list(report.get("strengths", [])),
+        suggestions=list(report.get("suggestions", [])),
+        criteria=[QualityCriterionResponse(**item) for item in report.get("criteria", [])],
+        unmeasured=list(report.get("unmeasured", [])),
+        engine_version=view.engine_version,
+        operator_decision=report.get("operator_decision"),
+        facts=dict(report.get("facts", {})),
+        created_at=view.created_at,
+    )
+
+
+def _quality_facts_for(asset: Asset, request: QualityAssessAssetRequest) -> MediaFacts:
+    """Assemble MediaFacts from the stored asset plus the caller's facts."""
+
+    if asset.kind not in (KIND_IMAGE, KIND_VIDEO):
+        raise HTTPException(status_code=422, detail="Only image and video assets can be assessed")
+    try:
+        resolved = str(storage.local_path(asset.object_key))
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail="Invalid asset path") from error
+    expected_ratio = 0.0
+    if request.aspect_ratio:
+        expected_ratio = CORE_ASPECT_RATIOS.get(request.aspect_ratio, 0.0)
+        if expected_ratio == 0.0:
+            raise HTTPException(status_code=422, detail=f"Unknown aspect ratio {request.aspect_ratio!r}")
+    return MediaFacts(
+        kind=asset.kind,
+        path=resolved,
+        width=request.width,
+        height=request.height,
+        duration_seconds=request.duration_seconds,
+        fps=request.fps,
+        aspect_ratio_expected=expected_ratio,
+        requested_duration=request.requested_duration,
+        requested_fps=request.requested_fps,
+        prompt_original=request.prompt_original,
+        prompt_compiled=request.prompt_compiled,
+    )
+
+
+@app.post(
+    "/api/v1/quality/assets/{asset_id}/assess",
+    response_model=QualityAssetReportResponse,
+    status_code=201,
+    tags=["quality"],
+)
+def assess_asset_quality(
+    asset_id: str,
+    request: QualityAssessAssetRequest,
+    http_request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> QualityAssetReportResponse:
+    """Score one asset 0–100 on the eight weighted criteria and persist the report (V3.4).
+
+    Unmeasured criteria are excluded and named, never averaged in as invented
+    numbers; the verdict is a recommendation — nothing regenerates, upscales
+    or approves automatically.
+    """
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    try:
+        asset = quality_repo.asset_for(workspace.id, asset_id)
+    except UnknownQualityAssetError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    try:
+        engine = QualityEngine(QualityScorer(request.weights)) if request.weights else quality_engine
+        facts = engine.with_probed_geometry(_quality_facts_for(asset, request))
+        assessment = engine.assess(facts, signals=request.signals)
+        view = quality_repo.save_assessment(workspace.id, asset_id, assessment)
+    except QualityValidationError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    audit(
+        db,
+        actor=user,
+        action="quality.assessed",
+        resource_type="quality_report",
+        resource_id=view.id,
+        workspace_id=workspace.id,
+        detail={
+            "asset_id": asset_id,
+            "overall_score": view.overall_score,
+            "status": view.status,
+            "engine_version": view.engine_version,
+        },
+        request=http_request,
+    )
+    return _quality_report_payload(view)
+
+
+@app.get(
+    "/api/v1/quality/assets/{asset_id}/report",
+    response_model=QualityAssetReportResponse,
+    tags=["quality"],
+)
+def get_asset_quality_report(
+    asset_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> QualityAssetReportResponse:
+    """The asset's latest persisted quality report (V3.4)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    try:
+        view = quality_repo.latest_report(workspace.id, asset_id)
+    except (UnknownQualityAssetError, UnknownReportError) as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    return _quality_report_payload(view)
+
+
+@app.get(
+    "/api/v1/quality/assets/{asset_id}/history",
+    response_model=list[QualityAssetReportResponse],
+    tags=["quality"],
+)
+def get_asset_quality_history(
+    asset_id: str,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> list[QualityAssetReportResponse]:
+    """Every assessment of one asset, newest first — history is append-only (V3.4)."""
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    try:
+        views = quality_repo.history(workspace.id, asset_id)
+    except UnknownQualityAssetError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    return [_quality_report_payload(view) for view in views]
+
+
+@app.post(
+    "/api/v1/quality/assets/{asset_id}/decision",
+    response_model=QualityAssetReportResponse,
+    tags=["quality"],
+)
+def record_asset_quality_decision(
+    asset_id: str,
+    request: QualityDecisionRequest,
+    http_request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> QualityAssetReportResponse:
+    """Record the operator's choice — regenerate, upscale or approve (V3.4).
+
+    Recording is all that happens: the sprint forbids executing a retry
+    automatically, so the buttons write intent and the operator drives the
+    render/export flows they already have.
+    """
+
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    try:
+        view = quality_repo.record_decision(workspace.id, asset_id, request.decision)
+    except (UnknownQualityAssetError, UnknownReportError) as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except QualityValidationError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    audit(
+        db,
+        actor=user,
+        action="quality.decision",
+        resource_type="quality_report",
+        resource_id=view.id,
+        workspace_id=workspace.id,
+        detail={"asset_id": asset_id, "decision": request.decision},
+        request=http_request,
+    )
+    return _quality_report_payload(view)
+
+
+@app.get("/api/v1/quality/config", response_model=QualityConfigResponse, tags=["quality"])
+def get_quality_config() -> QualityConfigResponse:
+    """The engine's public contract: criteria, default weights, bands, sources (V3.4).
+
+    Reference data with no tenant state, public by design like `/core/quality/*`.
+    """
+
+    return QualityConfigResponse(
+        criteria=list(QUALITY_CRITERIA),
+        image_criteria=list(IMAGE_CRITERIA),
+        video_criteria=list(VIDEO_CRITERIA),
+        weights=dict(QUALITY_DEFAULT_WEIGHTS),
+        retry_below=RETRY_BELOW,
+        approved_at=APPROVED_AT,
+        masterpiece_at=MASTERPIECE_AT,
+        issue_below=ISSUE_BELOW,
+        strength_at=STRENGTH_AT,
+        upscale_short_side_below=UPSCALE_SHORT_SIDE_BELOW,
+        statuses=list(QUALITY_STATUSES),
+        sources=list(QUALITY_SOURCES),
+        engine_version=QUALITY_ENGINE_VERSION,
+    )

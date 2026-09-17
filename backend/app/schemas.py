@@ -258,6 +258,12 @@ class AssetResponse(BaseModel):
     object_key: str
     url: str
     created_at: datetime
+    # V3.4 — Quality AI Engine (ETAPA 6): the latest verdict, straight from
+    # the asset row. None means "never assessed" — a different fact from any
+    # score, and the UI says so instead of showing a zero.
+    quality_score: int | None = None
+    quality_status: str | None = None
+    quality_version: int | None = None
 
 
 class ConditioningRequest(BaseModel):
@@ -1551,3 +1557,84 @@ class CampaignDetailResponse(CampaignResponse):
     assets: list[CampaignAssetResponse] = Field(default_factory=list)
     episodes: list[CampaignEpisodeResponse] = Field(default_factory=list)
     exports: list[CampaignExportResponse] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
+# V3.4 — Quality AI Engine
+# ---------------------------------------------------------------------------
+
+
+class QualityAssessAssetRequest(BaseModel):
+    """Facts the caller can add to what the engine reads from the stored file.
+
+    Geometry and timing describe the artifact; `signals` carries 0-100
+    confidences from an external detector (face/hands/eyes — or any criterion
+    a better probe measured). The engine treats absent facts as unmeasured,
+    never as zero.
+    """
+
+    width: int = Field(default=0, ge=0)
+    height: int = Field(default=0, ge=0)
+    duration_seconds: float = Field(default=0.0, ge=0.0)
+    fps: int = Field(default=0, ge=0)
+    aspect_ratio: str | None = Field(default=None, max_length=10)
+    requested_duration: float = Field(default=0.0, ge=0.0)
+    requested_fps: int = Field(default=0, ge=0)
+    prompt_original: str = Field(default="", max_length=4000)
+    prompt_compiled: str = Field(default="", max_length=8000)
+    signals: dict[str, float] = Field(default_factory=dict)
+    weights: dict[str, float] = Field(default_factory=dict)
+
+
+class QualityCriterionResponse(BaseModel):
+    criterion: str
+    score: float
+    weight: float
+    #: "measured" (computed from the artifact/spec) or "detector" (external).
+    source: str
+    detail: str = ""
+
+
+class QualityAssetReportResponse(BaseModel):
+    """One persisted engine run (ETAPA 3's report, as stored)."""
+
+    id: str
+    asset_id: str
+    kind: str
+    overall_score: int
+    status: str
+    retry_recommended: bool
+    upscale_recommended: bool
+    issues: list[str] = Field(default_factory=list)
+    strengths: list[str] = Field(default_factory=list)
+    suggestions: list[str] = Field(default_factory=list)
+    criteria: list[QualityCriterionResponse] = Field(default_factory=list)
+    unmeasured: list[str] = Field(default_factory=list)
+    engine_version: int = 1
+    operator_decision: str | None = None
+    facts: dict[str, Any] = Field(default_factory=dict)
+    created_at: str = ""
+
+
+class QualityDecisionRequest(BaseModel):
+    """The operator's choice on the latest report — recorded, never executed."""
+
+    decision: Literal["regenerate", "upscale", "approve"]
+
+
+class QualityConfigResponse(BaseModel):
+    """The engine's public contract: criteria, weights, bands and sources."""
+
+    criteria: list[str]
+    image_criteria: list[str]
+    video_criteria: list[str]
+    weights: dict[str, float]
+    retry_below: int
+    approved_at: int
+    masterpiece_at: int
+    issue_below: float
+    strength_at: float
+    upscale_short_side_below: int
+    statuses: list[str]
+    sources: list[str]
+    engine_version: int

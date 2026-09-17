@@ -296,7 +296,7 @@ def _identity_dependency(route) -> str | None:
 
 
 def test_the_authorisation_count_is_the_real_one(inventory) -> None:
-    """69 of 106 routes touch identity — 66 require it, 3 do not (V3.3).
+    """73 of 111 routes touch identity — 70 require it, 3 do not (V3.4).
 
     PR002 closed the P0-2 exposure: 25 of 58 (22 required, 3 optional).
     PR003 added the six persona-profile routes, all `Depends(current_user)`;
@@ -310,10 +310,13 @@ def test_the_authorisation_count_is_the_real_one(inventory) -> None:
     tenant product data, like personas): 62 of 99 (59 required, 3 optional).
     V3.3 adds the seven campaign routes, all `Depends(current_user)`
     (campaigns are tenant product data, like personas): 69 of 106 (66
-    required, 3 optional). Before PR002 the numbers were 10 (6 required,
-    4 optional). The prose and the guard move together, because the three
-    numbers drift independently of each other. The three WebSockets are also
-    authenticated, through the `token` query parameter (see
+    required, 3 optional). V3.4 adds the five quality routes: four are
+    `Depends(current_user)` (reports badge tenant assets, like personas) and
+    `/quality/config` is public reference data, like `/core/quality/rules`:
+    73 of 111 (70 required, 3 optional). Before PR002 the numbers were 10
+    (6 required, 4 optional). The prose and the guard move together, because
+    the three numbers drift independently of each other. The three WebSockets
+    are also authenticated, through the `token` query parameter (see
     test_security_authorization.py) — they are not routes, so they are not in
     the count.
     """
@@ -323,7 +326,7 @@ def test_the_authorisation_count_is_the_real_one(inventory) -> None:
     optional = len([k for k in kinds if k == "optional_user"])
     touching = required + optional
 
-    assert required == 66, f"rotas exigindo token mudaram: {required}"
+    assert required == 70, f"rotas exigindo token mudaram: {required}"
     assert optional == 3, f"rotas com identidade opcional mudaram: {optional}"
 
     text = _read(LIMITATIONS)

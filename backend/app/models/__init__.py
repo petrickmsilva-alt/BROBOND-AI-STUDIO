@@ -54,6 +54,16 @@ class Asset(Base):
     kind: Mapped[str] = mapped_column(String(32))
     object_key: Mapped[str] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    # V3.4 — Quality AI Engine (ETAPA 6): the latest verdict, denormalised so
+    # the Asset Library can badge and filter without joining the report
+    # history. All nullable: NULL means "never assessed", which is a different
+    # fact from any score. The full append-only history lives in
+    # `quality_reports` (see `app/quality/quality_models.py`); the two are
+    # written in one transaction by `QualityRepository.save_assessment`.
+    quality_score: Mapped[int | None] = mapped_column(nullable=True)
+    quality_status: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    quality_report: Mapped[str | None] = mapped_column(Text, nullable=True)
+    quality_version: Mapped[int | None] = mapped_column(nullable=True)
 
 
 class TrainingRun(Base):

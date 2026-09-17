@@ -170,7 +170,18 @@ export function expandStoryboard(payload: Record<string, unknown>) {
   return post<Record<string, unknown>>('/api/v1/storyboards/expand', payload);
 }
 
-export type Asset = { id: string; name: string; kind: string; object_key: string; url: string; created_at: string };
+export type Asset = {
+  id: string;
+  name: string;
+  kind: string;
+  object_key: string;
+  url: string;
+  created_at: string;
+  /** V3.4 — latest quality verdict; null means "never assessed", not zero. */
+  quality_score?: number | null;
+  quality_status?: string | null;
+  quality_version?: number | null;
+};
 export type LoraVersion = { asset_id: string; persona_id: string; name: string; version: string; url: string; created_at: string };
 
 export function listAssets() {
@@ -1132,4 +1143,87 @@ export function deliverCampaignAsset(campaignId: string, assetId: string, payloa
 
 export function exportCampaign(campaignId: string) {
   return post<CampaignExportInfo>(`/api/v1/campaigns/${encodeURIComponent(campaignId)}/export`, {});
+}
+
+// ---------------------------------------------------------------------------
+// V3.4 — Quality AI Engine
+// ---------------------------------------------------------------------------
+
+export type QualityCriterion = {
+  criterion: string;
+  score: number;
+  weight: number;
+  /** 'measured' (computed from the artifact/spec) or 'detector' (external). */
+  source: string;
+  detail: string;
+};
+
+export type AssetQualityReport = {
+  id: string;
+  asset_id: string;
+  kind: string;
+  overall_score: number;
+  status: 'retry' | 'manual_review' | 'approved' | 'masterpiece';
+  retry_recommended: boolean;
+  upscale_recommended: boolean;
+  issues: string[];
+  strengths: string[];
+  suggestions: string[];
+  criteria: QualityCriterion[];
+  unmeasured: string[];
+  engine_version: number;
+  operator_decision: string | null;
+  facts: Record<string, unknown>;
+  created_at: string;
+};
+
+export type QualityConfig = {
+  criteria: string[];
+  image_criteria: string[];
+  video_criteria: string[];
+  weights: Record<string, number>;
+  retry_below: number;
+  approved_at: number;
+  masterpiece_at: number;
+  issue_below: number;
+  strength_at: number;
+  upscale_short_side_below: number;
+  statuses: string[];
+  sources: string[];
+  engine_version: number;
+};
+
+export type QualityAssessPayload = {
+  width?: number;
+  height?: number;
+  duration_seconds?: number;
+  fps?: number;
+  aspect_ratio?: string | null;
+  requested_duration?: number;
+  requested_fps?: number;
+  prompt_original?: string;
+  prompt_compiled?: string;
+  signals?: Record<string, number>;
+  weights?: Record<string, number>;
+};
+
+export function assessAssetQuality(assetId: string, payload: QualityAssessPayload) {
+  return post<AssetQualityReport>(`/api/v1/quality/assets/${encodeURIComponent(assetId)}/assess`, payload);
+}
+
+export function getAssetQualityReport(assetId: string) {
+  return get<AssetQualityReport>(`/api/v1/quality/assets/${encodeURIComponent(assetId)}/report`);
+}
+
+export function getAssetQualityHistory(assetId: string) {
+  return get<AssetQualityReport[]>(`/api/v1/quality/assets/${encodeURIComponent(assetId)}/history`);
+}
+
+/** Records the operator's choice; the sprint forbids executing it here. */
+export function recordAssetQualityDecision(assetId: string, decision: 'regenerate' | 'upscale' | 'approve') {
+  return post<AssetQualityReport>(`/api/v1/quality/assets/${encodeURIComponent(assetId)}/decision`, { decision });
+}
+
+export function getQualityConfig() {
+  return get<QualityConfig>('/api/v1/quality/config');
 }
