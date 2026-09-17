@@ -8,7 +8,7 @@ from uuid import UUID
 
 from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -90,6 +90,7 @@ from .quality import (
 )
 from .quality import UnknownAssetError as UnknownQualityAssetError
 from .core.config import settings
+from .core.database_guard import database_guard
 from .db import SessionLocal, get_db
 from .events import EVENT_CANCELLED, TERMINAL_STATUSES, hub, job_event
 from .graph import (
@@ -276,6 +277,31 @@ def _bootstrap_database(retries: int = 12, delay_seconds: float = 5.0) -> None:
 # boot on an ephemeral SQLite file.
 print(f"[brobond] {settings.database_banner()}", file=sys.stderr, flush=True)
 
+def _await_database(retries: int = 12, delay_seconds: float = 5.0) -> None:
+    """PR009.4.1 — the database must answer before FastAPI accepts requests.
+
+    `database_guard.verify()` proves the configured database answers
+    ``SELECT 1`` within its 5-second deadline. The retry budget exists for
+    the same reason `_bootstrap_database` has one: on a fresh Render
+    blueprint deploy the managed Postgres can take minutes to become
+    reachable. Once the budget is spent the guard's
+    ``RuntimeError("PostgreSQL unavailable")`` propagates and the process
+    never comes up — Render keeps the previous deploy live instead of
+    marking a broken service healthy.
+    """
+
+    for attempt in range(1, retries + 1):
+        try:
+            database_guard.verify()
+            return
+        except RuntimeError:
+            if attempt == retries:
+                raise
+            print(f"[brobond] database guard: no answer (attempt {attempt}/{retries})", flush=True)
+            time.sleep(delay_seconds)
+
+
+_await_database()
 _bootstrap_database()
 
 # ---------------------------------------------------------------------------
@@ -457,8 +483,24 @@ def root() -> dict[str, str]:
 
 @app.get("/health", tags=["system"])
 @app.get("/api/v1/health", tags=["system"])
-def health() -> dict[str, str]:
-    return {"status": "ok", "service": "brobond-api", "mode": "local"}
+def health() -> JSONResponse:
+    """Liveness with a real database probe (PR009.4.1).
+
+    The payload reports what the guard measures right now, never a cached
+    truth: if the database stops answering, the route answers 503 Service
+    Unavailable — never 200 — and Render's health check takes the service
+    out of rotation instead of routing traffic to a dead deploy.
+    """
+
+    connected = database_guard.ping()
+    body = {
+        "status": "ok" if connected else "unavailable",
+        "service": "brobond-api",
+        "mode": "local",
+        "database": "connected" if connected else "disconnected",
+        "provider": database_guard.provider(),
+    }
+    return JSONResponse(status_code=200 if connected else 503, content=body)
 
 
 @app.get("/api/v1/system/gpu", tags=["system"])
@@ -466,9 +508,63 @@ def system_gpu() -> dict:
     return gpu_info()
 
 
+def _migrations_ready() -> bool:
+    """True when the database sits at Alembic's head revision (PR009.4.1).
+
+    Read-only by design: it compares `alembic_version` against the script
+    directory and never upgrades anything — schema changes remain the sole
+    job of `_bootstrap_database` at startup.
+    """
+
+    from alembic.config import Config as AlembicConfig
+    from alembic.script import ScriptDirectory
+    from sqlalchemy import text as sqla_text
+
+    from .db import engine as db_engine
+
+    try:
+        alembic_ini = Path(__file__).resolve().parents[2] / "alembic.ini"
+        alembic_config = AlembicConfig(str(alembic_ini))
+        alembic_config.set_main_option("script_location", str(alembic_ini.parent / "alembic"))
+        head = ScriptDirectory.from_config(alembic_config).get_current_head()
+        with db_engine.connect() as connection:
+            current = connection.execute(sqla_text("SELECT version_num FROM alembic_version")).scalar()
+        return current == head
+    except Exception:
+        return False
+
+
+def _storage_ready() -> bool:
+    """True when the active storage backend accepts a write probe (PR009.4.1)."""
+
+    try:
+        if settings.storage_enabled:
+            storage.client.head_bucket(Bucket=settings.minio_bucket)
+            return True
+        probe = storage.local_root / ".readiness-probe"
+        probe.write_bytes(b"ok")
+        probe.unlink()
+        return True
+    except Exception:
+        return False
+
+
 @app.get("/api/v1/system/readiness", tags=["system"])
-def system_readiness() -> dict:
-    return readiness()
+def system_readiness() -> JSONResponse:
+    """GPU preflight plus the PR009.4.1 deploy gates.
+
+    The three top-level booleans — `database`, `migrations`, `storage` —
+    answer "can this deploy serve traffic?" independently of the GPU checks:
+    a broken database or a half-applied migration returns 503 so an
+    orchestrator never promotes the deploy.
+    """
+
+    body = readiness()
+    body["database"] = database_guard.ping()
+    body["migrations"] = _migrations_ready()
+    body["storage"] = _storage_ready()
+    deploy_ready = body["database"] and body["migrations"] and body["storage"]
+    return JSONResponse(status_code=200 if deploy_ready else 503, content=body)
 
 
 @app.get("/api/v1/system/media", tags=["system"])

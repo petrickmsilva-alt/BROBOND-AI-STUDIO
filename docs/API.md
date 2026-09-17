@@ -218,10 +218,10 @@ PR006 Storyboard Cinematic Engine não adiciona rotas de render: a UI edita um `
 
 | Método | Rota | Descrição |
 | --- | --- | --- |
-| `GET` | `/api/v1/health` | health |
+| `GET` | `/api/v1/health` | Liveness with a real database probe (PR009.4.1). |
 | `GET` | `/api/v1/system/gpu` | system_gpu |
 | `GET` | `/api/v1/system/media` | system_media |
-| `GET` | `/api/v1/system/readiness` | system_readiness |
+| `GET` | `/api/v1/system/readiness` | GPU preflight plus the PR009.4.1 deploy gates. |
 
 ## WebSockets
 
