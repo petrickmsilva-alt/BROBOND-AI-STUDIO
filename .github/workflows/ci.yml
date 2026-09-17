@@ -33,10 +33,41 @@ jobs:
       # includes the four dead modules from AUDIT.md P0-1 (100 statements, 0%),
       # so this number is conservative by construction — see
       # backend/tests/test_dead_module_boundary.py.
+      # This step runs the suite a second time, under tracing. That means it can
+      # fail for two very different reasons, and the distinction matters:
+      #   1. a test failed under coverage (timing-sensitive tests are slower when
+      #      traced), or
+      #   2. the coverage percentage genuinely fell below the floor.
+      # Reason 1 was diagnosed as a flake on a commit whose own test step had
+      # just passed, and it cost an investigation because this step — alone
+      # among the pytest-running steps — did not mirror its failure into the
+      # summary. It does now, and it says which of the two happened.
       - name: Coverage gate (95%)
         run: |
-          PYTHONPATH=backend coverage run --source=backend/app -m pytest backend/tests -q
-          coverage report --include='backend/app/*' --skip-empty --fail-under=95
+          set -o pipefail
+          if ! PYTHONPATH=backend coverage run --source=backend/app -m pytest backend/tests -q 2>&1 | tee /tmp/coverage-pytest.log; then
+            {
+              echo "## Coverage gate: the suite failed under coverage"
+              echo "The plain test step passed or ran separately; a failure here with a"
+              echo "green test step above means a test is sensitive to tracing overhead."
+              echo '```'
+              grep -E "^(FAILED|ERROR)" /tmp/coverage-pytest.log | head -25 || true
+              echo '```'
+              echo '```'
+              tail -15 /tmp/coverage-pytest.log
+              echo '```'
+            } >> "${GITHUB_STEP_SUMMARY}"
+            exit 1
+          fi
+          if ! coverage report --include='backend/app/*' --skip-empty --fail-under=95 | tee /tmp/coverage-report.log; then
+            {
+              echo "## Coverage gate: below the 95% floor"
+              echo '```'
+              tail -30 /tmp/coverage-report.log
+              echo '```'
+            } >> "${GITHUB_STEP_SUMMARY}"
+            exit 1
+          fi
 
   # ---------------------------------------------------------------------------
   # PR010.0 — PLATFORM FREEZE. Three required guards.
