@@ -431,6 +431,20 @@ app.add_middleware(
 )
 
 
+@app.get("/", include_in_schema=False)
+@app.head("/", include_in_schema=False)
+def root() -> dict[str, str]:
+    """Friendly landing route: hosting probes (Render sends `HEAD /`) and
+    people who open the bare API URL get a 200 instead of a 404. The real
+    health check remains `/api/v1/health`."""
+    return {
+        "service": "brobond-api",
+        "status": "ok",
+        "docs": "/docs",
+        "health": "/api/v1/health",
+    }
+
+
 @app.get("/health", tags=["system"])
 @app.get("/api/v1/health", tags=["system"])
 def health() -> dict[str, str]:
