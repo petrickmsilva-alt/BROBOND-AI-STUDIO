@@ -33,7 +33,7 @@ be merged.
 Transitivity
 ------------
 A forbidden edge is forbidden through intermediaries too, otherwise the rule is
-trivially defeated by adding a pass-through module. `_reachable` walks the
+trivially defeated by adding a pass-through module. `_path_between` walks the
 closure, and the failure message names the actual path, so a violation is
 debuggable rather than just reported.
 """
@@ -45,7 +45,6 @@ import re
 import shutil
 import subprocess
 import sys
-import tempfile
 from collections import defaultdict, deque
 
 import pytest

@@ -6,6 +6,72 @@ versões de produto do `ROADMAP.md`.
 
 ---
 
+## [Unreleased] — PR010.0: PLATFORM FREEZE
+
+Estabilização antes do AI Core. **Nenhuma feature nova, nenhuma alteração
+visual, zero alteração funcional** — apenas contratos e guardas. O diff de
+frontend é de zero linhas; o de `backend/app/` é um movimento de arquivos com
+corpos byte a byte idênticos.
+
+- **ETAPA 1** — `docs/ARCHITECTURE_MANIFEST.md`: declaração oficial dos dez
+  módulos (AI Core *(future)*, Director AI, Storyboard Engine, Render Engine,
+  Provider Registry, Campaign Builder, Quality Engine, Persona Engine,
+  Database Guard, Network Layer) com **owner**, **responsabilidade**,
+  **dependências permitidas** (allow-list completa, não exemplo) e
+  **dependências proibidas** com o motivo de cada uma. O mapa de propriedade
+  cobre 100% dos arquivos de `backend/app/`: um pacote novo sem dono declarado
+  falha na CI, porque allow-list com buraco não é allow-list.
+- **ETAPA 2** — `backend/tests/test_architecture_boundaries.py` (51 testes):
+  lê o manifesto, constrói o grafo real de imports por AST e compara. As quatro
+  proibições do PR — Director ⇏ Providers, Quality ⇏ Render, Providers ⇏
+  Director, Campaign ⇏ Quality — são verificadas **direta e transitivamente**,
+  então um módulo pass-through não contorna a regra; a mensagem de falha nomeia
+  o caminho (`A -> B -> C`). O **AI Core** recebe a assimetria congelada antes
+  de existir: pode importar todos, ninguém pode importá-lo. Quatro testes
+  plantam violações (direta, transitiva, pacote sem dono, e a suíte inteira
+  rodando em subprocesso contra uma cópia adulterada) e exigem vermelho — um
+  guard que não sabe falhar não prova nada.
+  **Medido: as quatro fronteiras já valiam.** Este PR não corrigiu acoplamento,
+  ele travou o que já era verdade.
+- **ETAPA 3** — `docs/API_SNAPSHOT.json` + `scripts/gen_api_snapshot.py`
+  (16 testes): superfície pública gerada da aplicação — **111** rotas, **3**
+  WebSockets, **137** modelos com tipo por campo e obrigatoriedade, e a
+  exigência de auth por rota (**70** required / **3** optional / **38**
+  public). Cobre o que `docs/API.md` estruturalmente não alcança: um campo que
+  muda de tipo, um modelo que perde `output_url` ou uma rota que perde
+  `Depends(current_user)` deixavam a prosa intacta. Mudança exige regenerar o
+  arquivo, o que põe o diff na PR.
+- **ETAPA 4** — `backend/app/contracts/`: o vocabulário compartilhado ganhou
+  pacote próprio, dividido por domínio (`generation`, `prompt`, `persona`,
+  `cinematic`, `direction`, `graph`). `app/core/contracts.py` permanece como
+  **façade** re-exportando os **mesmos objetos** — identidade `is`, não
+  igualdade, verificada por teste — porque vinte módulos e boa parte da suíte
+  importam esse caminho e a regra permanente é não quebrar import existente
+  (Bible §2). Os 26 contratos foram movidos byte a byte, e a assinatura de
+  todas as dataclasses (campos, tipos, defaults, `frozen`) tem hash idêntico ao
+  de antes do PR. Um teste por AST recusa qualquer redefinição de contrato fora
+  do pacote.
+- **ETAPA 5** — `docs/EVENT_CATALOG.md` (41 testes): registro dos **11**
+  eventos reais (6 de ciclo de job, 5 de render) com payload, transporte e
+  estados terminais, mais os **4** nomes reservados ao AI Core
+  (`request_received`, `plan_created`, `quality_finished`, `asset_created`) —
+  com teste que falha se alguém **emitir** um deles antes de o contrato
+  existir. `render_finished` é registrado como nome de domínio de
+  `batch_completed`, cujo nome de wire **não** mudou (o frontend já o consome).
+  Honestidade medida: o catálogo declara que `queued` está declarado e **não
+  tem emissor** hoje, e que o hub é in-process.
+- **ETAPA 6** — CI: três jobs obrigatórios e independentes — **Architecture
+  Guard**, **Import Boundary Guard** e **API Snapshot Guard** — rodando em
+  paralelo ao `backend`. Separados de propósito: uma regressão arquitetural
+  precisa aparecer como *"Architecture Guard failed"* na lista de checks, e não
+  sumir dentro de uma suíte de 2.215 testes. Cada um escreve no
+  `GITHUB_STEP_SUMMARY` o comando exato que conserta a falha.
+- **Números** — suíte 2.107 → **2.215** testes (108 novos); cobertura
+  `backend/app` mantida em **97%** (gate `--fail-under=95`); rotas, WebSockets
+  e modelos inalterados.
+
+---
+
 ## [Unreleased] — V3.4: QUALITY AI ENGINE
 
 Um render entra, um veredito honesto 0–100 sai. **Provider Registry e
