@@ -42,8 +42,8 @@ class Settings(BaseSettings):
     #: telemetry in-process only.
     provider_telemetry_log: str = ""
     # Comma-separated list of browser origins allowed by the CORS middleware.
-    # Render sets the deployed web origin here (see render.yaml).
-    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+    # Render sets the same value explicitly (see render.yaml).
+    cors_origins: str = "https://brobond-studio-web.onrender.com,http://localhost:3000"
     model_config = SettingsConfigDict(env_file=".env", env_prefix="BROBOND_", extra="ignore")
 
     @field_validator("database_url", mode="before")
@@ -69,9 +69,14 @@ class Settings(BaseSettings):
             raise ValueError("BROBOND_JWT_SECRET must be at least 32 bytes (RFC 7518, HS256)")
         return value
 
+    @staticmethod
+    def parse_cors_origins(value: str) -> list[str]:
+        """Parse ``BROBOND_CORS_ORIGINS`` as a trimmed comma-separated list."""
+        return [origin.strip() for origin in value.split(",") if origin.strip()]
+
     @property
     def cors_origin_list(self) -> list[str]:
-        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+        return self.parse_cors_origins(self.cors_origins)
 
 
 settings = Settings()

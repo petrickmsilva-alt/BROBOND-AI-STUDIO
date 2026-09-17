@@ -52,6 +52,7 @@ services:
           property: connectionString
       - key: BROBOND_JWT_SECRET
         generateValue: true
+      # Comma-separated; backend trims whitespace and ignores empty entries.
       - key: BROBOND_CORS_ORIGINS
         value: "https://brobond-studio-web.onrender.com,http://localhost:3000"
       # Orchestration-only mode: no GPU inference, no external queue/storage.
