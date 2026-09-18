@@ -752,6 +752,42 @@ registrada em todo desfecho, inclusive na falha. Rotas públicas novas:
 `POST /api/v1/providers/{id}/test` e `GET /api/v1/providers/telemetry`. Detalhes em
 `docs/AI_CONNECTORS.md`.
 
+## GPU Cluster — RunPod (PR011)
+
+PR011 liga o Provider Registry a GPUs externas. Director AI, Storyboard,
+Prompt Compiler e a superfície pública do Registry ficaram intocados: o que
+entrou são cinco arquivos em `backend/app/providers/` e a composição do bloco
+`gpu` no readiness.
+
+```text
+GenerationSpec
+  -> GenerationExecutor              (PR009, sem alteração)
+     -> RunPodFluxProvider / RunPodWanProvider
+        -> GpuClient.submit()   POST /run            -> job_id
+        -> GpuClient.poll()     GET  /status/{id}    (sempre no backend)
+        -> GpuClient.download() bytes                -> arquivo
+  -> ProviderAsset -> ProviderJob -> Quality Engine
+```
+
+| Arquivo | Responsabilidade |
+|---|---|
+| `providers/gpu_client.py` | Transporte e só: HTTP async, timeout configurável, retry exponencial (4xx não repete), poll, cancelamento, upload de referência em base64, download do resultado. Não sabe o que é um `GenerationSpec`. |
+| `providers/runpod_base.py` | Ciclo de vida compartilhado `spec -> payload -> job -> bytes -> asset`, tradução de falha de GPU para `ProviderUnavailable` e health sem segredo. |
+| `providers/runpod_flux_provider.py` | Imagem no cluster: `image`, `upscale`, `inpaint`, `outpaint`, `control reference`. Recebe apenas `GenerationSpec`. |
+| `providers/runpod_wan_provider.py` | Vídeo no cluster: text-to-video, image-to-video, duração, fps, seed e camera motion — lendo `spec.motion`/`spec.motion_strength`, nunca o Storyboard. |
+| `providers/gpu_health.py` | O bloco `gpu` de `GET /api/v1/system/readiness`; nunca levanta exceção e nunca vira gate de deploy. |
+
+Decisões de desenho: o conector nunca vê status HTTP e o client nunca vê spec
+(há teste de código-fonte para as duas direções); um deadline estourado
+**cancela o job** antes de desistir, porque job de GPU abandonado é fatura;
+as cinco operações do Flux são declaradas em `SUPPORTED_OPERATIONS` e não em
+campos novos de `ProviderCapabilities`, que é contrato público congelado; e os
+dois conectores entram como **registros adicionais** — os defaults continuam
+`flux-dev`/`wan-2.1-t2v`. Quatro variáveis novas
+(`BROBOND_RUNPOD_API_KEY`, `BROBOND_RUNPOD_ENDPOINT`, `BROBOND_GPU_TIMEOUT`,
+`BROBOND_GPU_POLL_INTERVAL`), todas opcionais em DEV. Detalhes em
+`docs/GPU_CLUSTER.md`.
+
 ## Cinematic Knowledge Graph (V3.1)
 
 V3.1 persiste o universo BROBOND — personagens, marcas, campanhas, lugares,

@@ -65,6 +65,18 @@ services:
         value: "false"
       - key: BROBOND_TRAINING_ENABLED
         value: "false"
+      # PR011 — external GPU cluster. `sync: false` means Render prompts for
+      # the value at deploy time and keeps it out of this file and out of git.
+      # Leaving both blank is a valid deploy: readiness reports
+      # `gpu.available: false` and every non-rendering route works.
+      - key: BROBOND_RUNPOD_API_KEY
+        sync: false
+      - key: BROBOND_RUNPOD_ENDPOINT
+        sync: false
+      - key: BROBOND_GPU_TIMEOUT
+        value: "300"
+      - key: BROBOND_GPU_POLL_INTERVAL
+        value: "2"
 
 databases:
   # Render-managed PostgreSQL. Redis is not available in blueprints; while
