@@ -13,14 +13,22 @@ mudar e o documento não for regenerado, a suíte falha.
 
 ## Resumo
 
-- **111** rotas HTTP sob `/api/v1`
+- **114** rotas HTTP sob `/api/v1`
 - **32** delas são `/api/v1/core/*` — a camada de decisão
 - **3** WebSockets
-- **18** tags
+- **19** tags
 
 OpenAPI interativo em `/docs` (Swagger) e `/redoc` quando o serviço está no ar.
 
 PR006 Storyboard Cinematic Engine não adiciona rotas de render: a UI edita um `StoryboardState` versionado sobre o `ProductionPlan` retornado por `/api/v1/core/director/production-plan`. PR007 adiciona `/api/v1/providers` para health/capabilities do registry universal, sem expor segredos. PR008 adiciona seis rotas `/api/v1/render/*` (lotes de render com identidade) e o WebSocket `/ws/render/{batch_id}` com progresso por push, sem polling. V3.1 adiciona doze rotas `/api/v1/graph/*` (Cinematic Knowledge Graph com identidade: CRUD de nós/arestas, busca semântica, vizinhança e contexto de personagem para o Director AI). V3.2 adiciona treze rotas `/api/v1/continuity/*` (Character Continuity Engine com identidade: cinco locks com fingerprint, resolver persona+campanha+episódio e histórico imutável de episódios). V3.3 adiciona sete rotas `/api/v1/campaigns/*` (Campaign Builder com identidade: interpretar um briefing, criar a campanha completa com sete entregáveis e timeline de cinco dias, duplicar, anexar entregas reais e exportar o ZIP com manifesto). PR011 não adiciona rotas: o cluster de GPU externo é reportado dentro do bloco `gpu` de `GET /api/v1/system/readiness` (`available`, `provider`, `model`, `vram`, `latency_ms`), que nunca devolve 500 e nunca vira gate de deploy — e nenhum segredo chega ao frontend. Ver `docs/GPU_CLUSTER.md`.
+
+## `asset-library` — 3
+
+| Método | Rota | Descrição |
+| --- | --- | --- |
+| `GET` | `/api/v1/assets/library` | List the workspace library with the ETAPA 5 filters applied. |
+| `POST` | `/api/v1/assets/library/upload` | Upload a PNG/JPG/WEBP/MP4/MOV (multipart) with library metadata. |
+| `GET` | `/api/v1/assets/library/{asset_id}` | One library entry, with its before/after pair resolved when paired. |
 
 ## `assets` — 4
 

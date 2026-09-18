@@ -33,13 +33,17 @@ export default defineConfig({
       'lib/storyboard/**/*.test.ts',
       'lib/graph/**/*.test.ts',
       'lib/api.network.test.ts',
+      'lib/api.assets.test.ts',
       'lib/network/**/*.test.ts',
       'lib/theme/**/*.test.ts',
+      'lib/assets/**/*.test.ts',
       'components/studio/sidebar.test.tsx',
       'components/studio/hero.test.tsx',
       'components/studio/storyboard_cards.test.tsx',
       'components/studio/status_dock.test.tsx',
       'components/studio/identity_bar.test.tsx',
+      // PR013 — V4.0.1 Cinematic Asset Studio components.
+      'app/components/studio/assets/**/*.test.tsx',
     ],
     coverage: {
       provider: 'v8',
@@ -56,6 +60,9 @@ export default defineConfig({
         'components/studio/storyboard-cards.tsx',
         'components/studio/status-dock.tsx',
         'components/studio/identity-bar.tsx',
+        // PR013 — V4.0.1: the whole Assets module (pure domain + components).
+        'lib/assets/library.ts',
+        'app/components/studio/assets/*.tsx',
       ],
       // The spec's 95% floor, enforced (not just reported) — and the V3.2.1
       // network layer / PR012 UI 4.0 shell components hold themselves to
