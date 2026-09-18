@@ -10,6 +10,11 @@ import {
   trainPersona, uploadAsset, videoModels, wsUrl,
 } from '../lib/api';
 import PersonaSelector, { mainImage } from './components/studio/PersonaSelector';
+// PR013 — V4.0.1 Cinematic Asset Studio: the whole Assets module is owned by
+// these components (upload engine, responsive grid, preview, filters, empty
+// states). Only their counts flow back here for the header description.
+import { AssetLibraryClient, AssetBrowseButton } from './components/studio/assets';
+import type { LibraryCounts } from '../lib/assets/library';
 // V3.2.1: failures arrive typed from the network layer — the UI branches on
 // NetworkErrorType (never on a bare 'offline' string) and the human text is
 // produced by the layer itself (cold start aware).
@@ -735,26 +740,15 @@ function Storyboard() {
   return <><PageHeader eyebrow="STORYBOARD · CORE" title="Shape the whole story" description="A brief is cast into real shots from the 300-shot library, then checked against the cinematic grammar. Findings are reported, not hidden."><button className="primary-button" onClick={generate}><Sparkles size={16} /> Cast scenes</button></PageHeader><div className="story-input control-panel"><div className="panel-heading"><span>Story brief</span><span className="muted">{format || 'format detected on cast'}</span></div><textarea value={brief} onChange={event => setBrief(event.target.value)} /><div className="story-options"><span>{status}{runtime ? ` · ${runtime}s` : ''}</span><span>·</span><span>{sceneCount} scenes</span><div className="chip-row">{[2, 4, 6, 8].map(value => <Chip key={value} active={sceneCount === value} onClick={() => setSceneCount(value)}>{value}</Chip>)}</div></div><Notice error={error} />{findings.length > 0 && <div className="finding-list">{findings.map((finding, index) => <div className={`finding ${finding.status}`} key={`${finding.rule}-${index}`}><b>{finding.rule}</b><span>{finding.detail}</span></div>)}</div>}</div>{scenes.length === 0 ? <div className="empty-library"><Layers3 size={22} /><h3>No storyboard yet</h3><p>Cast a brief to see the shots the director chose and why.</p></div> : <div className="scene-grid">{scenes.map((scene, i) => <div className="scene-card" key={`${scene.shot_code}-${scene.number}`}><div className={`scene-visual scene-${i % 4}`}><span>SCENE {String(scene.number).padStart(2, '0')}</span><button className="play-overlay"><Play size={13} fill="currentColor" /></button></div><div className="scene-copy"><div><h3>{scene.shot_name}</h3><p>{scene.shot_code} · {scene.family} · {scene.lens} · {scene.duration_seconds}s</p></div><MoreHorizontal size={17} /></div></div>)}</div>}</>;
 }
 
+// PR013 — V4.0.1: the whole assets experience (upload engine done there,
+// responsive grid, preview, filters, search, empty states) now lives in
+// app/components/studio/assets. This wrapper only owns the page chrome and
+// the counted description — the numbers stay real or they stay unknown.
 function Assets({ onCounted }: { onCounted: (count: number) => void }) {
-  const [assets, setAssets] = useState<Asset[]>([]);
-  const [remote, setRemote] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState<string | undefined>();
-  const [errorType, setErrorType] = useState<NetworkErrorType | undefined>();
-  useEffect(() => { listAssets().then(result => { setRemote(result.remote); setError(result.error); setErrorType(result.errorType); if (result.remote) { setAssets(result.data); onCounted(result.data.length); } }); }, []);
-  const counts = useMemo(() => {
-    const by = (kind: string) => assets.filter(asset => asset.kind === kind).length;
-    return { all: assets.length, image: by('image'), video: by('video'), audio: by('audio'), lora: by('lora') };
-  }, [assets]);
-  const handleUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    setUploading(true); setError(undefined); setErrorType(undefined);
-    const result = await uploadAsset(file);
-    if (result.remote) { setAssets(current => [result.data, ...current]); setRemote(true); onCounted(assets.length + 1); }
-    else { setError(result.error); setErrorType(result.errorType); }
-    setUploading(false);
-    event.target.value = '';
-  };
-  return <><PageHeader eyebrow="LIBRARY" title="Your creative archive" description="Everything you make, in one calm place. Counts are read from the API."><label className="primary-button upload-label"><Plus size={17} /> {uploading ? 'Uploading...' : 'Upload assets'}<input type="file" accept="image/*,video/*,audio/*" onChange={handleUpload} /></label></PageHeader><Notice error={error} /><div className="asset-tabs"><button className="active">All assets <span>{remote ? counts.all : '—'}</span></button><button>Images <span>{remote ? counts.image : '—'}</span></button><button>Videos <span>{remote ? counts.video : '—'}</span></button><button>LoRA <span>{remote ? counts.lora : '—'}</span></button><button>Audio <span>{remote ? counts.audio : '—'}</span></button></div>{!remote ? <div className="empty-library"><Library size={22} /><h3>Library not synced</h3><p>{failureMessage({ error, errorType }, 'Start FastAPI to load your real assets.')}</p></div> : assets.length === 0 ? <div className="empty-library"><Library size={22} /><h3>Your library is empty</h3><p>Upload a reference or generate your first asset.</p></div> : <div className="asset-grid">{assets.map((asset, i) => <div className="asset-item" key={asset.id}><div className={`asset-image asset-${i % 6}`} style={asset.url ? { backgroundImage: `url(${asset.url})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}><span>{asset.kind === 'video' ? <Clapperboard size={18} /> : <ImageIcon size={18} />}</span></div><div><strong>{asset.name}</strong><small>{asset.kind} · synced</small></div><MoreHorizontal size={16} /></div>)}</div>}</>;
+  const [counts, setCounts] = useState<LibraryCounts | null>(null);
+  const enqueue = useRef<(files: File[]) => void>(() => undefined);
+  const description = counts
+    ? `${counts.all} assets — ${counts.image} images · ${counts.video} videos. Drop files anywhere on this page.`
+    : 'Everything you make, in one calm place. Counts are read from the API.';
+  return <><PageHeader eyebrow="LIBRARY" title="Your creative archive" description={description}><AssetBrowseButton label="Upload assets" onFiles={files => enqueue.current(files)} /></PageHeader><AssetLibraryClient onCounted={(next) => { setCounts(next); onCounted(next.all); }} registerEnqueue={(handler) => { enqueue.current = handler; }} /></>;
 }

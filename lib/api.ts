@@ -25,9 +25,13 @@ import {
   readError,
   runRequest,
 } from './network/request';
+import { runUpload, UPLOAD_XHR_TIMEOUT_MS, type UploadProgress } from './network/upload';
+import type { LibraryAsset, LibraryFilters } from './assets/library';
 
 export { API_URL } from './network/request';
 export { NetworkErrorType } from './network/request';
+export type { LibraryAsset } from './assets/library';
+export type { UploadProgress } from './network/upload';
 
 export type Job = {
   id: string;
@@ -210,6 +214,76 @@ export async function uploadAsset(file: File): Promise<ApiResult<Asset>> {
     return failed<Asset>(await readError(response), response.status, httpErrorType(response.status), traceId);
   }
   return ok<Asset>(await response.json() as Asset, response.status, traceId);
+}
+
+// ---------------------------------------------------------------------------
+// PR013 — V4.0.1 Cinematic Asset Studio
+// ---------------------------------------------------------------------------
+
+/** The fields the library upload accepts alongside the bytes (multipart). */
+export type LibraryUploadFields = {
+  project?: string;
+  persona?: string;
+  provider?: string;
+  seed?: number | null;
+  tags?: string;
+  before_asset_id?: string | null;
+};
+
+/** Build the `/assets/library` query string from the UI filter model. */
+export function libraryQuery(filters: Partial<LibraryFilters> = {}): string {
+  const params = new URLSearchParams();
+  if (filters.kind) params.set('kind', filters.kind);
+  if (filters.project) params.set('project', filters.project);
+  if (filters.persona) params.set('persona', filters.persona);
+  if (filters.provider) params.set('provider', filters.provider);
+  if (filters.minScore) params.set('min_score', String(filters.minScore));
+  if (filters.dateFrom) params.set('date_from', new Date(`${filters.dateFrom}T00:00:00`).toISOString());
+  if (filters.dateTo) params.set('date_to', new Date(`${filters.dateTo}T23:59:59.999`).toISOString());
+  if (filters.search?.trim()) params.set('q', filters.search.trim());
+  const suffix = params.toString();
+  return suffix ? `?${suffix}` : '';
+}
+
+export function listAssetLibrary(filters: Partial<LibraryFilters> = {}) {
+  return get<LibraryAsset[]>(`/api/v1/assets/library${libraryQuery(filters)}`);
+}
+
+export function getLibraryAsset(assetId: string) {
+  return get<LibraryAsset>(`/api/v1/assets/library/${encodeURIComponent(assetId)}`);
+}
+
+/**
+ * Multipart upload with real progress events (percent + bytes/second), via
+ * the network layer's XHR sibling — `fetch` cannot report send progress.
+ * Files never travel as JSON anywhere in this client.
+ */
+export async function uploadLibraryAsset(
+  file: File,
+  options: { fields?: LibraryUploadFields; onProgress?: (progress: UploadProgress) => void } = {},
+): Promise<ApiResult<LibraryAsset>> {
+  const token = getAuthToken();
+  const fields: Record<string, string> = {};
+  Object.entries(options.fields ?? {}).forEach(([name, value]) => {
+    if (value !== undefined && value !== null && value !== '') fields[name] = String(value);
+  });
+  const outcome = await runUpload('/api/v1/assets/library/upload', {
+    file,
+    filename: file.name,
+    fields,
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    timeoutMs: UPLOAD_XHR_TIMEOUT_MS,
+    onProgress: options.onProgress,
+  });
+  if (outcome.kind === 'error') {
+    const { error } = outcome;
+    return failed<LibraryAsset>(networkProblemText(error), error.status, error.type, error.traceId);
+  }
+  const { response, traceId } = outcome;
+  if (!response.ok) {
+    return failed<LibraryAsset>(await readError(response), response.status, httpErrorType(response.status), traceId);
+  }
+  return ok<LibraryAsset>(await response.json() as LibraryAsset, response.status, traceId);
 }
 
 // ---------------------------------------------------------------------------

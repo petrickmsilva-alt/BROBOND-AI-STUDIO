@@ -64,6 +64,7 @@ tabela é a tradução — é ela que o guard usa para classificar cada arquivo:
 | Job Queue | `app.core.job_service`, `app.job_service`, `app.jobs`, `app.store`, `app.queue`, `app.events`, `app.repositories` |
 | Continuity Engine | `app.continuity` |
 | Knowledge Graph | `app.graph` |
+| Asset Library | `app.assets` |
 | Storage | `app.storage`, `app.media`, `app.preprocessing`, `app.training`, `app.lora` |
 | Persistence | `app.db`, `app.models` |
 | Security | `app.auth`, `app.audit` |
@@ -276,6 +277,32 @@ o literal `fetch(` só pode aparecer em `lib/network/request.ts`. Foi um `catch`
 indiscriminado que produziu o falso "API Offline" com a API respondendo 200
 (PR009.2); a camada existe para que essa confusão não tenha onde renascer.
 
+**PR013 (V4.0.1)** amplia o escopo com `lib/network/upload.ts`: o upload
+multipart com progresso real (porcentagem, velocidade, bytes) precisa de
+`XMLHttpRequest` — `fetch` não emite eventos de progresso de envio nos
+navegadores-alvo. A mesma disciplina vale: nenhum componente instancia XHR,
+a classe de erro é a da camada (`NetworkErrorType`) e o trace id continua a
+existir. Componente nenhum ganhou uma segunda saída de rede.
+
+---
+
+## Asset Library
+
+| Campo | Valor |
+| --- | --- |
+| **Owner** | CTO — BROBOND AI STUDIO |
+| **Responsabilidade** | A biblioteca cinematográfica: ingestar uploads (PNG/JPG/WEBP/MP4/MOV) via `StorageService` com thumbnail e metadata persistidos, e servir a leitura filtrada/pesquisável da grade e do preview. |
+| **Dependências permitidas** | Persistence, Storage |
+| **Dependências proibidas** | Director AI, Storyboard Engine, Render Engine, Provider Registry, Quality Engine, Campaign Builder, Prompt Compiler, Application Boundary |
+
+Introduzido pelo PR013 (V4.0.1). A fronteira é a metáfora do acervo: a
+biblioteca sabe **guardar e encontrar** um asset, nunca **fazê-lo**. Ela lê as
+linhas `Asset` que outros escritores já gravaram (render, conditioning,
+exports — LEFT JOIN, leitura) e grava as suas (`Asset` + `AssetMetadata` do
+upload) pela `StorageService` existente. Importar Providers ou Render a
+faria conhecer quem produziu a mídia — acoplamento do mesmo tipo que a
+regra "a biblioteca antiga não conhecia o registry" já impedia.
+
 ---
 
 ## Grafo congelado
@@ -292,6 +319,7 @@ Campaign Builder     -> Contracts, Prompt Compiler, Storage, Persistence
 Quality Engine       -> Contracts, Persistence
 Persona Engine       -> Contracts, Persistence
 Database Guard       -> Runtime Config
+Asset Library        -> Persistence, Storage                 (PR013)
 AI Core              -> (não existe)
 ```
 

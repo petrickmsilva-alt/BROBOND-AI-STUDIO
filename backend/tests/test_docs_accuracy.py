@@ -296,7 +296,7 @@ def _identity_dependency(route) -> str | None:
 
 
 def test_the_authorisation_count_is_the_real_one(inventory) -> None:
-    """73 of 111 routes touch identity — 70 require it, 3 do not (V3.4).
+    """76 of 114 routes touch identity — 73 require it, 3 do not (V4.0.1).
 
     PR002 closed the P0-2 exposure: 25 of 58 (22 required, 3 optional).
     PR003 added the six persona-profile routes, all `Depends(current_user)`;
@@ -313,12 +313,14 @@ def test_the_authorisation_count_is_the_real_one(inventory) -> None:
     required, 3 optional). V3.4 adds the five quality routes: four are
     `Depends(current_user)` (reports badge tenant assets, like personas) and
     `/quality/config` is public reference data, like `/core/quality/rules`:
-    73 of 111 (70 required, 3 optional). Before PR002 the numbers were 10
-    (6 required, 4 optional). The prose and the guard move together, because
-    the three numbers drift independently of each other. The three WebSockets
-    are also authenticated, through the `token` query parameter (see
-    test_security_authorization.py) — they are not routes, so they are not in
-    the count.
+    73 of 111 (70 required, 3 optional). V4.0.1 (PR013) adds the three
+    `/assets/library*` routes, all `Depends(current_user)` (the library is
+    tenant product data, like personas): 76 of 114 (73 required, 3
+    optional). Before PR002 the numbers were 10 (6 required, 4 optional). The
+    prose and the guard move together, because the three numbers drift
+    independently of each other. The three WebSockets are also authenticated,
+    through the `token` query parameter (see test_security_authorization.py) —
+    they are not routes, so they are not in the count.
     """
 
     kinds = [_identity_dependency(r) for r in inventory["http"]]
@@ -326,7 +328,7 @@ def test_the_authorisation_count_is_the_real_one(inventory) -> None:
     optional = len([k for k in kinds if k == "optional_user"])
     touching = required + optional
 
-    assert required == 70, f"rotas exigindo token mudaram: {required}"
+    assert required == 73, f"rotas exigindo token mudaram: {required}"
     assert optional == 3, f"rotas com identidade opcional mudaram: {optional}"
 
     text = _read(LIMITATIONS)

@@ -1,17 +1,25 @@
 """FastAPI entrypoint for BROBOND AI STUDIO's local service boundary."""
 import asyncio
+from datetime import datetime
 import json
 from pathlib import Path
 import sys
 import time
 from uuid import UUID
 
-from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from .assets import (
+    AssetLibraryEntryResponse,
+    LibraryFilters,
+    asset_library,
+    parse_tags,
+)
+from .assets.library_schemas import build_entry_response
 from .audit import audit
 from .auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse, auth_rate_limiter, current_user, login, optional_user, register, ws_identity
 from .conditioning import catalog
@@ -897,6 +905,117 @@ def list_assets(user: User = Depends(current_user), db: Session = Depends(get_db
         )
         for a in assets
     ]
+
+
+# ---------------------------------------------------------------------------
+# PR013 — V4.0.1 Cinematic Asset Studio: the library surface.
+#
+# Additive by contract: the legacy `/assets/upload`, `/assets` and the
+# download/conditioning/export flows keep their exact contracts, and the
+# library's LEFT JOIN keeps every asset written before this PR visible
+# (with `has_metadata = False` instead of invented fields). The three
+# routes are declared **before** `/assets/download/{object_key:path}` on
+# purpose: that route's path converter would otherwise swallow
+# `/assets/library/...` and the library would answer 404 to itself.
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/v1/assets/library/upload", response_model=AssetLibraryEntryResponse, status_code=201, tags=["asset-library"])
+async def upload_library_asset(
+    request: Request,
+    file: UploadFile = File(...),
+    project: str = Form(""),
+    persona: str = Form(""),
+    provider: str = Form("upload"),
+    seed: int | None = Form(None),
+    tags: str = Form(""),
+    before_asset_id: str | None = Form(None),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> AssetLibraryEntryResponse:
+    """Upload a PNG/JPG/WEBP/MP4/MOV (multipart) with library metadata.
+
+    Bytes go through the existing `StorageService`; the service probes the
+    image, mints a thumbnail and persists `Asset` + `AssetMetadata` in one
+    transaction. Nothing travels as JSON — this endpoint is multipart only.
+    """
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    record = await asset_library.ingest(
+        db,
+        workspace.id,
+        file=file,
+        project=project,
+        persona=persona,
+        provider=provider,
+        seed=seed,
+        tags=parse_tags(tags),
+        before_asset_id=before_asset_id,
+    )
+    audit(
+        db,
+        actor=user,
+        action="asset.uploaded",
+        resource_type="asset",
+        resource_id=record.asset.id,
+        workspace_id=workspace.id,
+        detail={
+            "content_type": record.metadata.content_type if record.metadata else None,
+            "size_bytes": record.metadata.size_bytes if record.metadata else None,
+            "thumbnail": record.metadata.thumbnail_key is not None if record.metadata else False,
+        },
+        request=request,
+    )
+    return build_entry_response(record, asset_library.url_for)
+
+
+@app.get("/api/v1/assets/library", response_model=list[AssetLibraryEntryResponse], tags=["asset-library"])
+def list_library_assets(
+    kind: str | None = Query(None, pattern="^(image|video|audio|lora|metadata)$"),
+    project: str | None = Query(None),
+    persona: str | None = Query(None),
+    provider: str | None = Query(None),
+    min_score: int | None = Query(None, ge=0, le=100),
+    date_from: datetime | None = Query(None),
+    date_to: datetime | None = Query(None),
+    q: str | None = Query(None),
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> list[AssetLibraryEntryResponse]:
+    """List the workspace library with the ETAPA 5 filters applied.
+
+    Every parameter is optional; omitted means unfiltered. `q` matches the
+    asset name, its kind and every stored tag, case-insensitively.
+    """
+    workspace = _workspace_for(db, user)
+    if not workspace:
+        return []
+    filters = LibraryFilters(
+        kind=kind,
+        project=project,
+        persona=persona,
+        provider=provider,
+        min_score=min_score,
+        date_from=date_from,
+        date_to=date_to,
+        query=q,
+    )
+    records = asset_library.list_records(db, workspace.id, filters)
+    return [build_entry_response(record, asset_library.url_for) for record in records]
+
+
+@app.get("/api/v1/assets/library/{asset_id}", response_model=AssetLibraryEntryResponse, tags=["asset-library"])
+def get_library_asset(asset_id: str, user: User = Depends(current_user), db: Session = Depends(get_db)) -> AssetLibraryEntryResponse:
+    """One library entry, with its before/after pair resolved when paired."""
+    workspace = _workspace_for(db, user)
+    record = asset_library.get_record(db, workspace.id, asset_id) if workspace else None
+    if record is None:
+        raise HTTPException(status_code=404, detail="Asset not found")
+    before = None
+    if record.metadata is not None and record.metadata.before_asset_id:
+        before = asset_library.get_record(db, workspace.id, record.metadata.before_asset_id)
+    return build_entry_response(record, asset_library.url_for, before=before)
 
 
 @app.get("/api/v1/assets/download/{object_key:path}", tags=["assets"])

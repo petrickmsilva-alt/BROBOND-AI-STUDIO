@@ -3,12 +3,12 @@
   "snapshot_version": "1.0",
   "generator": "scripts/gen_api_snapshot.py",
   "summary": {
-    "http_routes": 111,
+    "http_routes": 114,
     "core_routes": 32,
     "websockets": 3,
-    "models": 137,
-    "tags": 18,
-    "auth_required": 70,
+    "models": 139,
+    "tags": 19,
+    "auth_required": 73,
     "auth_optional": 3,
     "auth_public": 38
   },
@@ -31,6 +31,36 @@
       "tag": "assets",
       "auth": "required",
       "status_code": 200
+    },
+    {
+      "path": "/api/v1/assets/library",
+      "methods": [
+        "GET"
+      ],
+      "tag": "asset-library",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "array<AssetLibraryEntryResponse>"
+    },
+    {
+      "path": "/api/v1/assets/library/upload",
+      "methods": [
+        "POST"
+      ],
+      "tag": "asset-library",
+      "auth": "required",
+      "status_code": 201,
+      "response_model": "AssetLibraryEntryResponse"
+    },
+    {
+      "path": "/api/v1/assets/library/{asset_id}",
+      "methods": [
+        "GET"
+      ],
+      "tag": "asset-library",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "AssetLibraryEntryResponse"
     },
     {
       "path": "/api/v1/assets/upload",
@@ -1182,6 +1212,44 @@
         "name"
       ]
     },
+    "AssetLibraryEntryResponse": {
+      "fields": {
+        "before_asset_id": "string|null",
+        "before_thumbnail_url": "string|null",
+        "before_url": "string|null",
+        "content_type": "string|null",
+        "created_at": "string",
+        "duration_seconds": "number|null",
+        "has_metadata": "boolean",
+        "height": "integer|null",
+        "id": "string",
+        "kind": "string",
+        "name": "string",
+        "persona": "string|null",
+        "project": "string|null",
+        "provider": "string|null",
+        "quality_score": "integer|null",
+        "quality_status": "string|null",
+        "quality_version": "integer|null",
+        "resolution": "string|null",
+        "seed": "integer|null",
+        "sha256": "string|null",
+        "size_bytes": "integer|null",
+        "source": "string|null",
+        "tags": "array<string>",
+        "thumbnail_url": "string|null",
+        "url": "string",
+        "width": "integer|null"
+      },
+      "required": [
+        "created_at",
+        "has_metadata",
+        "id",
+        "kind",
+        "name",
+        "url"
+      ]
+    },
     "AssetResponse": {
       "fields": {
         "created_at": "string",
@@ -1206,6 +1274,20 @@
     "Body_upload_asset_api_v1_assets_upload_post": {
       "fields": {
         "file": "string"
+      },
+      "required": [
+        "file"
+      ]
+    },
+    "Body_upload_library_asset_api_v1_assets_library_upload_post": {
+      "fields": {
+        "before_asset_id": "string|null",
+        "file": "string",
+        "persona": "string",
+        "project": "string",
+        "provider": "string",
+        "seed": "integer|null",
+        "tags": "string"
       },
       "required": [
         "file"

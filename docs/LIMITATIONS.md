@@ -64,14 +64,17 @@ restou:
 
 ---
 
-## 3. Autorização (P0-4, fechado no PR002; ampliado no PR003, no PR008, na V3.1, na V3.2, na V3.3 e na V3.4)
+## 3. Autorização (P0-4, fechado no PR002; ampliado no PR003, no PR008, na V3.1, na V3.2, na V3.3, na V3.4 e na V4.0.1)
 
-**73 de 111 rotas** tocam identidade, e a diferença entre elas importa:
+**76 de 114 rotas** tocam identidade, e a diferença entre elas importa:
 
-- **70** exigem token — `Depends(current_user)`: `/auth/me`, `/knowledge`, `/queue`,
+- **73** exigem token — `Depends(current_user)`: `/auth/me`, `/knowledge`, `/queue`,
   `/jobs/{id}`, `/jobs/{id}/cancel`, `/assets/upload`, `/assets`,
   `/assets/download/{object_key:path}`, `/assets/{id}/conditioning`,
-  `/assets/{id}/export`, `POST /personas`, `GET /personas` (listagem, PR003),
+  `/assets/{id}/export`, o bloco `/assets/library*` (3 rotas, V4.0.1 — upload
+  da biblioteca, listagem filtrada e detalhe com par before/after são dados
+  de tenant, como personas: anônimo é recusado e id estrangeiro responde
+  404), `POST /personas`, `GET /personas` (listagem, PR003),
   `/personas/{id}` (GET/PATCH/DELETE — perfis persistentes, PR003),
   `/personas/{id}/train`,
   `/personas/{id}/training/{run_id}`, `/personas/{id}/loras`,
@@ -116,7 +119,8 @@ polling.
 
 `POST /auth/login` e `/auth/register` têm rate limit configurável
 (`BROBOND_RATE_LIMIT_AUTH_PER_MINUTE`, default 20/min/IP, `0` desliga), e as
-ações críticas (auth, criação/cancelamento de job, download de asset, criação
+ações críticas (auth, criação/cancelamento de job, download de asset,
+upload de asset da biblioteca (`asset.uploaded`, V4.0.1), criação
 de persona e revisões de identidade) escrevem uma linha append-only em
 `audit_log` mais uma linha estruturada no logger `brobond.audit`.
 
@@ -128,7 +132,7 @@ from app.main import app
 import inspect
 n = sum(1 for r in app.routes if isinstance(r, APIRoute) and r.path.startswith('/api/v1')
         and 'user' in inspect.signature(r.endpoint).parameters)
-print(f'{n} de 111 rotas com identidade')"
+print(f'{n} de 114 rotas com identidade')"
 ```
 
 ---

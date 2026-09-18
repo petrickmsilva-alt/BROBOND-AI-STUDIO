@@ -265,9 +265,10 @@ def test_route_inventory_only_grew() -> None:
     # Cinematic Knowledge Graph routes), 99 after V3.2 (thirteen
     # `/api/v1/continuity/*` Character Continuity Engine routes), 106 after
     # V3.3 (seven `/api/v1/campaigns/*` Campaign Builder routes), 111 after
-    # V3.4 (five `/api/v1/quality/*` Quality AI Engine routes).
+    # V3.4 (five `/api/v1/quality/*` Quality AI Engine routes), 114 after
+    # V4.0.1 (three `/assets/library*` Cinematic Asset Studio routes).
     # The guard is that the number only grows: nothing was ever removed.
-    assert len([route for route in http if route.path.startswith("/api/v1")]) == 111
+    assert len([route for route in http if route.path.startswith("/api/v1")]) == 114
 
 
 # ------------------------------------------------- no generation logic in routes

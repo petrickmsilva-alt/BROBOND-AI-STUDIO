@@ -6,6 +6,54 @@ versões de produto do `ROADMAP.md`.
 
 ---
 
+## [Unreleased] — PR013: CINEMATIC ASSET STUDIO (V4.0.1)
+
+A aba Assets deixa de ser placeholder e vira biblioteca profissional:
+upload funcional com progresso real, grade responsiva com a ficha completa
+de cada asset, preview de imagem/vídeo, filtros com busca instantânea e
+estados vazios cinematográficos. **Zero alteração** em Provider Registry,
+Render Engine, Director AI, Prompt Compiler, GenerationExecutor e APIs
+públicas existentes (apenas três rotas novas `/assets/library*`).
+
+- **ETAPA 1 (Upload Engine)** — área inteira como alvo de drag & drop
+  (contador de profundidade, sem flicker entre filhos), click-to-select,
+  multi-upload em fila sequencial com **porcentagem, velocidade, tamanho e
+  status reais** (queued/uploading/completed/failed). Aceitos: PNG, JPG,
+  WEBP, MP4, MOV — o resto é recusado com aviso honesto.
+- **ETAPA 2 (Backend)** — `POST /api/v1/assets/library/upload` com
+  multipart/form-data (`UploadFile`), persistência pelo `StorageService`
+  existente, linha `Asset` + `AssetMetadata` na mesma transação, thumbnail
+  derivado por Pillow quando possível (nunca um poster fabricado para
+  vídeo), SHA-256, dimensões e demais fatos medidos — **nunca arquivo como
+  JSON**. `GET /assets/library` e `GET /assets/library/{id}` com filtros
+  server-side. Audit `asset.uploaded`.
+- **ETAPA 3 (Library)** — a grade substitui o card anterior: thumbnail
+  armazenado, tipo, projeto, persona, provider, seed, resolução, quality
+  score (bandas do Quality Engine) e data. Desconhecido renderiza `—`.
+- **ETAPA 4 (Preview)** — imagem: lightbox com zoom discreto (100→400%) e
+  slider **Before/After** quando o par é real (`before_asset_id`). Vídeo:
+  player com timeline (seek), loop e download.
+- **ETAPA 5 (Organização)** — filtros por projeto/persona/tipo/provider/
+  score/data + busca instantânea por nome e tags (client-side, em memória;
+  os mesmos cortes existem server-side para consumidores da API).
+- **ETAPA 6 (UX)** — cinco estados vazios cinematográficos (biblioteca
+  vazia, upload em curso, erro com o texto do servidor, sem conexão
+  mapeado por `NetworkErrorType`, filtros zerados), no Design System
+  existente (classes novas `al-*`, apêndice em `globals.css`).
+- **ETAPA 7 (Testes)** — backend `app/assets` em **100%** (52 testes,
+  multipart real); frontend `lib/assets/library.ts` em **100%**,
+  componentes 98.4–100%; piso global de 98% do vitest mantido verde
+  (296 testes). Rede de upload coberta com transporte fake jsdom + node.
+- **ETAPA 8 (Docs)** — `docs/ASSET_LIBRARY.md` criado; CHANGELOG aqui;
+  `docs/API.md`/`docs/API_SNAPSHOT.json` regenerados (114 rotas,
+  73 required/3 optional/38 public); `docs/ARCHITECTURE_MANIFEST.md` já
+  declarava o cluster `Asset Library` (`app.assets`); contagens de
+  inventário nos guards atualizadas com comentários datados
+  (`test_core_api.py` 111→114, `test_api_snapshot.py`, `test_docs_accuracy.py`,
+  `docs/ETAPAS.md` P0-4).
+
+---
+
 ## [Unreleased] — PR012: BROBOND UI 4.0 (Cinematic Design System)
 
 Redesign de UI/UX puro do frontend — luxuoso, cinematográfico, minimal,

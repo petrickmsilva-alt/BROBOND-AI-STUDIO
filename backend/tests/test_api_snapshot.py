@@ -151,11 +151,13 @@ def test_the_websockets_still_authenticate(committed) -> None:
 
 
 def test_the_authentication_split_matches_the_documented_one(committed) -> None:
-    """70 required / 3 optional / 38 public — the numbers `docs/LIMITATIONS.md`
-    and `test_docs_accuracy.py` already hold the line on, now also frozen here."""
+    """73 required / 3 optional / 38 public — the numbers `docs/LIMITATIONS.md`
+    and `test_docs_accuracy.py` already hold the line on, now also frozen here.
+    V4.0.1 (PR013) added the three `/assets/library*` routes, all required:
+    70 → 73 required, the optional/public split untouched."""
 
     summary = committed["summary"]
-    assert summary["auth_required"] == 70
+    assert summary["auth_required"] == 73
     assert summary["auth_optional"] == 3
     assert summary["auth_public"] == 38
     assert summary["auth_required"] + summary["auth_optional"] + summary["auth_public"] == summary["http_routes"]

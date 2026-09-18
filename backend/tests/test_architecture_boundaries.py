@@ -98,6 +98,7 @@ MODULES: dict[str, tuple[str, ...]] = {
     ),
     "Continuity Engine": ("app.continuity",),
     "Knowledge Graph": ("app.graph",),
+    "Asset Library": ("app.assets",),
     "Storage": ("app.storage", "app.media", "app.preprocessing", "app.training", "app.lora"),
     "Persistence": ("app.db", "app.models"),
     "Security": ("app.auth", "app.audit"),
@@ -137,6 +138,10 @@ ALLOWED: dict[str, tuple[str, ...]] = {
     ),
     "Continuity Engine": ("Persistence",),
     "Knowledge Graph": ("Persistence",),
+    # PR013: the library reads/writes bytes through Storage and rows through
+    # Persistence — it must never know who *made* an asset (Providers,
+    # Render, Director) any more than the bare `/assets` routes may.
+    "Asset Library": ("Persistence", "Storage"),
     "Storage": ("Persistence", "Runtime Config"),
     "Persistence": ("Runtime Config",),
     "Security": ("Persistence", "Runtime Config"),
