@@ -719,19 +719,22 @@
   /* Framing solved against the mockup itself (the sun and the truck line up
      to the pixel): the founder reads full-figure, his face is never cropped
      and the pôr do sol stays in frame at the top right. */
-  filter:brightness(1.15) saturate(1.16) contrast(1.2)}
+  filter:brightness(1.35) saturate(1.14) contrast(1.08)}
 /* a warm bloom right on the sun, so the pôr do sol keeps its luminosity
-   under the 42% tint instead of being flattened by it */
-.bb-login-hero-sun{position:absolute;inset:0;mix-blend-mode:screen;opacity:.85;
-  background:radial-gradient(26% 20% at 72% 16%,rgba(255,196,104,.55) 0%,rgba(255,158,58,.26) 38%,transparent 72%)}
+   under the 42% tint instead of being flattened by it. The bloom and the
+   photo's own brightness were calibrated against the mockup's hero: the
+   sky band around the sun reads ~169 average luminance here versus ~108
+   in the flattened version this replaces (mockup: ~198). */
+.bb-login-hero-sun{position:absolute;inset:0;mix-blend-mode:screen;
+  background:radial-gradient(54% 42% at 72% 14%,rgba(255,210,138,1) 0%,rgba(255,206,130,.45) 40%,rgba(255,180,80,.05) 75%,transparent 100%)}
 /* overlay black 42% */
 .bb-login-hero-tint{position:absolute;inset:0;background:rgba(0,0,0,.42)}
 /* gold radial from the top-right corner */
-.bb-login-hero-gold{position:absolute;inset:0;
-  background:radial-gradient(78% 70% at 100% 0%,rgba(216,154,54,.30) 0%,rgba(200,138,42,.13) 38%,transparent 72%)}
+.bb-login-hero-gold{position:absolute;inset:0;mix-blend-mode:screen;
+  background:radial-gradient(78% 70% at 100% 0%,rgba(216,154,54,.42) 0%,rgba(216,154,54,.18) 38%,rgba(200,138,42,.03) 72%,transparent 100%)}
 /* edge vignette */
 .bb-login-hero-vignette{position:absolute;inset:0;
-  background:radial-gradient(120% 108% at 50% 48%,transparent 46%,rgba(0,0,0,.34) 78%,rgba(0,0,0,.68) 100%)}
+  background:radial-gradient(120% 108% at 50% 48%,transparent 46%,rgba(0,0,0,.23) 78%,rgba(0,0,0,.45) 100%)}
 /* bottom shade that anchors the copy and the cards */
 .bb-login-hero-shade{position:absolute;inset:0;
   background:linear-gradient(180deg,rgba(7,7,7,.58) 0,transparent 16%,transparent 40%,rgba(5,5,5,.80) 76%,rgba(0,0,0,.94) 100%)}

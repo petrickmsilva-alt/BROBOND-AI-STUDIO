@@ -10,6 +10,8 @@
 // Nothing here touches authentication: LoginCard is presentational and the
 // flow stays in LoginScreen, unchanged.
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { LOGIN_COPY } from './login-copy';
@@ -139,5 +141,62 @@ describe('PR009.6.1 login column (42%)', () => {
   it('keeps the offline indicator honest', () => {
     renderCard({ online: false });
     expect(screen.getByText(copy.offline)).toBeInTheDocument();
+  });
+});
+
+// ── The mockup's measurements, as they are written in app/globals.css ─────
+//
+// jsdom cannot lay the screen out, so the numbers that define the approved
+// design are asserted against the stylesheet itself. This is what keeps a
+// later edit from silently drifting away from the mockup.
+describe('PR009.6.1 — the measurements written in globals.css', () => {
+  const CSS = readFileSync(join(process.cwd(), 'app', 'globals.css'), 'utf8').replace(/\s+/g, ' ');
+
+  it('locks the fullscreen 58/42 grid with no outer margins', () => {
+    expect(CSS).toMatch(/\.bb-login-overlay\{[^}]*width:100vw/);
+    expect(CSS).toMatch(/\.bb-login-overlay\{[^}]*height:100vh/);
+    expect(CSS).toMatch(/\.bb-login-overlay\{[^}]*grid-template-columns:58% 42%/);
+  });
+
+  it('locks the hero overlays: photo cover, black 42%, gold from the top-right, vignette', () => {
+    expect(CSS).toMatch(/\.bb-login-hero-photo\{[^}]*object-fit:cover/);
+    expect(CSS).toContain('.bb-login-hero-tint{position:absolute;inset:0;background:rgba(0,0,0,.42)}');
+    expect(CSS).toMatch(/\.bb-login-hero-gold\{[^}]*radial-gradient\(78% 70% at 100% 0%/);
+    expect(CSS).toMatch(/\.bb-login-hero-vignette\{[^}]*radial-gradient/);
+  });
+
+  it('keeps the sunset luminous: the sun bloom screens over the tint', () => {
+    // "aumentar a luminosidade do pôr do sol": the bloom must be a screen
+    // pass (not a flat wash) and the photo must not be dimmed back down.
+    expect(CSS).toMatch(/\.bb-login-hero-sun\{[^}]*mix-blend-mode:screen/);
+    expect(CSS).toMatch(/\.bb-login-hero-sun\{[^}]*radial-gradient\(54% 42% at 72% 14%/);
+    const brightness = /\.bb-login-hero-photo\{[^}]*brightness\(([\d.]+)\)/.exec(CSS);
+    expect(brightness, 'hero photo brightness filter').not.toBeNull();
+    expect(Number(brightness![1])).toBeGreaterThanOrEqual(1.3);
+  });
+
+  it('locks the five pillar cards: 110×88, rgba(10,10,10,.38), blur 16px, gold 10%', () => {
+    expect(CSS).toMatch(/\.bb-login-feature\{[^}]*width:110px/);
+    expect(CSS).toMatch(/\.bb-login-feature\{[^}]*height:88px/);
+    expect(CSS).toMatch(/\.bb-login-feature\{[^}]*background:rgba\(10,10,10,\.38\)/);
+    expect(CSS).toMatch(/\.bb-login-feature\{[^}]*backdrop-filter:blur\(16px\)/);
+    expect(CSS).toMatch(/\.bb-login-feature\{[^}]*rgba\(200,138,42,\.1\d*\)/);
+  });
+
+  it('locks the login column: #070707 and a centred 470px card (radius 24, blur 24, padding 40)', () => {
+    expect(CSS).toMatch(/\.bb-login-side\{[^}]*#070707/);
+    expect(CSS).toMatch(/\.bb-login-card\{[^}]*width:470px/);
+    expect(CSS).toMatch(/\.bb-login-card\{[^}]*border-radius:24px/);
+    expect(CSS).toMatch(/\.bb-login-card\{[^}]*backdrop-filter:blur\(24px\)/);
+    expect(CSS).toMatch(/\.bb-login-card\{[^}]*background:rgba\(17,17,17,\.55\)/);
+    expect(CSS).toMatch(/\.bb-login-card\{[^}]*padding:40px/);
+  });
+
+  it('locks the gold button: #C88A2A, hover #D89A36, height 56px, radius 14px', () => {
+    expect(CSS).toContain('--bb-l-gold:#C88A2A');
+    expect(CSS).toContain('--bb-l-gold-hover:#D89A36');
+    expect(CSS).toMatch(/\.bb-login-submit\{[^}]*height:56px/);
+    expect(CSS).toMatch(/\.bb-login-submit\{[^}]*border-radius:14px/);
+    expect(CSS).toMatch(/\.bb-login-submit:hover\{[^}]*var\(--bb-l-gold-hover\)/);
   });
 });
