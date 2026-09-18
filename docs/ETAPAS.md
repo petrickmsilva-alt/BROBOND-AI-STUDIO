@@ -100,7 +100,7 @@ valiam no código — o PR as travou, direta e transitivamente.
 
 | Métrica | Valor |
 | --- | --- |
-| Suíte de testes | **2.412** |
+| Suíte de testes | **2.413** |
 | Cobertura `backend/app` | **98%** (gate CI: 95%) |
 | Módulos em 100% | **82** |
 | Rotas HTTP `/api/v1` | **111** — **32** delas `/api/v1/core/*` |

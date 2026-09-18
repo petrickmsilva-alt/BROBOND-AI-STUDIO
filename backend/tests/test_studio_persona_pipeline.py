@@ -425,14 +425,28 @@ def test_project_memory_restores_and_persists_in_home(page_source: str) -> None:
 
 
 # ETAPA 7 — sidebar Studio group and the active identity in the topbar
+# (PR012 — BROBOND UI 4.0 replaced the sidebar's literal markup with the
+# `Sidebar` component and rebuilt its groups per the Cinematic Design
+# System spec: the STUDIO group is now Personas/Image/Video/Campaigns and
+# "Projects" moved into the LIBRARY group as "Assets". This guard follows
+# that sanctioned redesign — no FastAPI/Provider/Director/Storyboard/
+# Quality/database/route code changed.)
 
 
 def test_sidebar_has_the_studio_group(page_source: str) -> None:
-    assert 'STUDIO' in page_source
-    for label in ("Personas", "Image", "Video", "Projects"):
+    assert "label: 'Studio'" in page_source
+    for label in ("Personas", "Image", "Video", "Campaigns"):
+        assert label in page_source, f"missing sidebar entry: {label}"
+
+
+def test_sidebar_has_the_library_group(page_source: str) -> None:
+    assert "label: 'Library'" in page_source
+    for label in ("Assets", "Knowledge", "Continuity", "Quality"):
         assert label in page_source, f"missing sidebar entry: {label}"
 
 
 def test_topbar_shows_the_active_identity(page_source: str) -> None:
-    assert "active-identity" in page_source
+    # PR012 moved the active identity from a topbar chip into the
+    # always-visible Identity Bar above the Director workspace.
+    assert "IdentityBar" in page_source
     assert "activePersona?.name" in page_source or "activePersona.name" in page_source
