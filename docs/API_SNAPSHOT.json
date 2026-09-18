@@ -1,0 +1,3498 @@
+{
+  "_comment": "PR010.0 Platform Freeze — generated public API surface. Do not edit by hand: run `PYTHONPATH=backend python scripts/gen_api_snapshot.py > docs/API_SNAPSHOT.json`. backend/tests/test_api_snapshot.py fails when this file and the application disagree.",
+  "snapshot_version": "1.0",
+  "generator": "scripts/gen_api_snapshot.py",
+  "summary": {
+    "http_routes": 111,
+    "core_routes": 32,
+    "websockets": 3,
+    "models": 137,
+    "tags": 18,
+    "auth_required": 70,
+    "auth_optional": 3,
+    "auth_public": 38
+  },
+  "http": [
+    {
+      "path": "/api/v1/assets",
+      "methods": [
+        "GET"
+      ],
+      "tag": "assets",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "array<AssetResponse>"
+    },
+    {
+      "path": "/api/v1/assets/download/{object_key:path}",
+      "methods": [
+        "GET"
+      ],
+      "tag": "assets",
+      "auth": "required",
+      "status_code": 200
+    },
+    {
+      "path": "/api/v1/assets/upload",
+      "methods": [
+        "POST"
+      ],
+      "tag": "assets",
+      "auth": "required",
+      "status_code": 201,
+      "response_model": "AssetResponse"
+    },
+    {
+      "path": "/api/v1/assets/{asset_id}/conditioning",
+      "methods": [
+        "POST"
+      ],
+      "tag": "assets",
+      "auth": "required",
+      "status_code": 201,
+      "request_model": "ConditioningRequest",
+      "response_model": "AssetResponse"
+    },
+    {
+      "path": "/api/v1/assets/{asset_id}/export",
+      "methods": [
+        "POST"
+      ],
+      "tag": "exports",
+      "auth": "required",
+      "status_code": 200,
+      "request_model": "ExportRequest",
+      "response_model": "ExportResponse"
+    },
+    {
+      "path": "/api/v1/auth/login",
+      "methods": [
+        "POST"
+      ],
+      "tag": "auth",
+      "auth": "public",
+      "status_code": 200,
+      "request_model": "LoginRequest",
+      "response_model": "TokenResponse"
+    },
+    {
+      "path": "/api/v1/auth/me",
+      "methods": [
+        "GET"
+      ],
+      "tag": "auth",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "UserResponse"
+    },
+    {
+      "path": "/api/v1/auth/register",
+      "methods": [
+        "POST"
+      ],
+      "tag": "auth",
+      "auth": "public",
+      "status_code": 201,
+      "request_model": "RegisterRequest",
+      "response_model": "TokenResponse"
+    },
+    {
+      "path": "/api/v1/campaigns",
+      "methods": [
+        "GET"
+      ],
+      "tag": "campaign",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "array<CampaignResponse>"
+    },
+    {
+      "path": "/api/v1/campaigns",
+      "methods": [
+        "POST"
+      ],
+      "tag": "campaign",
+      "auth": "required",
+      "status_code": 201,
+      "request_model": "CampaignCreateRequest",
+      "response_model": "CampaignDetailResponse"
+    },
+    {
+      "path": "/api/v1/campaigns/interpret",
+      "methods": [
+        "POST"
+      ],
+      "tag": "campaign",
+      "auth": "required",
+      "status_code": 200,
+      "request_model": "CampaignBriefingRequest",
+      "response_model": "CampaignInterpretationResponse"
+    },
+    {
+      "path": "/api/v1/campaigns/{campaign_id}",
+      "methods": [
+        "GET"
+      ],
+      "tag": "campaign",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "CampaignDetailResponse"
+    },
+    {
+      "path": "/api/v1/campaigns/{campaign_id}/assets/{asset_id}/deliver",
+      "methods": [
+        "POST"
+      ],
+      "tag": "campaign",
+      "auth": "required",
+      "status_code": 200,
+      "request_model": "CampaignDeliverRequest",
+      "response_model": "CampaignAssetResponse"
+    },
+    {
+      "path": "/api/v1/campaigns/{campaign_id}/duplicate",
+      "methods": [
+        "POST"
+      ],
+      "tag": "campaign",
+      "auth": "required",
+      "status_code": 201,
+      "request_model": "CampaignDuplicateRequest",
+      "response_model": "CampaignDetailResponse"
+    },
+    {
+      "path": "/api/v1/campaigns/{campaign_id}/export",
+      "methods": [
+        "POST"
+      ],
+      "tag": "campaign",
+      "auth": "required",
+      "status_code": 201,
+      "response_model": "CampaignExportResponse"
+    },
+    {
+      "path": "/api/v1/continuity/episodes",
+      "methods": [
+        "GET"
+      ],
+      "tag": "continuity",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "array<ContinuityEpisodeResponse>"
+    },
+    {
+      "path": "/api/v1/continuity/episodes",
+      "methods": [
+        "POST"
+      ],
+      "tag": "continuity",
+      "auth": "required",
+      "status_code": 201,
+      "request_model": "ContinuityEpisodeCreate",
+      "response_model": "ContinuityEpisodeResponse"
+    },
+    {
+      "path": "/api/v1/continuity/identity",
+      "methods": [
+        "PUT"
+      ],
+      "tag": "continuity",
+      "auth": "required",
+      "status_code": 200,
+      "request_model": "ContinuityIdentityRequest",
+      "response_model": "ContinuityIdentityResponse"
+    },
+    {
+      "path": "/api/v1/continuity/identity/{persona_id}",
+      "methods": [
+        "GET"
+      ],
+      "tag": "continuity",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "ContinuityIdentityResponse"
+    },
+    {
+      "path": "/api/v1/continuity/location",
+      "methods": [
+        "GET"
+      ],
+      "tag": "continuity",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "ContinuityLocationResponse"
+    },
+    {
+      "path": "/api/v1/continuity/location",
+      "methods": [
+        "PUT"
+      ],
+      "tag": "continuity",
+      "auth": "required",
+      "status_code": 200,
+      "request_model": "ContinuityLocationRequest",
+      "response_model": "ContinuityLocationResponse"
+    },
+    {
+      "path": "/api/v1/continuity/resolve",
+      "methods": [
+        "GET"
+      ],
+      "tag": "continuity",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "ContinuityResolveResponse"
+    },
+    {
+      "path": "/api/v1/continuity/vehicle",
+      "methods": [
+        "GET"
+      ],
+      "tag": "continuity",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "ContinuityVehicleResponse"
+    },
+    {
+      "path": "/api/v1/continuity/vehicle",
+      "methods": [
+        "PUT"
+      ],
+      "tag": "continuity",
+      "auth": "required",
+      "status_code": 200,
+      "request_model": "ContinuityVehicleRequest",
+      "response_model": "ContinuityVehicleResponse"
+    },
+    {
+      "path": "/api/v1/continuity/voice",
+      "methods": [
+        "PUT"
+      ],
+      "tag": "continuity",
+      "auth": "required",
+      "status_code": 200,
+      "request_model": "ContinuityVoiceRequest",
+      "response_model": "ContinuityVoiceResponse"
+    },
+    {
+      "path": "/api/v1/continuity/voice/{persona_id}",
+      "methods": [
+        "GET"
+      ],
+      "tag": "continuity",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "ContinuityVoiceResponse"
+    },
+    {
+      "path": "/api/v1/continuity/wardrobe",
+      "methods": [
+        "GET"
+      ],
+      "tag": "continuity",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "ContinuityWardrobeResponse"
+    },
+    {
+      "path": "/api/v1/continuity/wardrobe",
+      "methods": [
+        "PUT"
+      ],
+      "tag": "continuity",
+      "auth": "required",
+      "status_code": 200,
+      "request_model": "ContinuityWardrobeRequest",
+      "response_model": "ContinuityWardrobeResponse"
+    },
+    {
+      "path": "/api/v1/core/cinematic/audit",
+      "methods": [
+        "GET"
+      ],
+      "tag": "core",
+      "auth": "public",
+      "status_code": 200,
+      "response_model": "LibraryAuditResponse"
+    },
+    {
+      "path": "/api/v1/core/cinematic/consistency",
+      "methods": [
+        "GET"
+      ],
+      "tag": "core",
+      "auth": "public",
+      "status_code": 200,
+      "response_model": "EpisodeConsistencyResponse"
+    },
+    {
+      "path": "/api/v1/core/cinematic/explain",
+      "methods": [
+        "GET"
+      ],
+      "tag": "core",
+      "auth": "public",
+      "status_code": 200,
+      "response_model": "StyleExplanationResponse"
+    },
+    {
+      "path": "/api/v1/core/cinematic/framing",
+      "methods": [
+        "GET"
+      ],
+      "tag": "core",
+      "auth": "public",
+      "status_code": 200,
+      "response_model": "FramingResponse"
+    },
+    {
+      "path": "/api/v1/core/cinematic/lenses",
+      "methods": [
+        "GET"
+      ],
+      "tag": "core",
+      "auth": "public",
+      "status_code": 200,
+      "response_model": "array<LensProfileResponse>"
+    },
+    {
+      "path": "/api/v1/core/cinematic/lenses/for",
+      "methods": [
+        "GET"
+      ],
+      "tag": "core",
+      "auth": "public",
+      "status_code": 200,
+      "response_model": "array<LensProfileResponse>"
+    },
+    {
+      "path": "/api/v1/core/cinematic/lighting",
+      "methods": [
+        "GET"
+      ],
+      "tag": "core",
+      "auth": "public",
+      "status_code": 200,
+      "response_model": "LightingResponse"
+    },
+    {
+      "path": "/api/v1/core/cinematic/motivations",
+      "methods": [
+        "GET"
+      ],
+      "tag": "core",
+      "auth": "public",
+      "status_code": 200,
+      "response_model": "array<MotivationResponse>"
+    },
+    {
+      "path": "/api/v1/core/cinematic/motivations/of",
+      "methods": [
+        "GET"
+      ],
+      "tag": "core",
+      "auth": "public",
+      "status_code": 200,
+      "response_model": "object"
+    },
+    {
+      "path": "/api/v1/core/compile",
+      "methods": [
+        "POST"
+      ],
+      "tag": "core",
+      "auth": "optional",
+      "status_code": 200,
+      "request_model": "GenerationSpecRequest",
+      "response_model": "GenerationSpecResponse"
+    },
+    {
+      "path": "/api/v1/core/direct",
+      "methods": [
+        "POST"
+      ],
+      "tag": "core",
+      "auth": "public",
+      "status_code": 200,
+      "request_model": "DirectorRequest",
+      "response_model": "DirectorBriefResponse"
+    },
+    {
+      "path": "/api/v1/core/director/production-plan",
+      "methods": [
+        "POST"
+      ],
+      "tag": "core",
+      "auth": "public",
+      "status_code": 200,
+      "request_model": "DirectorProductionPlanRequest",
+      "response_model": "DirectorProductionPlanResponse"
+    },
+    {
+      "path": "/api/v1/core/personas",
+      "methods": [
+        "GET"
+      ],
+      "tag": "core",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "array<PersonaMemoryResponse>"
+    },
+    {
+      "path": "/api/v1/core/personas/{persona_id}",
+      "methods": [
+        "GET"
+      ],
+      "tag": "core",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "PersonaHistoryResponse"
+    },
+    {
+      "path": "/api/v1/core/personas/{persona_id}/approve",
+      "methods": [
+        "POST"
+      ],
+      "tag": "core",
+      "auth": "required",
+      "status_code": 200,
+      "request_model": "PersonaTransitionRequest",
+      "response_model": "PersonaMemoryResponse"
+    },
+    {
+      "path": "/api/v1/core/personas/{persona_id}/continuity",
+      "methods": [
+        "GET"
+      ],
+      "tag": "core",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "object"
+    },
+    {
+      "path": "/api/v1/core/personas/{persona_id}/episodes/{episode_id}/memory",
+      "methods": [
+        "GET"
+      ],
+      "tag": "core",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "PersonaMemoryResponse"
+    },
+    {
+      "path": "/api/v1/core/personas/{persona_id}/episodes/{episode_id}/snapshot",
+      "methods": [
+        "POST"
+      ],
+      "tag": "core",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "object"
+    },
+    {
+      "path": "/api/v1/core/personas/{persona_id}/retire",
+      "methods": [
+        "POST"
+      ],
+      "tag": "core",
+      "auth": "required",
+      "status_code": 200,
+      "request_model": "PersonaTransitionRequest",
+      "response_model": "PersonaMemoryResponse"
+    },
+    {
+      "path": "/api/v1/core/personas/{persona_id}/revise",
+      "methods": [
+        "POST"
+      ],
+      "tag": "core",
+      "auth": "required",
+      "status_code": 200,
+      "request_model": "PersonaRevisionRequest",
+      "response_model": "PersonaVersionResponse"
+    },
+    {
+      "path": "/api/v1/core/providers",
+      "methods": [
+        "GET"
+      ],
+      "tag": "core",
+      "auth": "public",
+      "status_code": 200,
+      "response_model": "ProviderCatalogueResponse"
+    },
+    {
+      "path": "/api/v1/core/providers/health",
+      "methods": [
+        "GET"
+      ],
+      "tag": "core",
+      "auth": "public",
+      "status_code": 200,
+      "response_model": "array<ProviderHealthResponse>"
+    },
+    {
+      "path": "/api/v1/core/quality/assess",
+      "methods": [
+        "POST"
+      ],
+      "tag": "core",
+      "auth": "public",
+      "status_code": 200,
+      "request_model": "QualityAssessRequest",
+      "response_model": "QualityReportResponse"
+    },
+    {
+      "path": "/api/v1/core/quality/rules",
+      "methods": [
+        "GET"
+      ],
+      "tag": "core",
+      "auth": "public",
+      "status_code": 200,
+      "response_model": "QualityCapabilitiesResponse"
+    },
+    {
+      "path": "/api/v1/core/shots",
+      "methods": [
+        "GET"
+      ],
+      "tag": "core",
+      "auth": "public",
+      "status_code": 200,
+      "response_model": "array<ShotPresetResponse>"
+    },
+    {
+      "path": "/api/v1/core/shots/audit",
+      "methods": [
+        "GET"
+      ],
+      "tag": "core",
+      "auth": "public",
+      "status_code": 200,
+      "response_model": "ShotLibraryAuditResponse"
+    },
+    {
+      "path": "/api/v1/core/shots/families",
+      "methods": [
+        "GET"
+      ],
+      "tag": "core",
+      "auth": "public",
+      "status_code": 200,
+      "response_model": "array<ShotFamilyResponse>"
+    },
+    {
+      "path": "/api/v1/core/shots/{shot_code}",
+      "methods": [
+        "GET"
+      ],
+      "tag": "core",
+      "auth": "public",
+      "status_code": 200,
+      "response_model": "ShotPresetResponse"
+    },
+    {
+      "path": "/api/v1/core/storyboard",
+      "methods": [
+        "POST"
+      ],
+      "tag": "core",
+      "auth": "public",
+      "status_code": 200,
+      "request_model": "CoreStoryboardRequest",
+      "response_model": "CoreStoryboardResponse"
+    },
+    {
+      "path": "/api/v1/core/storyboard/compile",
+      "methods": [
+        "POST"
+      ],
+      "tag": "core",
+      "auth": "public",
+      "status_code": 200,
+      "request_model": "CoreStoryboardCompileRequest",
+      "response_model": "CoreStoryboardCompileResponse"
+    },
+    {
+      "path": "/api/v1/core/timeline",
+      "methods": [
+        "POST"
+      ],
+      "tag": "core",
+      "auth": "public",
+      "status_code": 200,
+      "request_model": "TimelineRequest",
+      "response_model": "TimelineResponse"
+    },
+    {
+      "path": "/api/v1/core/timeline/formats",
+      "methods": [
+        "GET"
+      ],
+      "tag": "core",
+      "auth": "public",
+      "status_code": 200,
+      "response_model": "TimelineCatalogueResponse"
+    },
+    {
+      "path": "/api/v1/generations/images",
+      "methods": [
+        "POST"
+      ],
+      "tag": "generations",
+      "auth": "optional",
+      "status_code": 202,
+      "request_model": "ImageGenerationRequest",
+      "response_model": "Job"
+    },
+    {
+      "path": "/api/v1/generations/videos",
+      "methods": [
+        "POST"
+      ],
+      "tag": "generations",
+      "auth": "optional",
+      "status_code": 202,
+      "request_model": "VideoGenerationRequest",
+      "response_model": "Job"
+    },
+    {
+      "path": "/api/v1/graph/characters/{name}/context",
+      "methods": [
+        "GET"
+      ],
+      "tag": "graph",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "GraphCharacterContextResponse"
+    },
+    {
+      "path": "/api/v1/graph/edges",
+      "methods": [
+        "GET"
+      ],
+      "tag": "graph",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "array<GraphEdgeResponse>"
+    },
+    {
+      "path": "/api/v1/graph/edges",
+      "methods": [
+        "POST"
+      ],
+      "tag": "graph",
+      "auth": "required",
+      "status_code": 201,
+      "request_model": "GraphEdgeCreate",
+      "response_model": "GraphEdgeResponse"
+    },
+    {
+      "path": "/api/v1/graph/edges/{edge_id}",
+      "methods": [
+        "DELETE"
+      ],
+      "tag": "graph",
+      "auth": "required",
+      "status_code": 204
+    },
+    {
+      "path": "/api/v1/graph/neighbors/{node_id}",
+      "methods": [
+        "GET"
+      ],
+      "tag": "graph",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "GraphNeighborsResponse"
+    },
+    {
+      "path": "/api/v1/graph/nodes",
+      "methods": [
+        "GET"
+      ],
+      "tag": "graph",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "array<GraphNodeResponse>"
+    },
+    {
+      "path": "/api/v1/graph/nodes",
+      "methods": [
+        "POST"
+      ],
+      "tag": "graph",
+      "auth": "required",
+      "status_code": 201,
+      "request_model": "GraphNodeCreate",
+      "response_model": "GraphNodeResponse"
+    },
+    {
+      "path": "/api/v1/graph/nodes/{node_id}",
+      "methods": [
+        "DELETE"
+      ],
+      "tag": "graph",
+      "auth": "required",
+      "status_code": 204
+    },
+    {
+      "path": "/api/v1/graph/nodes/{node_id}",
+      "methods": [
+        "GET"
+      ],
+      "tag": "graph",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "GraphNodeResponse"
+    },
+    {
+      "path": "/api/v1/graph/nodes/{node_id}",
+      "methods": [
+        "PATCH"
+      ],
+      "tag": "graph",
+      "auth": "required",
+      "status_code": 200,
+      "request_model": "GraphNodeUpdate",
+      "response_model": "GraphNodeResponse"
+    },
+    {
+      "path": "/api/v1/graph/query",
+      "methods": [
+        "GET"
+      ],
+      "tag": "graph",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "GraphQueryResponse"
+    },
+    {
+      "path": "/api/v1/graph/seed",
+      "methods": [
+        "POST"
+      ],
+      "tag": "graph",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "GraphSeedResponse"
+    },
+    {
+      "path": "/api/v1/health",
+      "methods": [
+        "GET"
+      ],
+      "tag": "system",
+      "auth": "public",
+      "status_code": 200
+    },
+    {
+      "path": "/api/v1/jobs/{job_id}",
+      "methods": [
+        "GET"
+      ],
+      "tag": "generations",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "JobResponse"
+    },
+    {
+      "path": "/api/v1/jobs/{job_id}/cancel",
+      "methods": [
+        "POST"
+      ],
+      "tag": "queue",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "JobResponse"
+    },
+    {
+      "path": "/api/v1/knowledge",
+      "methods": [
+        "GET"
+      ],
+      "tag": "knowledge",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "array<KnowledgeResponse>"
+    },
+    {
+      "path": "/api/v1/models/conditioning",
+      "methods": [
+        "GET"
+      ],
+      "tag": "models",
+      "auth": "public",
+      "status_code": 200,
+      "response_model": "array<object<string>>"
+    },
+    {
+      "path": "/api/v1/models/image",
+      "methods": [
+        "GET"
+      ],
+      "tag": "models",
+      "auth": "public",
+      "status_code": 200,
+      "response_model": "array<object<string>>"
+    },
+    {
+      "path": "/api/v1/models/video",
+      "methods": [
+        "GET"
+      ],
+      "tag": "models",
+      "auth": "public",
+      "status_code": 200,
+      "response_model": "array<object<string>>"
+    },
+    {
+      "path": "/api/v1/personas",
+      "methods": [
+        "GET"
+      ],
+      "tag": "personas",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "array<PersonaProfileResponse>"
+    },
+    {
+      "path": "/api/v1/personas",
+      "methods": [
+        "POST"
+      ],
+      "tag": "personas",
+      "auth": "required",
+      "status_code": 202,
+      "request_model": "PersonaCreateRequest",
+      "response_model": "Persona"
+    },
+    {
+      "path": "/api/v1/personas/{persona_id}",
+      "methods": [
+        "DELETE"
+      ],
+      "tag": "personas",
+      "auth": "required",
+      "status_code": 204
+    },
+    {
+      "path": "/api/v1/personas/{persona_id}",
+      "methods": [
+        "GET"
+      ],
+      "tag": "personas",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "PersonaProfileResponse"
+    },
+    {
+      "path": "/api/v1/personas/{persona_id}",
+      "methods": [
+        "PATCH"
+      ],
+      "tag": "personas",
+      "auth": "required",
+      "status_code": 200,
+      "request_model": "PersonaUpdateRequest",
+      "response_model": "PersonaProfileResponse"
+    },
+    {
+      "path": "/api/v1/personas/{persona_id}/images",
+      "methods": [
+        "GET"
+      ],
+      "tag": "personas",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "array<PersonaImageResponse>"
+    },
+    {
+      "path": "/api/v1/personas/{persona_id}/images",
+      "methods": [
+        "POST"
+      ],
+      "tag": "personas",
+      "auth": "required",
+      "status_code": 201,
+      "request_model": "PersonaImageAddRequest",
+      "response_model": "PersonaImageResponse"
+    },
+    {
+      "path": "/api/v1/personas/{persona_id}/loras",
+      "methods": [
+        "GET"
+      ],
+      "tag": "personas",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "array<LoraVersionResponse>"
+    },
+    {
+      "path": "/api/v1/personas/{persona_id}/train",
+      "methods": [
+        "POST"
+      ],
+      "tag": "personas",
+      "auth": "required",
+      "status_code": 202,
+      "request_model": "PersonaTrainRequest",
+      "response_model": "PersonaTrainResponse"
+    },
+    {
+      "path": "/api/v1/personas/{persona_id}/training/{run_id}",
+      "methods": [
+        "GET"
+      ],
+      "tag": "personas",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "TrainingStatusResponse"
+    },
+    {
+      "path": "/api/v1/prompts/enhance",
+      "methods": [
+        "POST"
+      ],
+      "tag": "prompt-engine",
+      "auth": "public",
+      "status_code": 200,
+      "request_model": "PromptEnhanceRequest",
+      "response_model": "PromptEnhanceResponse"
+    },
+    {
+      "path": "/api/v1/providers",
+      "methods": [
+        "GET"
+      ],
+      "tag": "providers",
+      "auth": "public",
+      "status_code": 200,
+      "response_model": "array<UniversalProviderResponse>"
+    },
+    {
+      "path": "/api/v1/providers/telemetry",
+      "methods": [
+        "GET"
+      ],
+      "tag": "providers",
+      "auth": "public",
+      "status_code": 200,
+      "response_model": "array<ProviderTelemetryResponse>"
+    },
+    {
+      "path": "/api/v1/providers/{provider_id}/test",
+      "methods": [
+        "POST"
+      ],
+      "tag": "providers",
+      "auth": "public",
+      "status_code": 200,
+      "response_model": "ProviderTestResponse"
+    },
+    {
+      "path": "/api/v1/quality/assets/{asset_id}/assess",
+      "methods": [
+        "POST"
+      ],
+      "tag": "quality",
+      "auth": "required",
+      "status_code": 201,
+      "request_model": "QualityAssessAssetRequest",
+      "response_model": "QualityAssetReportResponse"
+    },
+    {
+      "path": "/api/v1/quality/assets/{asset_id}/decision",
+      "methods": [
+        "POST"
+      ],
+      "tag": "quality",
+      "auth": "required",
+      "status_code": 200,
+      "request_model": "QualityDecisionRequest",
+      "response_model": "QualityAssetReportResponse"
+    },
+    {
+      "path": "/api/v1/quality/assets/{asset_id}/history",
+      "methods": [
+        "GET"
+      ],
+      "tag": "quality",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "array<QualityAssetReportResponse>"
+    },
+    {
+      "path": "/api/v1/quality/assets/{asset_id}/report",
+      "methods": [
+        "GET"
+      ],
+      "tag": "quality",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "QualityAssetReportResponse"
+    },
+    {
+      "path": "/api/v1/quality/config",
+      "methods": [
+        "GET"
+      ],
+      "tag": "quality",
+      "auth": "public",
+      "status_code": 200,
+      "response_model": "QualityConfigResponse"
+    },
+    {
+      "path": "/api/v1/queue",
+      "methods": [
+        "GET"
+      ],
+      "tag": "queue",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "array<JobResponse>"
+    },
+    {
+      "path": "/api/v1/render/batches",
+      "methods": [
+        "GET"
+      ],
+      "tag": "render",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "array<RenderBatchSummaryResponse>"
+    },
+    {
+      "path": "/api/v1/render/batches",
+      "methods": [
+        "POST"
+      ],
+      "tag": "render",
+      "auth": "required",
+      "status_code": 201,
+      "request_model": "RenderBatchCreateRequest",
+      "response_model": "RenderBatchResponse"
+    },
+    {
+      "path": "/api/v1/render/batches/{batch_id}",
+      "methods": [
+        "GET"
+      ],
+      "tag": "render",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "RenderBatchResponse"
+    },
+    {
+      "path": "/api/v1/render/batches/{batch_id}/cancel",
+      "methods": [
+        "POST"
+      ],
+      "tag": "render",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "RenderBatchResponse"
+    },
+    {
+      "path": "/api/v1/render/batches/{batch_id}/retry",
+      "methods": [
+        "POST"
+      ],
+      "tag": "render",
+      "auth": "required",
+      "status_code": 200,
+      "response_model": "RenderRetryResponse"
+    },
+    {
+      "path": "/api/v1/render/batches/{batch_id}/start",
+      "methods": [
+        "POST"
+      ],
+      "tag": "render",
+      "auth": "required",
+      "status_code": 202,
+      "response_model": "RenderBatchResponse"
+    },
+    {
+      "path": "/api/v1/storyboards/expand",
+      "methods": [
+        "POST"
+      ],
+      "tag": "storyboards",
+      "auth": "public",
+      "status_code": 200,
+      "request_model": "StoryboardRequest",
+      "response_model": "StoryboardResponse"
+    },
+    {
+      "path": "/api/v1/system/gpu",
+      "methods": [
+        "GET"
+      ],
+      "tag": "system",
+      "auth": "public",
+      "status_code": 200,
+      "response_model": "object"
+    },
+    {
+      "path": "/api/v1/system/media",
+      "methods": [
+        "GET"
+      ],
+      "tag": "system",
+      "auth": "public",
+      "status_code": 200,
+      "response_model": "object"
+    },
+    {
+      "path": "/api/v1/system/readiness",
+      "methods": [
+        "GET"
+      ],
+      "tag": "system",
+      "auth": "public",
+      "status_code": 200
+    }
+  ],
+  "websockets": [
+    {
+      "path": "/api/v1/personas/{persona_id}/training/events/{run_id}",
+      "auth": "token"
+    },
+    {
+      "path": "/api/v1/queue/events/{job_id}",
+      "auth": "token"
+    },
+    {
+      "path": "/ws/render/{batch_id}",
+      "auth": "token"
+    }
+  ],
+  "models": {
+    "AngleProfileResponse": {
+      "fields": {
+        "creates": "string",
+        "keywords": "array<string>",
+        "name": "string"
+      },
+      "required": [
+        "creates",
+        "name"
+      ]
+    },
+    "AssetResponse": {
+      "fields": {
+        "created_at": "string",
+        "id": "string",
+        "kind": "string",
+        "name": "string",
+        "object_key": "string",
+        "quality_score": "integer|null",
+        "quality_status": "string|null",
+        "quality_version": "integer|null",
+        "url": "string"
+      },
+      "required": [
+        "created_at",
+        "id",
+        "kind",
+        "name",
+        "object_key",
+        "url"
+      ]
+    },
+    "Body_upload_asset_api_v1_assets_upload_post": {
+      "fields": {
+        "file": "string"
+      },
+      "required": [
+        "file"
+      ]
+    },
+    "CampaignAssetResponse": {
+      "fields": {
+        "aspect_ratio": "string",
+        "campaign_id": "string",
+        "created_at": "string",
+        "cta": "string",
+        "day": "integer",
+        "duration_seconds": "integer|null",
+        "height": "integer",
+        "id": "string",
+        "kind": "string",
+        "label": "string",
+        "medium": "string",
+        "output_key": "string|null",
+        "position": "integer",
+        "prompt": "string",
+        "status": "string",
+        "thumbnail_key": "string|null",
+        "updated_at": "string",
+        "width": "integer",
+        "workspace_id": "string"
+      },
+      "required": [
+        "campaign_id",
+        "day",
+        "id",
+        "kind",
+        "workspace_id"
+      ]
+    },
+    "CampaignBriefResponse": {
+      "fields": {
+        "audience": "string",
+        "campaign_id": "string",
+        "created_at": "string",
+        "cta": "string",
+        "duration_seconds": "integer",
+        "id": "string",
+        "matched": "array<string>",
+        "missing": "array<string>",
+        "objective": "string",
+        "platform": "string",
+        "product": "string",
+        "product_type": "string",
+        "raw_text": "string",
+        "workspace_id": "string"
+      },
+      "required": [
+        "campaign_id",
+        "id",
+        "raw_text",
+        "workspace_id"
+      ]
+    },
+    "CampaignBriefingRequest": {
+      "fields": {
+        "briefing": "string"
+      },
+      "required": [
+        "briefing"
+      ]
+    },
+    "CampaignCreateRequest": {
+      "fields": {
+        "briefing": "string",
+        "name": "string|null"
+      },
+      "required": [
+        "briefing"
+      ]
+    },
+    "CampaignDeliverRequest": {
+      "fields": {
+        "output_key": "string|null",
+        "thumbnail_key": "string|null"
+      },
+      "required": []
+    },
+    "CampaignDetailResponse": {
+      "fields": {
+        "assets": "array<CampaignAssetResponse>",
+        "audience": "string",
+        "brief": "CampaignBriefResponse|null",
+        "created_at": "string",
+        "episodes": "array<CampaignEpisodeResponse>",
+        "exports": "array<CampaignExportResponse>",
+        "id": "string",
+        "name": "string",
+        "objective": "string",
+        "platform": "string",
+        "primary_cta": "string",
+        "product": "string",
+        "product_type": "string",
+        "seed": "integer",
+        "status": "string",
+        "updated_at": "string",
+        "workspace_id": "string"
+      },
+      "required": [
+        "id",
+        "name",
+        "product",
+        "workspace_id"
+      ]
+    },
+    "CampaignDuplicateRequest": {
+      "fields": {
+        "name": "string|null"
+      },
+      "required": []
+    },
+    "CampaignEpisodeResponse": {
+      "fields": {
+        "asset_kinds": "array<string>",
+        "campaign_id": "string",
+        "created_at": "string",
+        "cta": "string",
+        "day": "integer",
+        "focus": "string",
+        "id": "string",
+        "notes": "string",
+        "workspace_id": "string"
+      },
+      "required": [
+        "campaign_id",
+        "day",
+        "id",
+        "workspace_id"
+      ]
+    },
+    "CampaignExportResponse": {
+      "fields": {
+        "campaign_id": "string",
+        "created_at": "string",
+        "download_url": "string",
+        "file_count": "integer",
+        "id": "string",
+        "object_key": "string",
+        "sha256": "string",
+        "workspace_id": "string"
+      },
+      "required": [
+        "campaign_id",
+        "id",
+        "object_key",
+        "workspace_id"
+      ]
+    },
+    "CampaignInterpretationResponse": {
+      "fields": {
+        "audience": "string",
+        "duration_seconds": "integer",
+        "matched": "array<string>",
+        "missing": "array<string>",
+        "name": "string",
+        "objective": "string",
+        "platform": "string",
+        "product": "string",
+        "product_type": "string",
+        "raw_text": "string"
+      },
+      "required": [
+        "name",
+        "product",
+        "raw_text"
+      ]
+    },
+    "CampaignResponse": {
+      "fields": {
+        "audience": "string",
+        "created_at": "string",
+        "id": "string",
+        "name": "string",
+        "objective": "string",
+        "platform": "string",
+        "primary_cta": "string",
+        "product": "string",
+        "product_type": "string",
+        "seed": "integer",
+        "status": "string",
+        "updated_at": "string",
+        "workspace_id": "string"
+      },
+      "required": [
+        "id",
+        "name",
+        "product",
+        "workspace_id"
+      ]
+    },
+    "CompiledSceneResponse": {
+      "fields": {
+        "dropped": "array<string>",
+        "negative_prompt": "string",
+        "number": "integer",
+        "prompt": "string",
+        "shot_code": "string",
+        "tokens": "array<string>"
+      },
+      "required": [
+        "negative_prompt",
+        "number",
+        "prompt",
+        "shot_code"
+      ]
+    },
+    "ConditioningRequest": {
+      "fields": {
+        "mode": "string"
+      },
+      "required": [
+        "mode"
+      ]
+    },
+    "ContinuityEpisodeCreate": {
+      "fields": {
+        "campaign_id": "string",
+        "episode": "integer|null",
+        "notes": "string",
+        "persona_id": "string",
+        "title": "string"
+      },
+      "required": [
+        "persona_id"
+      ]
+    },
+    "ContinuityEpisodeResponse": {
+      "fields": {
+        "campaign_id": "string",
+        "created_at": "string",
+        "episode": "integer",
+        "id": "string",
+        "notes": "string",
+        "persona_id": "string",
+        "snapshot": "object",
+        "title": "string",
+        "workspace_id": "string"
+      },
+      "required": [
+        "campaign_id",
+        "episode",
+        "id",
+        "persona_id",
+        "workspace_id"
+      ]
+    },
+    "ContinuityIdentityRequest": {
+      "fields": {
+        "age_appearance": "string",
+        "beard": "string",
+        "body": "string",
+        "face": "string",
+        "hair": "string",
+        "persona_id": "string",
+        "skin": "string"
+      },
+      "required": [
+        "persona_id"
+      ]
+    },
+    "ContinuityIdentityResponse": {
+      "fields": {
+        "age_appearance": "string",
+        "beard": "string",
+        "body": "string",
+        "face": "string",
+        "fingerprint": "string",
+        "hair": "string",
+        "persona_id": "string",
+        "skin": "string",
+        "updated_at": "string",
+        "version": "integer"
+      },
+      "required": [
+        "persona_id"
+      ]
+    },
+    "ContinuityLocationRequest": {
+      "fields": {
+        "base_lighting": "string",
+        "campaign_id": "string",
+        "city": "string",
+        "episode": "integer|null",
+        "persona_id": "string",
+        "showroom": "string",
+        "street": "string",
+        "studio": "string"
+      },
+      "required": [
+        "persona_id"
+      ]
+    },
+    "ContinuityLocationResponse": {
+      "fields": {
+        "base_lighting": "string",
+        "campaign_id": "string",
+        "city": "string",
+        "fingerprint": "string",
+        "persona_id": "string",
+        "showroom": "string",
+        "source_episode": "integer|null",
+        "street": "string",
+        "studio": "string",
+        "updated_at": "string",
+        "version": "integer"
+      },
+      "required": [
+        "campaign_id",
+        "persona_id"
+      ]
+    },
+    "ContinuityResolveResponse": {
+      "fields": {
+        "block": "string",
+        "campaign_id": "string",
+        "consistent": "boolean",
+        "drift": "array<string>",
+        "episode": "integer",
+        "fingerprints": "object<string>",
+        "identity": "ContinuityIdentityResponse|null",
+        "location": "ContinuityLocationResponse|null",
+        "missing": "array<string>",
+        "persona_id": "string",
+        "phrases": "array<string>",
+        "vehicle": "ContinuityVehicleResponse|null",
+        "voice": "ContinuityVoiceResponse|null",
+        "wardrobe": "ContinuityWardrobeResponse|null"
+      },
+      "required": [
+        "campaign_id",
+        "episode",
+        "persona_id"
+      ]
+    },
+    "ContinuityVehicleRequest": {
+      "fields": {
+        "campaign_id": "string",
+        "color": "string",
+        "episode": "integer|null",
+        "finish": "string",
+        "persona_id": "string",
+        "plate": "string",
+        "vehicle": "string",
+        "wheels": "string"
+      },
+      "required": [
+        "persona_id"
+      ]
+    },
+    "ContinuityVehicleResponse": {
+      "fields": {
+        "campaign_id": "string",
+        "color": "string",
+        "fingerprint": "string",
+        "finish": "string",
+        "persona_id": "string",
+        "plate": "string",
+        "source_episode": "integer|null",
+        "updated_at": "string",
+        "vehicle": "string",
+        "version": "integer",
+        "wheels": "string"
+      },
+      "required": [
+        "campaign_id",
+        "persona_id"
+      ]
+    },
+    "ContinuityVoiceRequest": {
+      "fields": {
+        "default_emotion": "string",
+        "intensity": "string",
+        "persona_id": "string",
+        "speed": "string",
+        "voice_profile": "string"
+      },
+      "required": [
+        "persona_id"
+      ]
+    },
+    "ContinuityVoiceResponse": {
+      "fields": {
+        "default_emotion": "string",
+        "fingerprint": "string",
+        "intensity": "string",
+        "persona_id": "string",
+        "speed": "string",
+        "updated_at": "string",
+        "version": "integer",
+        "voice_profile": "string"
+      },
+      "required": [
+        "persona_id"
+      ]
+    },
+    "ContinuityWardrobeRequest": {
+      "fields": {
+        "accessories": "string",
+        "campaign_id": "string",
+        "colors": "string",
+        "episode": "integer|null",
+        "outfit": "string",
+        "persona_id": "string",
+        "shoes": "string",
+        "watch": "string"
+      },
+      "required": [
+        "persona_id"
+      ]
+    },
+    "ContinuityWardrobeResponse": {
+      "fields": {
+        "accessories": "string",
+        "campaign_id": "string",
+        "colors": "string",
+        "fingerprint": "string",
+        "outfit": "string",
+        "persona_id": "string",
+        "shoes": "string",
+        "source_episode": "integer|null",
+        "updated_at": "string",
+        "version": "integer",
+        "watch": "string"
+      },
+      "required": [
+        "campaign_id",
+        "persona_id"
+      ]
+    },
+    "CoreStoryboardCompileRequest": {
+      "fields": {
+        "brief": "string",
+        "camera_language": "string|null",
+        "duration_per_scene": "number",
+        "negative_prompt": "string",
+        "persona_id": "string|null",
+        "provider": "string",
+        "scene_count": "integer",
+        "style": "string|null"
+      },
+      "required": [
+        "brief"
+      ]
+    },
+    "CoreStoryboardCompileResponse": {
+      "fields": {
+        "attention": "array<CoreStoryboardFindingResponse>",
+        "brief": "string",
+        "budget": "integer",
+        "format": "string",
+        "provider": "string",
+        "runtime_seconds": "number",
+        "scene_count": "integer",
+        "scenes": "array<CompiledSceneResponse>",
+        "shot_codes": "array<string>",
+        "valid": "boolean",
+        "violations": "array<CoreStoryboardFindingResponse>"
+      },
+      "required": [
+        "brief",
+        "budget",
+        "format",
+        "provider",
+        "runtime_seconds",
+        "scene_count",
+        "valid"
+      ]
+    },
+    "CoreStoryboardFindingResponse": {
+      "fields": {
+        "detail": "string",
+        "rule": "string",
+        "status": "string"
+      },
+      "required": [
+        "detail",
+        "rule",
+        "status"
+      ]
+    },
+    "CoreStoryboardRequest": {
+      "fields": {
+        "brief": "string",
+        "camera_language": "string|null",
+        "duration_per_scene": "number",
+        "persona": "string|null",
+        "scene_count": "integer",
+        "style": "string|null"
+      },
+      "required": [
+        "brief"
+      ]
+    },
+    "CoreStoryboardResponse": {
+      "fields": {
+        "attention": "array<CoreStoryboardFindingResponse>",
+        "beat_sheet": "string",
+        "brief": "string",
+        "family_sequence": "array<string>",
+        "format": "string",
+        "lens_progression": "array<string>",
+        "runtime_seconds": "number",
+        "scene_count": "integer",
+        "shot_codes": "array<string>",
+        "shots": "array<CoreStoryboardShotResponse>",
+        "valid": "boolean",
+        "violations": "array<CoreStoryboardFindingResponse>"
+      },
+      "required": [
+        "brief",
+        "format",
+        "runtime_seconds",
+        "scene_count",
+        "valid"
+      ]
+    },
+    "CoreStoryboardShotResponse": {
+      "fields": {
+        "camera_path": "string",
+        "continuity": "string",
+        "duration_seconds": "number",
+        "emotion": "string",
+        "family": "string",
+        "frame": "string",
+        "intention": "string",
+        "lens": "string",
+        "lighting": "string",
+        "motion": "string",
+        "motivation": "string",
+        "number": "integer",
+        "objective": "string",
+        "shot_code": "string",
+        "shot_name": "string"
+      },
+      "required": [
+        "camera_path",
+        "continuity",
+        "duration_seconds",
+        "emotion",
+        "family",
+        "frame",
+        "intention",
+        "lens",
+        "lighting",
+        "motion",
+        "motivation",
+        "number",
+        "objective",
+        "shot_code",
+        "shot_name"
+      ]
+    },
+    "DirectorBriefResponse": {
+      "fields": {
+        "beats": "array<SceneBeatResponse>",
+        "camera_language": "string",
+        "clarification": "string",
+        "concept": "string",
+        "duration_seconds": "number",
+        "format": "string",
+        "lighting_language": "string",
+        "logline": "string",
+        "music": "string",
+        "pacing": "string",
+        "scene_count": "integer",
+        "script": "string",
+        "style_hint": "string"
+      },
+      "required": [
+        "beats",
+        "camera_language",
+        "concept",
+        "duration_seconds",
+        "format",
+        "lighting_language",
+        "logline",
+        "music",
+        "pacing",
+        "scene_count",
+        "script",
+        "style_hint"
+      ]
+    },
+    "DirectorProductionPlanRequest": {
+      "fields": {
+        "duration": "number",
+        "mood": "string|null",
+        "persona_id": "string|null",
+        "platform": "string",
+        "user_intent": "string"
+      },
+      "required": [
+        "user_intent"
+      ]
+    },
+    "DirectorProductionPlanResponse": {
+      "fields": {
+        "audience": "string",
+        "concept": "string",
+        "created_at": "string",
+        "duration": "number",
+        "id": "string",
+        "mood": "string",
+        "music": "string",
+        "persona_id": "string|null",
+        "platform": "string",
+        "shots": "array<DirectorShotPlanResponse>",
+        "style": "string",
+        "title": "string",
+        "voice": "string"
+      },
+      "required": [
+        "audience",
+        "concept",
+        "created_at",
+        "duration",
+        "id",
+        "mood",
+        "music",
+        "persona_id",
+        "platform",
+        "shots",
+        "style",
+        "title",
+        "voice"
+      ]
+    },
+    "DirectorRequest": {
+      "fields": {
+        "camera_language": "string|null",
+        "duration_per_scene": "number",
+        "intent": "string",
+        "scene_count": "integer|null",
+        "style": "string|null"
+      },
+      "required": [
+        "intent"
+      ]
+    },
+    "DirectorShotPlanResponse": {
+      "fields": {
+        "camera": "string",
+        "duration": "number",
+        "emotion": "string",
+        "environment": "string",
+        "lens": "string",
+        "lighting": "string",
+        "motion": "string",
+        "negative_prompt": "string",
+        "objective": "string",
+        "prompt": "string",
+        "scene_number": "integer",
+        "title": "string"
+      },
+      "required": [
+        "camera",
+        "duration",
+        "emotion",
+        "environment",
+        "lens",
+        "lighting",
+        "motion",
+        "negative_prompt",
+        "objective",
+        "prompt",
+        "scene_number",
+        "title"
+      ]
+    },
+    "EpisodeConsistencyResponse": {
+      "fields": {
+        "consistent": "boolean",
+        "findings": "array<RuleFindingResponse>",
+        "grain": "array<string>",
+        "lut": "array<string>",
+        "palette": "array<string>",
+        "scenes": "integer"
+      },
+      "required": [
+        "consistent",
+        "scenes"
+      ]
+    },
+    "ExportRequest": {
+      "fields": {
+        "format": "string",
+        "fps": "integer",
+        "quality": "string"
+      },
+      "required": []
+    },
+    "ExportResponse": {
+      "fields": {
+        "asset_id": "string",
+        "message": "string",
+        "output_url": "string|null",
+        "status": "string"
+      },
+      "required": [
+        "asset_id",
+        "message",
+        "status"
+      ]
+    },
+    "FrameProfileResponse": {
+      "fields": {
+        "carries": "string",
+        "keywords": "array<string>",
+        "name": "string"
+      },
+      "required": [
+        "carries",
+        "name"
+      ]
+    },
+    "FramingResponse": {
+      "fields": {
+        "angles": "array<AngleProfileResponse>",
+        "frames": "array<FrameProfileResponse>"
+      },
+      "required": []
+    },
+    "GenerationSpecRequest": {
+      "fields": {
+        "aspect_ratio": "string",
+        "camera": "string|null",
+        "cinematic_mode": "boolean",
+        "controlnet": "string",
+        "duration": "number",
+        "fps": "integer|null",
+        "guidance_scale": "number|null",
+        "ip_adapter_scale": "number|null",
+        "kind": "string",
+        "lens": "string|null",
+        "lighting": "string|null",
+        "lora": "string|null",
+        "mode": "string|null",
+        "motion": "string|null",
+        "native_audio": "boolean",
+        "negative_prompt": "string",
+        "persona_id": "string|null",
+        "project_id": "string|null",
+        "prompt": "string",
+        "provider": "string",
+        "resolution": "string|null",
+        "seed": "integer|null",
+        "shot": "string|null",
+        "slow_motion": "boolean",
+        "steps": "integer|null",
+        "style": "string|null",
+        "wardrobe": "array<string>|null",
+        "weather": "string"
+      },
+      "required": [
+        "prompt"
+      ]
+    },
+    "GenerationSpecResponse": {
+      "fields": {
+        "aspect_ratio": "string",
+        "camera": "string",
+        "cinematic_mode": "boolean",
+        "controlnet": "string",
+        "duration": "number",
+        "fps": "integer",
+        "guidance_scale": "number",
+        "ip_adapter_scale": "number",
+        "kind": "string",
+        "lens": "string",
+        "lighting": "string",
+        "lora": "string|null",
+        "mode": "string",
+        "motion": "string",
+        "motion_strength": "number",
+        "native_audio": "boolean",
+        "negative_prompt": "string",
+        "persona_id": "string|null",
+        "project_id": "string|null",
+        "prompt_compiled": "string",
+        "prompt_original": "string",
+        "provider": "string",
+        "reference_path": "string|null",
+        "resolution": "integer",
+        "schema_version": "string",
+        "seed": "integer|null",
+        "slow_motion": "boolean",
+        "spec_id": "string",
+        "steps": "integer",
+        "style_id": "string|null",
+        "tokens": "array<string>",
+        "trace": "object",
+        "user_id": "string|null",
+        "weather": "string"
+      },
+      "required": [
+        "kind",
+        "prompt_compiled",
+        "prompt_original",
+        "schema_version",
+        "spec_id"
+      ]
+    },
+    "GenerationType": {
+      "enum": [
+        "image",
+        "video"
+      ]
+    },
+    "GraphCharacterContextResponse": {
+      "fields": {
+        "found": "boolean",
+        "name": "string",
+        "node": "GraphNodeResponse|null",
+        "persona_id": "string|null",
+        "phrases": "array<string>",
+        "relation_counts": "object<integer>",
+        "relations": "array<GraphCharacterRelationResponse>"
+      },
+      "required": [
+        "found",
+        "name"
+      ]
+    },
+    "GraphCharacterRelationResponse": {
+      "fields": {
+        "direction": "string",
+        "peer": "GraphNodeResponse",
+        "phrase": "string",
+        "relation": "string"
+      },
+      "required": [
+        "direction",
+        "peer",
+        "phrase",
+        "relation"
+      ]
+    },
+    "GraphEdgeCreate": {
+      "fields": {
+        "relation": "string",
+        "source_id": "string",
+        "target_id": "string"
+      },
+      "required": [
+        "relation",
+        "source_id",
+        "target_id"
+      ]
+    },
+    "GraphEdgeResponse": {
+      "fields": {
+        "created_at": "string",
+        "id": "string",
+        "inverse": "string",
+        "relation": "string",
+        "source_id": "string",
+        "target_id": "string",
+        "workspace_id": "string"
+      },
+      "required": [
+        "id",
+        "relation",
+        "source_id",
+        "target_id",
+        "workspace_id"
+      ]
+    },
+    "GraphNeighborsResponse": {
+      "fields": {
+        "depth": "integer",
+        "direction": "string",
+        "edges": "array<GraphEdgeResponse>",
+        "node": "GraphNodeResponse",
+        "nodes": "array<GraphNodeResponse>"
+      },
+      "required": [
+        "depth",
+        "direction",
+        "node"
+      ]
+    },
+    "GraphNodeCreate": {
+      "fields": {
+        "aliases": "array<string>",
+        "attributes": "object",
+        "entity_type": "string",
+        "name": "string",
+        "slug": "string|null"
+      },
+      "required": [
+        "entity_type",
+        "name"
+      ]
+    },
+    "GraphNodeResponse": {
+      "fields": {
+        "aliases": "array<string>",
+        "attributes": "object",
+        "created_at": "string",
+        "entity_type": "string",
+        "id": "string",
+        "name": "string",
+        "slug": "string",
+        "updated_at": "string",
+        "workspace_id": "string"
+      },
+      "required": [
+        "entity_type",
+        "id",
+        "name",
+        "slug",
+        "workspace_id"
+      ]
+    },
+    "GraphNodeUpdate": {
+      "fields": {
+        "aliases": "array<string>|null",
+        "attributes": "object|null",
+        "entity_type": "string|null",
+        "name": "string|null"
+      },
+      "required": []
+    },
+    "GraphQueryMatchResponse": {
+      "fields": {
+        "matched_fields": "array<string>",
+        "node": "GraphNodeResponse",
+        "score": "integer"
+      },
+      "required": [
+        "node",
+        "score"
+      ]
+    },
+    "GraphQueryResponse": {
+      "fields": {
+        "count": "integer",
+        "entity_type": "string|null",
+        "matches": "array<GraphQueryMatchResponse>",
+        "query": "string"
+      },
+      "required": [
+        "count",
+        "query"
+      ]
+    },
+    "GraphSeedResponse": {
+      "fields": {
+        "created_edges": "integer",
+        "created_nodes": "integer",
+        "skipped_edges": "integer",
+        "skipped_nodes": "integer"
+      },
+      "required": [
+        "created_edges",
+        "created_nodes",
+        "skipped_edges",
+        "skipped_nodes"
+      ]
+    },
+    "HTTPValidationError": {
+      "fields": {
+        "detail": "array<ValidationError>"
+      },
+      "required": []
+    },
+    "ImageGenerationRequest": {
+      "fields": {
+        "aspect_ratio": "string",
+        "controlnet": "string",
+        "controlnet_scale": "number",
+        "guidance_scale": "number",
+        "ip_adapter_scale": "number",
+        "lora_id": "string|null",
+        "model": "string",
+        "negative_prompt": "string",
+        "persona_id": "string|null",
+        "prompt": "string",
+        "reference_asset_id": "string|null",
+        "resolution": "string",
+        "seed": "integer|null",
+        "steps": "integer",
+        "wardrobe": "array<string>|null"
+      },
+      "required": [
+        "prompt"
+      ]
+    },
+    "Job": {
+      "fields": {
+        "created_at": "string",
+        "id": "string",
+        "output_url": "string|null",
+        "parameters": "object",
+        "progress": "integer",
+        "prompt": "string",
+        "status": "JobStatus",
+        "type": "GenerationType"
+      },
+      "required": [
+        "prompt",
+        "type"
+      ]
+    },
+    "JobResponse": {
+      "fields": {
+        "created_at": "string",
+        "id": "string",
+        "output_url": "string|null",
+        "parameters": "object",
+        "progress": "integer",
+        "prompt": "string",
+        "status": "string",
+        "type": "string"
+      },
+      "required": [
+        "created_at",
+        "id",
+        "progress",
+        "prompt",
+        "status",
+        "type"
+      ]
+    },
+    "JobStatus": {
+      "enum": [
+        "cancelled",
+        "complete",
+        "failed",
+        "queued",
+        "running"
+      ]
+    },
+    "KnowledgeResponse": {
+      "fields": {
+        "category": "string",
+        "code": "string",
+        "content": "string",
+        "id": "string",
+        "source": "string",
+        "title": "string",
+        "version": "integer"
+      },
+      "required": [
+        "category",
+        "code",
+        "content",
+        "id",
+        "source",
+        "title",
+        "version"
+      ]
+    },
+    "LensProfileResponse": {
+      "fields": {
+        "focal_mm": "integer",
+        "semantics": "array<string>"
+      },
+      "required": [
+        "focal_mm"
+      ]
+    },
+    "LibraryAuditResponse": {
+      "fields": {
+        "compliant": "array<string>",
+        "flagged": "object<array<RuleFindingResponse>>",
+        "rules": "array<string>",
+        "shots_audited": "integer",
+        "styles_audited": "integer"
+      },
+      "required": [
+        "shots_audited",
+        "styles_audited"
+      ]
+    },
+    "LightingProfileResponse": {
+      "fields": {
+        "constraint": "string",
+        "keywords": "array<string>",
+        "name": "string",
+        "role": "string"
+      },
+      "required": [
+        "name",
+        "role"
+      ]
+    },
+    "LightingResponse": {
+      "fields": {
+        "lights": "array<LightingProfileResponse>",
+        "time_qualities": "array<TimeQualityResponse>"
+      },
+      "required": []
+    },
+    "LoginRequest": {
+      "fields": {
+        "email": "string",
+        "password": "string"
+      },
+      "required": [
+        "email",
+        "password"
+      ]
+    },
+    "LoraVersionResponse": {
+      "fields": {
+        "asset_id": "string",
+        "created_at": "string",
+        "name": "string",
+        "persona_id": "string",
+        "url": "string",
+        "version": "string"
+      },
+      "required": [
+        "asset_id",
+        "created_at",
+        "name",
+        "persona_id",
+        "url",
+        "version"
+      ]
+    },
+    "MotivationResponse": {
+      "fields": {
+        "description": "string",
+        "keywords": "array<string>",
+        "name": "string"
+      },
+      "required": [
+        "description",
+        "name"
+      ]
+    },
+    "Persona": {
+      "fields": {
+        "created_at": "string",
+        "details": "PersonaCreateRequest",
+        "id": "string",
+        "lora_version": "string|null",
+        "status": "string",
+        "workspace_id": "string|null"
+      },
+      "required": [
+        "details"
+      ]
+    },
+    "PersonaCreateRequest": {
+      "fields": {
+        "age": "integer",
+        "appearance": "string",
+        "beard": "string",
+        "eye_color": "string",
+        "hair": "string",
+        "height_m": "number",
+        "name": "string",
+        "reference_asset_ids": "array<string>",
+        "style": "string"
+      },
+      "required": [
+        "age",
+        "appearance",
+        "eye_color",
+        "height_m",
+        "name",
+        "style"
+      ]
+    },
+    "PersonaHistoryResponse": {
+      "fields": {
+        "changed_fields": "object<array<integer>>",
+        "generable": "boolean",
+        "history": "array<PersonaVersionResponse>",
+        "identity_changed": "boolean",
+        "identity_versions": "array<integer>",
+        "name": "string",
+        "persona": "object",
+        "persona_id": "string",
+        "status": "string",
+        "version": "integer"
+      },
+      "required": [
+        "generable",
+        "name",
+        "persona_id",
+        "status",
+        "version"
+      ]
+    },
+    "PersonaImageAddRequest": {
+      "fields": {
+        "asset_id": "string",
+        "image_type": "string",
+        "order_index": "integer|null"
+      },
+      "required": [
+        "asset_id"
+      ]
+    },
+    "PersonaImageResponse": {
+      "fields": {
+        "asset_id": "string",
+        "id": "string",
+        "image_type": "string",
+        "name": "string|null",
+        "order_index": "integer",
+        "url": "string|null"
+      },
+      "required": [
+        "asset_id",
+        "id",
+        "image_type",
+        "order_index"
+      ]
+    },
+    "PersonaMemoryResponse": {
+      "fields": {
+        "default_style": "string",
+        "generable": "boolean",
+        "identity_phrase": "string",
+        "lora_path": "string|null",
+        "name": "string",
+        "persona": "object",
+        "persona_id": "string",
+        "status": "string",
+        "version": "integer"
+      },
+      "required": [
+        "generable",
+        "name",
+        "persona_id",
+        "status",
+        "version"
+      ]
+    },
+    "PersonaProfileResponse": {
+      "fields": {
+        "age": "integer",
+        "beard": "string",
+        "body_type": "string",
+        "created_at": "string",
+        "default_style": "string",
+        "eyes": "string",
+        "hair": "string",
+        "height": "number",
+        "id": "string",
+        "images": "array<PersonaImageResponse>",
+        "lora_id": "string|null",
+        "name": "string",
+        "revision": "integer",
+        "revisions": "array<PersonaRevisionResponse>",
+        "skin_tone": "string",
+        "slug": "string",
+        "updated_at": "string",
+        "voice": "string",
+        "wardrobe": "array<PersonaWardrobeResponse>",
+        "workspace_id": "string"
+      },
+      "required": [
+        "age",
+        "beard",
+        "body_type",
+        "created_at",
+        "default_style",
+        "eyes",
+        "hair",
+        "height",
+        "id",
+        "images",
+        "lora_id",
+        "name",
+        "revision",
+        "revisions",
+        "skin_tone",
+        "slug",
+        "updated_at",
+        "voice",
+        "wardrobe",
+        "workspace_id"
+      ]
+    },
+    "PersonaRevisionRequest": {
+      "fields": {
+        "actor": "string",
+        "age": "integer|null",
+        "authorized": "boolean",
+        "beard": "string|null",
+        "body_type": "string|null",
+        "default_style": "string|null",
+        "eyes": "string|null",
+        "hair": "string|null",
+        "height_m": "number|null",
+        "lora_path": "string|null",
+        "name": "string|null",
+        "reason": "string",
+        "voice": "string|null",
+        "wardrobe": "string|null"
+      },
+      "required": [
+        "actor",
+        "reason"
+      ]
+    },
+    "PersonaRevisionResponse": {
+      "fields": {
+        "created_at": "string",
+        "created_by": "string",
+        "id": "string",
+        "notes": "object",
+        "revision": "integer"
+      },
+      "required": [
+        "created_at",
+        "created_by",
+        "id",
+        "notes",
+        "revision"
+      ]
+    },
+    "PersonaTrainRequest": {
+      "fields": {
+        "reference_asset_ids": "array<string>",
+        "style": "string"
+      },
+      "required": [
+        "reference_asset_ids"
+      ]
+    },
+    "PersonaTrainResponse": {
+      "fields": {
+        "image_count": "integer",
+        "message": "string",
+        "persona_id": "string",
+        "progress": "integer",
+        "run_id": "string|null",
+        "status": "string"
+      },
+      "required": [
+        "image_count",
+        "message",
+        "persona_id",
+        "status"
+      ]
+    },
+    "PersonaTransitionRequest": {
+      "fields": {
+        "actor": "string",
+        "reason": "string"
+      },
+      "required": [
+        "actor"
+      ]
+    },
+    "PersonaUpdateRequest": {
+      "fields": {
+        "age": "integer|null",
+        "beard": "string|null",
+        "body_type": "string|null",
+        "default_style": "string|null",
+        "eyes": "string|null",
+        "hair": "string|null",
+        "height": "number|null",
+        "lora_id": "string|null",
+        "name": "string|null",
+        "skin_tone": "string|null",
+        "voice": "string|null",
+        "wardrobe": "array<PersonaWardrobeItem>|null"
+      },
+      "required": []
+    },
+    "PersonaVersionResponse": {
+      "fields": {
+        "action": "string",
+        "actor": "string",
+        "changed": "array<string>",
+        "created_at": "string",
+        "persona": "object",
+        "reason": "string",
+        "revision": "integer",
+        "version": "integer"
+      },
+      "required": [
+        "action",
+        "actor",
+        "created_at",
+        "reason",
+        "revision",
+        "version"
+      ]
+    },
+    "PersonaWardrobeItem": {
+      "fields": {
+        "category": "string",
+        "metadata": "object",
+        "name": "string"
+      },
+      "required": [
+        "name"
+      ]
+    },
+    "PersonaWardrobeResponse": {
+      "fields": {
+        "category": "string",
+        "id": "string",
+        "metadata": "object",
+        "name": "string"
+      },
+      "required": [
+        "category",
+        "id",
+        "metadata",
+        "name"
+      ]
+    },
+    "PromptEnhanceRequest": {
+      "fields": {
+        "camera": "string|null",
+        "lighting": "string|null",
+        "persona": "string|null",
+        "prompt": "string",
+        "style": "string|null"
+      },
+      "required": [
+        "prompt"
+      ]
+    },
+    "PromptEnhanceResponse": {
+      "fields": {
+        "enhanced": "string",
+        "original": "string",
+        "tokens": "array<string>"
+      },
+      "required": [
+        "enhanced",
+        "original",
+        "tokens"
+      ]
+    },
+    "ProviderAdapterResponse": {
+      "fields": {
+        "conditioning": "array<string>",
+        "id": "string",
+        "kind": "string",
+        "label": "string",
+        "model_id": "string",
+        "status": "string"
+      },
+      "required": [
+        "id",
+        "kind",
+        "label",
+        "status"
+      ]
+    },
+    "ProviderCapabilitiesResponse": {
+      "fields": {
+        "max_resolution": "string",
+        "prompt_budget": "integer",
+        "supports_image": "boolean",
+        "supports_lora": "boolean",
+        "supports_negative_prompt": "boolean",
+        "supports_seed": "boolean",
+        "supports_upscale": "boolean",
+        "supports_video": "boolean"
+      },
+      "required": [
+        "max_resolution",
+        "prompt_budget",
+        "supports_image",
+        "supports_lora",
+        "supports_negative_prompt",
+        "supports_seed",
+        "supports_upscale",
+        "supports_video"
+      ]
+    },
+    "ProviderCatalogueResponse": {
+      "fields": {
+        "adapters": "array<ProviderAdapterResponse>",
+        "defaults": "object<string>"
+      },
+      "required": []
+    },
+    "ProviderHealthResponse": {
+      "fields": {
+        "available": "boolean",
+        "id": "string",
+        "loaded": "boolean",
+        "model_id": "string",
+        "reason": "string|null"
+      },
+      "required": [
+        "available",
+        "id"
+      ]
+    },
+    "ProviderTelemetryResponse": {
+      "fields": {
+        "at": "string",
+        "attempts": "integer",
+        "error_code": "string|null",
+        "fallback": "boolean",
+        "fallback_reason": "string|null",
+        "job_id": "string|null",
+        "kind": "string",
+        "latency_ms": "number",
+        "provider_id": "string",
+        "queue_time_ms": "number",
+        "render_time_ms": "number",
+        "requested_provider_id": "string",
+        "spec_id": "string",
+        "success": "boolean"
+      },
+      "required": [
+        "kind",
+        "latency_ms",
+        "provider_id",
+        "queue_time_ms",
+        "render_time_ms",
+        "requested_provider_id",
+        "spec_id",
+        "success"
+      ]
+    },
+    "ProviderTestResponse": {
+      "fields": {
+        "asset_bytes": "integer",
+        "asset_kind": "string",
+        "attempts": "integer",
+        "error_code": "string|null",
+        "executed_provider_id": "string",
+        "fallback": "boolean",
+        "fallback_reason": "string|null",
+        "kind": "string",
+        "latency_ms": "number",
+        "provider_id": "string",
+        "queue_time_ms": "number",
+        "render_time_ms": "number",
+        "success": "boolean"
+      },
+      "required": [
+        "executed_provider_id",
+        "fallback",
+        "kind",
+        "provider_id",
+        "success"
+      ]
+    },
+    "QualityAssessAssetRequest": {
+      "fields": {
+        "aspect_ratio": "string|null",
+        "duration_seconds": "number",
+        "fps": "integer",
+        "height": "integer",
+        "prompt_compiled": "string",
+        "prompt_original": "string",
+        "requested_duration": "number",
+        "requested_fps": "integer",
+        "signals": "object<number>",
+        "weights": "object<number>",
+        "width": "integer"
+      },
+      "required": []
+    },
+    "QualityAssessRequest": {
+      "fields": {
+        "aspect_ratio": "string",
+        "duration_seconds": "number",
+        "fps": "integer",
+        "height": "integer",
+        "kind": "string",
+        "object_key": "string",
+        "requested_duration": "number",
+        "requested_fps": "integer",
+        "width": "integer"
+      },
+      "required": [
+        "object_key"
+      ]
+    },
+    "QualityAssetReportResponse": {
+      "fields": {
+        "asset_id": "string",
+        "created_at": "string",
+        "criteria": "array<QualityCriterionResponse>",
+        "engine_version": "integer",
+        "facts": "object",
+        "id": "string",
+        "issues": "array<string>",
+        "kind": "string",
+        "operator_decision": "string|null",
+        "overall_score": "integer",
+        "retry_recommended": "boolean",
+        "status": "string",
+        "strengths": "array<string>",
+        "suggestions": "array<string>",
+        "unmeasured": "array<string>",
+        "upscale_recommended": "boolean"
+      },
+      "required": [
+        "asset_id",
+        "id",
+        "kind",
+        "overall_score",
+        "retry_recommended",
+        "status",
+        "upscale_recommended"
+      ]
+    },
+    "QualityCapabilitiesResponse": {
+      "fields": {
+        "assesses": "array<string>",
+        "does_not_assess": "array<string>",
+        "model_loaded": "boolean",
+        "note": "string",
+        "rules": "array<QualityRuleResponse>",
+        "spec_fields_known": "integer"
+      },
+      "required": [
+        "assesses",
+        "does_not_assess",
+        "model_loaded",
+        "note",
+        "rules",
+        "spec_fields_known"
+      ]
+    },
+    "QualityConfigResponse": {
+      "fields": {
+        "approved_at": "integer",
+        "criteria": "array<string>",
+        "engine_version": "integer",
+        "image_criteria": "array<string>",
+        "issue_below": "number",
+        "masterpiece_at": "integer",
+        "retry_below": "integer",
+        "sources": "array<string>",
+        "statuses": "array<string>",
+        "strength_at": "number",
+        "upscale_short_side_below": "integer",
+        "video_criteria": "array<string>",
+        "weights": "object<number>"
+      },
+      "required": [
+        "approved_at",
+        "criteria",
+        "engine_version",
+        "image_criteria",
+        "issue_below",
+        "masterpiece_at",
+        "retry_below",
+        "sources",
+        "statuses",
+        "strength_at",
+        "upscale_short_side_below",
+        "video_criteria",
+        "weights"
+      ]
+    },
+    "QualityCriterionResponse": {
+      "fields": {
+        "criterion": "string",
+        "detail": "string",
+        "score": "number",
+        "source": "string",
+        "weight": "number"
+      },
+      "required": [
+        "criterion",
+        "score",
+        "source",
+        "weight"
+      ]
+    },
+    "QualityDecisionRequest": {
+      "fields": {
+        "decision": "string"
+      },
+      "required": [
+        "decision"
+      ]
+    },
+    "QualityFindingResponse": {
+      "fields": {
+        "detail": "string",
+        "rule": "string",
+        "status": "string"
+      },
+      "required": [
+        "detail",
+        "rule",
+        "status"
+      ]
+    },
+    "QualityReportResponse": {
+      "fields": {
+        "checks_passed": "integer",
+        "checks_run": "integer",
+        "facts": "object",
+        "kind": "string",
+        "ok": "boolean",
+        "spec_id": "string",
+        "structural_score": "number",
+        "verdict": "string",
+        "violations": "array<QualityFindingResponse>",
+        "warnings": "array<QualityFindingResponse>"
+      },
+      "required": [
+        "checks_passed",
+        "checks_run",
+        "kind",
+        "ok",
+        "structural_score",
+        "verdict"
+      ]
+    },
+    "QualityRuleResponse": {
+      "fields": {
+        "detail": "string",
+        "rule": "string",
+        "status": "string"
+      },
+      "required": [
+        "detail",
+        "rule",
+        "status"
+      ]
+    },
+    "RegisterRequest": {
+      "fields": {
+        "email": "string",
+        "name": "string",
+        "password": "string"
+      },
+      "required": [
+        "email",
+        "name",
+        "password"
+      ]
+    },
+    "RenderAssetResponse": {
+      "fields": {
+        "duration_seconds": "number",
+        "fps": "integer",
+        "height": "integer",
+        "kind": "string",
+        "metadata_key": "string",
+        "metadata_url": "string",
+        "object_key": "string",
+        "prompt": "string",
+        "provider_id": "string",
+        "scene_id": "string",
+        "scene_number": "integer",
+        "seed": "integer|null",
+        "spec_id": "string",
+        "thumbnail_key": "string",
+        "thumbnail_url": "string",
+        "url": "string",
+        "width": "integer"
+      },
+      "required": [
+        "kind",
+        "metadata_key",
+        "metadata_url",
+        "object_key",
+        "prompt",
+        "provider_id",
+        "scene_id",
+        "scene_number",
+        "spec_id",
+        "thumbnail_key",
+        "thumbnail_url",
+        "url"
+      ]
+    },
+    "RenderBatchCreateRequest": {
+      "fields": {
+        "aspect_ratio": "string",
+        "fps": "integer",
+        "kind": "string",
+        "mood": "string",
+        "persona_id": "string|null",
+        "production_plan_id": "string|null",
+        "project_id": "string",
+        "provider": "string",
+        "scenes": "array<RenderSceneRequest>",
+        "seed": "integer|null",
+        "storyboard_version": "integer|null",
+        "style": "string"
+      },
+      "required": [
+        "scenes"
+      ]
+    },
+    "RenderBatchResponse": {
+      "fields": {
+        "aspect_ratio": "string",
+        "batch_id": "string",
+        "completed_scenes": "integer",
+        "created_at": "string",
+        "current_scene_id": "string|null",
+        "current_scene_number": "integer|null",
+        "eta_seconds": "number",
+        "failed_scenes": "integer",
+        "finished_at": "string|null",
+        "fps": "integer",
+        "kind": "string",
+        "persona_id": "string|null",
+        "production_plan_id": "string|null",
+        "progress": "integer",
+        "project_id": "string",
+        "provider": "string",
+        "scene_count": "integer",
+        "scenes": "array<RenderSceneResponse>",
+        "seed": "integer|null",
+        "started_at": "string|null",
+        "status": "string",
+        "storyboard_version": "integer|null",
+        "style": "string",
+        "workspace_id": "string"
+      },
+      "required": [
+        "batch_id",
+        "created_at",
+        "kind",
+        "project_id",
+        "provider",
+        "status",
+        "workspace_id"
+      ]
+    },
+    "RenderBatchSummaryResponse": {
+      "fields": {
+        "batch_id": "string",
+        "completed_scenes": "integer",
+        "created_at": "string",
+        "current_scene_number": "integer|null",
+        "eta_seconds": "number",
+        "failed_scenes": "integer",
+        "finished_at": "string|null",
+        "kind": "string",
+        "progress": "integer",
+        "project_id": "string",
+        "provider": "string",
+        "scene_count": "integer",
+        "started_at": "string|null",
+        "status": "string"
+      },
+      "required": [
+        "batch_id",
+        "completed_scenes",
+        "created_at",
+        "failed_scenes",
+        "kind",
+        "progress",
+        "project_id",
+        "provider",
+        "scene_count",
+        "status"
+      ]
+    },
+    "RenderRetryResponse": {
+      "fields": {
+        "batch_id": "string",
+        "message": "string",
+        "retried_scenes": "integer",
+        "status": "string"
+      },
+      "required": [
+        "batch_id",
+        "message",
+        "retried_scenes",
+        "status"
+      ]
+    },
+    "RenderSceneRequest": {
+      "fields": {
+        "camera": "string",
+        "duration": "number",
+        "emotion": "string",
+        "environment": "string",
+        "lens": "string",
+        "lighting": "string",
+        "mood": "string",
+        "motion": "string",
+        "negative_prompt": "string",
+        "objective": "string",
+        "scene_number": "integer",
+        "seed": "integer|null",
+        "title": "string"
+      },
+      "required": [
+        "objective",
+        "scene_number",
+        "title"
+      ]
+    },
+    "RenderSceneResponse": {
+      "fields": {
+        "asset": "RenderAssetResponse|null",
+        "error": "string|null",
+        "finished_at": "string|null",
+        "job": "object|null",
+        "progress": "integer",
+        "scene_id": "string",
+        "scene_number": "integer",
+        "spec_id": "string|null",
+        "started_at": "string|null",
+        "status": "string",
+        "title": "string"
+      },
+      "required": [
+        "progress",
+        "scene_id",
+        "scene_number",
+        "status",
+        "title"
+      ]
+    },
+    "RuleFindingResponse": {
+      "fields": {
+        "detail": "string",
+        "rule": "string",
+        "source": "string",
+        "status": "string"
+      },
+      "required": [
+        "detail",
+        "rule",
+        "status"
+      ]
+    },
+    "SceneBeatResponse": {
+      "fields": {
+        "camera": "string",
+        "duration_seconds": "number",
+        "emotion": "string",
+        "lighting": "string",
+        "motion": "string",
+        "number": "integer",
+        "objective": "string",
+        "reference": "string",
+        "shot_code": "string|null"
+      },
+      "required": [
+        "camera",
+        "emotion",
+        "lighting",
+        "motion",
+        "number",
+        "objective"
+      ]
+    },
+    "ShotFamilyResponse": {
+      "fields": {
+        "count": "integer",
+        "family": "string",
+        "label": "string"
+      },
+      "required": [
+        "count",
+        "family",
+        "label"
+      ]
+    },
+    "ShotLibraryAuditResponse": {
+      "fields": {
+        "duplicates": "array<string>",
+        "expanded": "integer",
+        "families": "object<integer>",
+        "meets_target": "boolean",
+        "published": "integer",
+        "target": "integer",
+        "total": "integer",
+        "violations": "object<array<string>>"
+      },
+      "required": [
+        "expanded",
+        "meets_target",
+        "published",
+        "target",
+        "total"
+      ]
+    },
+    "ShotPresetResponse": {
+      "fields": {
+        "camera_path": "string",
+        "code": "string",
+        "continuity": "string",
+        "depth": "string",
+        "family": "string",
+        "focus": "string",
+        "frame": "string",
+        "intention": "string",
+        "lens": "string",
+        "lens_mm": "integer|null",
+        "lighting": "string",
+        "motivations": "array<string>",
+        "name": "string",
+        "shake": "string",
+        "speed": "string"
+      },
+      "required": [
+        "code",
+        "name"
+      ]
+    },
+    "StoryboardRequest": {
+      "fields": {
+        "brief": "string",
+        "camera_language": "string",
+        "persona": "string|null",
+        "scene_count": "integer",
+        "style": "string"
+      },
+      "required": [
+        "brief"
+      ]
+    },
+    "StoryboardResponse": {
+      "fields": {
+        "brief": "string",
+        "id": "string",
+        "scenes": "array<StoryboardScene>"
+      },
+      "required": [
+        "brief",
+        "scenes"
+      ]
+    },
+    "StoryboardScene": {
+      "fields": {
+        "duration_seconds": "integer",
+        "number": "integer",
+        "prompt": "string",
+        "title": "string"
+      },
+      "required": [
+        "number",
+        "prompt",
+        "title"
+      ]
+    },
+    "StyleExplanationResponse": {
+      "fields": {
+        "explanation": "string",
+        "findings": "array<RuleFindingResponse>",
+        "lens_mm": "integer|null",
+        "motivations": "array<string>",
+        "name": "string",
+        "style_id": "string"
+      },
+      "required": [
+        "explanation",
+        "name",
+        "style_id"
+      ]
+    },
+    "TimeQualityResponse": {
+      "fields": {
+        "keywords": "array<string>",
+        "name": "string",
+        "supports": "string"
+      },
+      "required": [
+        "name",
+        "supports"
+      ]
+    },
+    "TimelineAudioResponse": {
+      "fields": {
+        "bed": "string",
+        "declared": "boolean",
+        "fade_in_seconds": "number",
+        "fade_out_seconds": "number"
+      },
+      "required": []
+    },
+    "TimelineCatalogueResponse": {
+      "fields": {
+        "default_aspect_ratio": "string",
+        "default_resolution": "string",
+        "formats": "array<TimelineFormatResponse>",
+        "resolutions": "object<array<integer>>",
+        "transitions": "array<string>"
+      },
+      "required": [
+        "default_aspect_ratio",
+        "default_resolution",
+        "formats",
+        "resolutions",
+        "transitions"
+      ]
+    },
+    "TimelineClipResponse": {
+      "fields": {
+        "duration_seconds": "number",
+        "end_seconds": "number",
+        "family": "string",
+        "index": "integer",
+        "rendered": "boolean",
+        "shot_code": "string",
+        "source": "string",
+        "start_seconds": "number",
+        "transition": "string"
+      },
+      "required": [
+        "duration_seconds",
+        "end_seconds",
+        "family",
+        "index",
+        "shot_code",
+        "start_seconds",
+        "transition"
+      ]
+    },
+    "TimelineFindingResponse": {
+      "fields": {
+        "detail": "string",
+        "rule": "string",
+        "status": "string"
+      },
+      "required": [
+        "detail",
+        "rule",
+        "status"
+      ]
+    },
+    "TimelineFormatResponse": {
+      "fields": {
+        "aspect_ratio": "string",
+        "format": "string",
+        "label": "string"
+      },
+      "required": [
+        "aspect_ratio",
+        "format",
+        "label"
+      ]
+    },
+    "TimelineRequest": {
+      "fields": {
+        "brief": "string",
+        "camera_language": "string",
+        "duration_per_scene": "number",
+        "fps": "integer",
+        "persona": "string|null",
+        "resolution": "string",
+        "scene_count": "integer",
+        "sources": "object<string>",
+        "style": "string"
+      },
+      "required": [
+        "brief"
+      ]
+    },
+    "TimelineResponse": {
+      "fields": {
+        "aspect_ratio": "string",
+        "audio": "TimelineAudioResponse",
+        "clip_count": "integer",
+        "clips": "array<TimelineClipResponse>",
+        "complete": "boolean",
+        "duration_seconds": "number",
+        "format": "string",
+        "fps": "integer",
+        "height": "integer",
+        "rendered_clips": "integer",
+        "resolution": "string",
+        "unrendered_clips": "array<integer>",
+        "valid": "boolean",
+        "violations": "array<TimelineFindingResponse>",
+        "warnings": "array<TimelineFindingResponse>",
+        "width": "integer"
+      },
+      "required": [
+        "aspect_ratio",
+        "audio",
+        "clip_count",
+        "complete",
+        "duration_seconds",
+        "format",
+        "fps",
+        "height",
+        "rendered_clips",
+        "resolution",
+        "valid",
+        "width"
+      ]
+    },
+    "TokenResponse": {
+      "fields": {
+        "access_token": "string",
+        "token_type": "string",
+        "user": "UserResponse"
+      },
+      "required": [
+        "access_token",
+        "user"
+      ]
+    },
+    "TrainingStatusResponse": {
+      "fields": {
+        "log": "string",
+        "output_asset_id": "string|null",
+        "persona_id": "string",
+        "progress": "integer",
+        "run_id": "string",
+        "status": "string"
+      },
+      "required": [
+        "log",
+        "persona_id",
+        "progress",
+        "run_id",
+        "status"
+      ]
+    },
+    "UniversalProviderResponse": {
+      "fields": {
+        "available": "boolean",
+        "capabilities": "ProviderCapabilitiesResponse",
+        "id": "string",
+        "label": "string",
+        "last_health_at": "string|null",
+        "latency_ms": "number",
+        "loaded": "boolean",
+        "reason": "string|null",
+        "status": "string",
+        "version": "string"
+      },
+      "required": [
+        "capabilities",
+        "id",
+        "label",
+        "latency_ms",
+        "status",
+        "version"
+      ]
+    },
+    "UserResponse": {
+      "fields": {
+        "email": "string",
+        "id": "string",
+        "name": "string"
+      },
+      "required": [
+        "email",
+        "id",
+        "name"
+      ]
+    },
+    "ValidationError": {
+      "fields": {
+        "loc": "array<string|integer>",
+        "msg": "string",
+        "type": "string"
+      },
+      "required": [
+        "loc",
+        "msg",
+        "type"
+      ]
+    },
+    "VideoGenerationRequest": {
+      "fields": {
+        "aspect_ratio": "string",
+        "camera_motion": "string",
+        "cinematic_mode": "boolean",
+        "duration_seconds": "integer",
+        "fps": "integer",
+        "lora_id": "string|null",
+        "mode": "string",
+        "native_audio": "boolean",
+        "persona_id": "string|null",
+        "prompt": "string",
+        "reference_asset_id": "string|null",
+        "slow_motion": "boolean",
+        "wardrobe": "array<string>|null"
+      },
+      "required": [
+        "prompt"
+      ]
+    }
+  }
+}

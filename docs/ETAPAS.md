@@ -77,11 +77,30 @@ Estas regras foram respeitadas em todas as etapas e são verificadas por testes:
 
 ---
 
+## Platform Freeze (PR010.0)
+
+Antes do AI Core, a arquitetura foi congelada. As invariantes acima deixaram de
+depender de disciplina e passaram a depender de CI:
+
+| Artefato | Papel |
+| --- | --- |
+| `docs/ARCHITECTURE_MANIFEST.md` | Os dez módulos com owner, responsabilidade, dependências permitidas e proibidas. |
+| `docs/API_SNAPSHOT.json` | A superfície pública congelada: rotas, WebSockets, modelos, tipos e auth. |
+| `docs/EVENT_CATALOG.md` | Os 11 eventos reais e os 4 reservados ao AI Core. |
+| `backend/app/contracts/` | O vocabulário compartilhado, com definição única. |
+
+Três jobs obrigatórios: **Architecture Guard**, **Import Boundary Guard** e
+**API Snapshot Guard**. As quatro fronteiras nomeadas pelo PR (Director ⇏
+Providers, Quality ⇏ Render, Providers ⇏ Director, Campaign ⇏ Quality) já
+valiam no código — o PR as travou, direta e transitivamente.
+
+---
+
 ## Números atuais
 
 | Métrica | Valor |
 | --- | --- |
-| Suíte de testes | **2.107** |
+| Suíte de testes | **2.215** |
 | Cobertura `backend/app` | **97%** (gate CI: 95%) |
 | Módulos em 100% | **82** |
 | Rotas HTTP `/api/v1` | **111** — **32** delas `/api/v1/core/*` |

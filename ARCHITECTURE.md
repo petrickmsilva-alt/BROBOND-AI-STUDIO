@@ -1139,6 +1139,44 @@ Agentes são responsabilidades lógicas e podem começar como serviços determin
 - `StylePreset`: lens, lut, lighting, contrast, grain, camera_motion, particles, fps.
 - `DirectorIntent`: conceito, formato, logline, roteiro, beats, música, ritmo e duração.
 
+## Platform Freeze (PR010.0)
+
+A arquitetura descrita neste documento está **congelada**. Antes do AI Core, as
+fronteiras deixaram de ser convenção e passaram a ser verificadas: o manifesto
+declara quem pode importar quem, e um teste compara a declaração com o grafo
+real de imports.
+
+| Artefato | O que congela |
+|---|---|
+| [`docs/ARCHITECTURE_MANIFEST.md`](docs/ARCHITECTURE_MANIFEST.md) | Dez módulos com owner, responsabilidade, dependências permitidas e proibidas. Cobre 100% dos arquivos de `backend/app/`. |
+| [`backend/tests/test_architecture_boundaries.py`](backend/tests/test_architecture_boundaries.py) | O grafo de imports, direta **e transitivamente**. Falha nomeando o caminho do acoplamento. |
+| [`docs/API_SNAPSHOT.json`](docs/API_SNAPSHOT.json) | 111 rotas, 3 WebSockets, 137 modelos com tipo por campo e auth por rota. |
+| [`docs/EVENT_CATALOG.md`](docs/EVENT_CATALOG.md) | Os 11 eventos reais + 4 nomes reservados ao AI Core, que ninguém pode emitir ainda. |
+| [`backend/app/contracts/`](backend/app/contracts) | O vocabulário compartilhado, com definição única. |
+
+As quatro fronteiras que o PR010.0 nomeia — e que já valiam no código quando
+foram travadas:
+
+```text
+Director   -/->  Providers    planejamento não depende do hardware que executa
+Quality    -/->  Render       um veredito recomenda, nunca executa
+Providers  -/->  Director     execução não interpreta intenção
+Campaign   -/->  Quality      um plano comercial não é reescrito por um score
+```
+
+Mais a assimetria congelada antes de o módulo existir: **o AI Core poderá
+importar todos; nenhum módulo poderá importar o AI Core.** Um orquestrador
+precisa enxergar as peças; se as peças o enxergassem de volta, o grafo viraria
+ciclo e a fronteira deixaria de existir.
+
+Três jobs obrigatórios de CI sustentam isso — **Architecture Guard**, **Import
+Boundary Guard** e **API Snapshot Guard** — separados do job `backend` para que
+uma regressão arquitetural apareça pelo nome na lista de checks.
+
+Mudar uma fronteira é possível e previsto: exige editar o manifesto, ver o
+guard passar com a regra nova e justificar no `CHANGELOG.md`. O que não é
+possível é mudá-la sem perceber.
+
 ## Regras de isolamento
 
 Providers nunca acessam diretamente componentes React. Rotas nunca contêm lógica de inferência. A Knowledge Base é somente leitura durante geração e versionada durante edição. Jobs longos nunca rodam na thread HTTP.
@@ -1147,6 +1185,16 @@ Regras adicionais aplicadas desde a ETAPA 2, cada uma com teste que falha se for
 
 | Regra | Como é garantida |
 |---|---|
+| **Director não importa Providers** | `test_architecture_boundaries.py` (PR010.0): grafo de imports por AST, direto e transitivo. |
+| **Quality não importa Render** | idem — um veredito não pode disparar uma regeneração. |
+| **Providers não importam Director** | idem — execução não interpreta intenção. |
+| **Campaign não importa Quality** | idem — um score não edita um plano comercial. |
+| **Nenhum módulo importa o AI Core** | idem: o AI Core pode conhecer todos; ninguém pode conhecê-lo. Congelado antes de o pacote existir. |
+| **Todo arquivo de `backend/app/` tem dono declarado** | `test_every_backend_file_has_an_owner`: um pacote novo precisa entrar em `docs/ARCHITECTURE_MANIFEST.md` antes de ser mesclado. |
+| **Contrato tem definição única** | `test_no_module_defines_a_duplicate_contract` (AST) + `test_the_legacy_contracts_path_reexports_the_same_objects` (identidade `is`). |
+| **A superfície pública não muda em silêncio** | `test_api_snapshot.py` compara `docs/API_SNAPSHOT.json` com a aplicação: rotas, WebSockets, modelos, tipos e auth por rota. |
+| **Rota protegida não vira pública sem querer** | `test_no_route_silently_dropped_its_authentication`. |
+| **Evento novo exige documentação** | `test_event_catalog.py`: toda constante `EVENT_*` precisa estar em `docs/EVENT_CATALOG.md`, e os 4 nomes reservados ao AI Core não podem ser emitidos. |
 | Rotas não contêm lógica de geração | `test_core_api.py::test_no_route_contains_prompt_or_direction_logic` procura vocabulário de prompt/câmera no trecho de rotas de `main.py`. |
 | Nenhum componente do Core importa um par | `test_core_independence.py` (probe em subprocesso + guarda estática). |
 | O Core não importa FastAPI, SQLAlchemy, Celery ou boto3 | `test_module_does_not_depend_on_the_application_layer`. |
