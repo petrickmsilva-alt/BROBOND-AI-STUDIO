@@ -21,6 +21,18 @@ from .base_provider import (
 )
 from .flux_provider import FLUX_LABEL, FLUX_MODEL_ID, FLUX_PROVIDER_ID, FluxProvider
 from .mock_provider import MOCK_LABEL, MOCK_PROVIDER_ID, MockProvider
+from .runpod_flux_provider import (
+    RUNPOD_FLUX_LABEL,
+    RUNPOD_FLUX_MODEL_ID,
+    RUNPOD_FLUX_PROVIDER_ID,
+    RunPodFluxProvider,
+)
+from .runpod_wan_provider import (
+    RUNPOD_WAN_LABEL,
+    RUNPOD_WAN_MODEL_ID,
+    RUNPOD_WAN_PROVIDER_ID,
+    RunPodWanProvider,
+)
 from .wan_provider import (
     HUNYUAN_LABEL,
     HUNYUAN_MODEL_ID,
@@ -156,6 +168,27 @@ def create_default_registry() -> ProviderRegistry:
             label=MOCK_LABEL,
             factory=lambda model_id=None: MockProvider(),
             aliases=(MOCK_LABEL, "mock-image", "mock-video"),
+        )
+    )
+    # PR011 — the external GPU cluster, added as two registrations and not a
+    # single branch anywhere else. They are deliberately **not** `default_for`
+    # any kind: the defaults stay `flux-dev`/`wan-2.1-t2v`, so a deployment
+    # opts into the cluster by asking for the provider by id, and a checkout
+    # with no RunPod credentials behaves exactly as it did before PR011.
+    registry.register(
+        ProviderRegistration(
+            provider_id=RUNPOD_FLUX_PROVIDER_ID,
+            label=RUNPOD_FLUX_LABEL,
+            factory=lambda model_id=None: RunPodFluxProvider(model_id=model_id or RUNPOD_FLUX_MODEL_ID),
+            aliases=(RUNPOD_FLUX_LABEL, RUNPOD_FLUX_MODEL_ID, "runpod-image"),
+        )
+    )
+    registry.register(
+        ProviderRegistration(
+            provider_id=RUNPOD_WAN_PROVIDER_ID,
+            label=RUNPOD_WAN_LABEL,
+            factory=lambda model_id=None: RunPodWanProvider(model_id=model_id or RUNPOD_WAN_MODEL_ID),
+            aliases=(RUNPOD_WAN_LABEL, RUNPOD_WAN_MODEL_ID, "runpod-video"),
         )
     )
     registry.register(

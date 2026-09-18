@@ -80,7 +80,12 @@ def render() -> str:
         "`/api/v1/campaigns/*` (Campaign Builder com identidade: interpretar "
         "um briefing, criar a campanha completa com sete entregáveis e "
         "timeline de cinco dias, duplicar, anexar entregas reais e exportar "
-        "o ZIP com manifesto).\n"
+        "o ZIP com manifesto). PR011 não adiciona rotas: o cluster de GPU "
+        "externo é reportado dentro do bloco `gpu` de "
+        "`GET /api/v1/system/readiness` (`available`, `provider`, `model`, "
+        "`vram`, `latency_ms`), que nunca devolve 500 e nunca vira gate de "
+        "deploy — e nenhum segredo chega ao frontend. Ver "
+        "`docs/GPU_CLUSTER.md`.\n"
     )
 
     for tag in sorted(by_tag):

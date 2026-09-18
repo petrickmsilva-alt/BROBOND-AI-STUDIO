@@ -36,7 +36,17 @@ NO_TIMEOUT_SECONDS = 0.0
 
 #: Provider ids and aliases that inherit the Flux image deadline.
 FLUX_TIMEOUT_IDS: frozenset[str] = frozenset(
-    {"flux-dev", "flux", "flux-1.1-pro-ultra", "black-forest-labs/FLUX.1-dev"}
+    {
+        "flux-dev",
+        "flux",
+        "flux-1.1-pro-ultra",
+        "black-forest-labs/FLUX.1-dev",
+        # PR011: the cluster connector renders the same class of workload; the
+        # GPU client enforces its own job deadline on top of this one.
+        "runpod-flux",
+        "runpod-image",
+        "flux-kontext-pro",
+    }
 )
 
 #: Provider ids and aliases that inherit the Wan video deadline. Hunyuan
@@ -50,6 +60,10 @@ WAN_TIMEOUT_IDS: frozenset[str] = frozenset(
         "hunyuan-video",
         "hunyuan",
         "hunyuanvideo-community/HunyuanVideo",
+        # PR011: cluster video renders.
+        "runpod-wan",
+        "runpod-video",
+        "wan-2.1-t2v-14b",
     }
 )
 

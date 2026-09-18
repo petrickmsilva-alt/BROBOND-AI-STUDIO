@@ -6,6 +6,93 @@ versões de produto do `ROADMAP.md`.
 
 ---
 
+## [Unreleased] — PR011: GPU CLUSTER & FLUX/WAN INTEGRATION
+
+Provider Registry ligado a GPUs externas (RunPod). Cinco arquivos novos em
+`backend/app/providers/`, uma linha composta no readiness e **nada mais**:
+Director AI, Storyboard Engine, Prompt Compiler e a superfície pública do
+Provider Registry ficaram intocados — `docs/API_SNAPSHOT.json` não mudou uma
+linha, que é a prova mecânica disso.
+
+- **ETAPA 1** — `providers/gpu_client.py`: transporte e só. HTTP async por
+  trás de um `Protocol` (o default importa `httpx` dentro da chamada, então o
+  módulo é importável em qualquer máquina), timeout configurável por client e
+  por chamada, retry exponencial `0.5s → 1s → 2s` com cap em 8s, poll de jobs,
+  cancelamento, upload de referência como data URI base64 e download aceitando
+  URL, data URI ou base64 puro. **4xx não é repetido**: um payload malformado
+  falha idêntico três vezes, só que gastando o deadline que protegeria uma
+  falha real. Um deadline estourado **cancela o job antes de desistir** —
+  job de GPU abandonado não é render perdida, é fatura. A chave viaja só no
+  header `Authorization`: não aparece em retorno, log, erro ou health, o
+  helper `_safe_url` reduz qualquer URL a `scheme://host` antes de entrar numa
+  mensagem (que chega ao readiness público, e o path carrega o id do
+  endpoint), e o download de uma URL pré-assinada **não** leva o header.
+- **ETAPA 2** — `providers/runpod_flux_provider.py` (`runpod-flux`,
+  `flux-kontext-pro`, 24GB): `image`, `upscale`, `inpaint`, `outpaint` e
+  `control reference`. As cinco operações são declaradas em
+  `SUPPORTED_OPERATIONS`/`supports_operation()` e **não** em campos novos de
+  `ProviderCapabilities`, porque esse é o contrato público congelado que o PR
+  está proibido de mexer; nada fica escondido — o conjunto é testado e está em
+  `docs/GPU_CLUSTER.md`. Recebe apenas `GenerationSpec`, verificado por
+  assinatura. Modo de referência sem `reference_path` levanta `ValueError`
+  **fatal** antes de gastar GPU: o retry engine não repete `ValueError`, e
+  repetir não faria a imagem aparecer.
+- **ETAPA 3** — `providers/runpod_wan_provider.py` (`runpod-wan`,
+  `wan-2.1-t2v-14b`, 48GB): text-to-video, image-to-video, `duration`, `fps`,
+  `seed` e camera motion. **Sem tocar o Storyboard**, e sem precisar: a
+  intenção de câmera chega como dois campos tipados do spec (`motion`,
+  `motion_strength`), e `CAMERA_MOTIONS` é tabela de tradução para o
+  vocabulário do worker — um movimento desconhecido passa adiante intacto em
+  vez de ser descartado. Duração (1–10s) e fps (8–30) são **limitados e
+  registrados** no metadata (`"clamped": true`), não recusados: matar o batch
+  porque uma cena pediu 30s seria pior que entregar o clipe mais longo
+  possível e dizer que foi cortado.
+- **ETAPA 4** — job inteiro no backend:
+  `GenerationSpec -> GenerationExecutor -> RunPod -> job_id -> poll -> Asset
+  -> Quality Engine`. `backend/app/render/` não mudou uma linha — o Render
+  Engine continua chamando só `GenerationExecutor.execute(...)` e não sabe que
+  existe um cluster. **Zero polling no frontend**: há teste varrendo `app/`,
+  `lib/` e `components/` atrás de `runpod`, `/status/` e `RUNPOD`. Toda falha
+  de GPU vira `ProviderUnavailable`, que é exatamente o que a pilha de
+  resiliência do PR009 já sabe repetir e contornar; job completo **sem
+  artefato** é falha, não sucesso vazio.
+- **ETAPA 5** — quatro variáveis, todas opcionais em DEV:
+  `BROBOND_RUNPOD_API_KEY`, `BROBOND_RUNPOD_ENDPOINT`, `BROBOND_GPU_TIMEOUT`
+  (300s), `BROBOND_GPU_POLL_INTERVAL` (2s). Sem elas o app sobe igual e a
+  suíte inteira roda num laptop sem conta na RunPod. No `render.yaml` as duas
+  primeiras entram como `sync: false` — pedidas no deploy, fora do arquivo e
+  fora do git.
+- **ETAPA 6** — `GET /api/v1/system/readiness` ganha o bloco `gpu`
+  (`available`, `provider`, `model`, `vram`, `latency_ms`), com as mesmas
+  chaves e uma `reason` legível quando indisponível. **Nunca 500** (toda saída
+  é dicionário, inclusive a do `except` final) e **nunca gate de deploy** —
+  GPU ausente é capacidade ausente; os três gates do 503 continuam sendo
+  `database`, `migrations` e `storage`. A sonda usa deadline próprio de 5s e
+  **uma** tentativa: três retries virariam 15s num endpoint morto, e quem
+  consulta readiness já repete consultando de novo. O bloco `gpu` que
+  reportava `nvidia-smi` desde a ETAPA 9 foi **composto, não substituído**:
+  `backend`/`message` seguem onde a casca os lê e a sonda do cluster fica em
+  `gpu.cluster`.
+- **ETAPA 7** — `gpu_fakes.py` (mock integral da API RunPod: `/run`,
+  `/status/{id}`, `/cancel/{id}`, `/health`, com um job passando de verdade
+  por `IN_QUEUE → IN_PROGRESS → COMPLETED`, senão o polling nunca seria
+  exercitado) + 197 testes em `test_gpu_client.py` (64),
+  `test_runpod_flux.py` (54), `test_runpod_wan.py` (50) e
+  `test_gpu_health.py` (29). Relógio falso: um deadline de 300s é testado em
+  microssegundos. **Cobertura dos cinco módulos novos: 100%** (633 statements,
+  0 misses), acima do piso de 98% da etapa.
+- **ETAPA 8** — `docs/GPU_CLUSTER.md` novo; `ARCHITECTURE.md`, `docs/API.md`,
+  `ROADMAP.md` e este arquivo atualizados. `docs/API_SNAPSHOT.json`
+  regenerado e **idêntico**: nenhuma rota, modelo ou campo público mudou.
+
+**Dois achados durante a implementação, os dois corrigidos:** a mensagem de
+erro do transporte incluía o path do endpoint (e portanto o id do endpoint
+serverless) num payload público, e a sonda de health herdava as 3 tentativas
+do client, transformando um deadline de 5s em 15s contra um cluster morto.
+Ambos foram encontrados por teste, não por leitura.
+
+---
+
 ## [Unreleased] — PR010.0: PLATFORM FREEZE
 
 Estabilização antes do AI Core. **Nenhuma feature nova, nenhuma alteração

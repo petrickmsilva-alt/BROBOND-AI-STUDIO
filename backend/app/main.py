@@ -112,6 +112,7 @@ from .models import Asset, TrainingRun, User, Workspace
 from .provider_capabilities import list_universal_provider_responses, prompt_budget_for_provider
 from .providers import registry as provider_registry
 from .providers.generation_executor import GenerationExecutor
+from .providers.gpu_health import readiness_gpu_block
 from .providers.provider_registry import DEFAULT_REGISTRY as UNIVERSAL_REGISTRY
 from .providers.telemetry import default_telemetry_store
 from .prompt_engine import prompt_engine
@@ -553,6 +554,10 @@ def _storage_ready() -> bool:
 def system_readiness() -> JSONResponse:
     """GPU preflight plus the PR009.4.1 deploy gates.
 
+    PR011 adds a `gpu` block describing the external cluster (provider, model,
+    VRAM, measured latency). It is informational: an unavailable cluster
+    never turns this into a 503 and never raises.
+
     The three top-level booleans — `database`, `migrations`, `storage` —
     answer "can this deploy serve traffic?" independently of the GPU checks:
     a broken database or a half-applied migration returns 503 so an
@@ -563,6 +568,11 @@ def system_readiness() -> JSONResponse:
     body["database"] = database_guard.ping()
     body["migrations"] = _migrations_ready()
     body["storage"] = _storage_ready()
+    # PR011 — the external GPU cluster, folded into the existing `gpu` block
+    # beside the host detection it has always carried. Reported, never
+    # enforced: it is a capability, not a deploy gate, so `gpu.available:
+    # false` must not turn this response into a 503. The composer never raises.
+    body["gpu"] = readiness_gpu_block(body.get("gpu"))
     deploy_ready = body["database"] and body["migrations"] and body["storage"]
     return JSONResponse(status_code=200 if deploy_ready else 503, content=body)
 
