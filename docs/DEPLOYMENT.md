@@ -64,6 +64,14 @@ links it via `fromDatabase`.
 | `BROBOND_STORAGE_ENABLED` | `false` | MinIO/S3 object storage (`BROBOND_MINIO_*`). |
 | `BROBOND_INFERENCE_ENABLED` | `false` | Real GPU providers instead of orchestration-only mode. |
 | `BROBOND_TRAINING_ENABLED` | `false` | LoRA training pipeline. |
+| `BROBOND_RUNPOD_API_KEY` | *(vazio)* | Credencial do cluster GPU externo (PR011). Nunca chega ao browser. |
+| `BROBOND_RUNPOD_ENDPOINT` | *(vazio)* | Endpoint serverless, ex. `https://api.runpod.ai/v2/<id>`. |
+| `BROBOND_GPU_TIMEOUT` | `300` | Segundos de espera por job de GPU (`0` desliga o prazo). |
+| `BROBOND_GPU_POLL_INTERVAL` | `2` | Segundos entre polls de status — polling é sempre server-side. |
+
+As quatro variáveis de GPU são **opcionais**. Sem elas o deploy sobe igual,
+`GET /api/v1/system/readiness` responde `200` com `gpu.available: false` e a
+razão, e nenhuma rota quebra. Detalhes em `docs/GPU_CLUSTER.md`.
 
 The web service (`brobond-studio-web`) needs only `NEXT_PUBLIC_API_URL`,
 baked in at build time and pointing at the API's public URL.

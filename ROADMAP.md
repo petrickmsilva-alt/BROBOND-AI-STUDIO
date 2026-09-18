@@ -51,7 +51,7 @@ ponta a ponta: GPU, pesos e providers instalados. Ver `docs/LIMITATIONS.md`.
 - [x] Projects, Assets e upload
 - [x] Auth JWT e workspace
 - [x] Redis/Celery/WebSocket contracts
-- [ ] Primeiro render GPU validado ponta a ponta
+- [ ] Primeiro render GPU validado ponta a ponta *(PR011 entrega o caminho completo até a RunPod, testado contra um mock integral da API; falta a execução contra um endpoint real com credencial)*
 
 ## v1.5 — Direção visual
 
@@ -104,6 +104,7 @@ ponta a ponta: GPU, pesos e providers instalados. Ver `docs/LIMITATIONS.md`.
 - [x] **Character Continuity Engine / V3.2**: cinco locks persistentes por workspace (Identity persona-global, Wardrobe/Location/Vehicle por campanha com override por episódio, Voice persona-global), fingerprint visual SHA-256/16hex por lock, `ContinuityResolver` (`persona_id` + `campaign_id` + `episode` → `ContinuityContext` com snapshots, frases, missing, drift e consistent, `GenerationSpec` intocado), episódios imutáveis com auto-numeração, 13 rotas `/api/v1/continuity/*` com identidade e UI `/studio/continuity` (5 cards, contexto resolvido, histórico + Criar novo episódio). Ver `docs/CHARACTER_CONTINUITY.md`.
 - [x] **Campaign Builder / V3.3**: um briefing vira campanha completa — Brief Interpreter determinístico PT/EN com `missing` honesto, 7 entregáveis automáticos (Reel 9:16, Story, Shorts, Banner, Thumbnail, Feed 1:1, YouTube Cover) com prompt via `PromptEnhancer`, timeline Dia 1..Dia 5 com foco/CTA/ativos diferentes por dia, CTA Engine com deck determinístico por seed que nunca repete dentro da campanha (duplicar cunha seed nova), Export Center com ZIP (manifest + prompts + metadata + MP4/PNG/thumb entregues, servido pela rota autenticada de assets), 7 rotas `/api/v1/campaigns/*` com identidade e UI `/studio/campaigns` (Briefing, Calendário, Ativos, Exportar, Duplicar). Ver `docs/CAMPAIGN_BUILDER.md`.
 - [x] **Quality AI Engine / V3.4**: avaliação automática 0–100 sobre oito critérios ponderados e configuráveis (Face/Hands/Eyes via detector externo; Composition/Lighting/Color/Motion/Prompt Fidelity medidos do arquivo e do spec reais), relatório persistente e append-only junto ao Asset (`quality_reports` + badge desnormalizado em `assets.*`), bandas < 70 retry / 70–84 revisão manual / 85+ aprovado / 95+ masterpiece, upscale recomendado só para render bom e pequeno — **recomendação, nunca execução** —, 5 rotas `/api/v1/quality/*` e UI `/studio/quality` (score radial, radar chart, problemas, sugestões, Regenerar/Upscale/Aprovar registrando a decisão). Critério não medido é excluído e listado, nunca zerado. Ver `docs/QUALITY_ENGINE.md`.
+- [x] **GPU Cluster & Flux/Wan Integration / PR011**: Provider Registry ligado a GPUs externas (RunPod) — `gpu_client.py` só transporte (HTTP async, timeout e poll configuráveis, retry exponencial que **não** repete 4xx, cancelamento, upload de referência em base64, download do resultado), `runpod-flux` com image/upscale/inpaint/outpaint/control reference e `runpod-wan` com text-to-video, image-to-video, duração, fps, seed e camera motion lida de `spec.motion` (nunca do Storyboard). Job inteiro no backend (`submit -> job_id -> poll -> asset`), **zero polling no frontend**, bloco `gpu` no readiness (`available`, `provider`, `model`, `vram`, `latency_ms`) que nunca devolve 500 e nunca vira gate de deploy, e quatro variáveis novas todas opcionais em DEV. Os conectores entram como registros adicionais: os defaults continuam `flux-dev`/`wan-2.1-t2v`. Ver `docs/GPU_CLUSTER.md`.
 - [~] Conversa de direção: trailer, luxo, fashion film, documental *(ETAPA 2 entregou o `DirectorAgent` determinístico e `POST /api/v1/core/direct`, PR005 entrega `POST /api/v1/core/director/production-plan`; falta a conversa multi-turno e o enriquecimento por LLM, cujo hook `LanguageModel` já existe)*
 - [~] Roteirista automático persistido e versionado *(PR006 versiona o StoryboardState no editor; persistência server-side continua como evolução futura)*
 - [x] Diretor de câmera IA inicial (PR005: Dolly, Orbit, Crane, Tracking, Static, Drone escolhidos da Shot Library; PR006: presets Hero Walk, Orbit, Tracking, Crane, Drone e Static editáveis por cena)
@@ -115,7 +116,7 @@ ponta a ponta: GPU, pesos e providers instalados. Ver `docs/LIMITATIONS.md`.
 
 - [ ] Multi-agent collaboration real
 - [ ] Multi-tenancy SaaS
-- [ ] Cloud rendering e autoscaling
+- [~] Cloud rendering e autoscaling *(PR011 liga o render a um cluster serverless externo; autoscaling e política de custo continuam em aberto)*
 - [ ] Créditos, quotas e billing
 - [ ] Mobile app
 - [ ] Painel administrativo

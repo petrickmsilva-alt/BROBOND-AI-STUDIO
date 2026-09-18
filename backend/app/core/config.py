@@ -61,6 +61,24 @@ class Settings(BaseSettings):
     #: PR009 — optional JSONL sink for provider telemetry records. Empty keeps
     #: telemetry in-process only.
     provider_telemetry_log: str = ""
+    # -----------------------------------------------------------------------
+    # PR011 — external GPU cluster (RunPod).
+    #
+    # All four are **optional in DEV**: with the defaults below the GPU layer
+    # reports itself unavailable through `/api/v1/system/readiness` and the
+    # executor falls back exactly as it does when a local GPU is missing.
+    # Nothing raises, and nothing boots differently — which is what makes a
+    # laptop checkout of this repository still run the whole suite.
+    #
+    #   BROBOND_RUNPOD_API_KEY     credential; never leaves the backend
+    #   BROBOND_RUNPOD_ENDPOINT    e.g. https://api.runpod.ai/v2/<endpoint-id>
+    #   BROBOND_GPU_TIMEOUT        seconds to wait for a job (0 = no deadline)
+    #   BROBOND_GPU_POLL_INTERVAL  seconds between job status polls
+    # -----------------------------------------------------------------------
+    runpod_api_key: str = ""
+    runpod_endpoint: str = ""
+    gpu_timeout: float = 300.0
+    gpu_poll_interval: float = 2.0
     # Comma-separated list of browser origins allowed by the CORS middleware.
     # Render sets the same value explicitly (see render.yaml).
     cors_origins: str = "https://brobond-studio-web.onrender.com,http://localhost:3000"
