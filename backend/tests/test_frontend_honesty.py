@@ -27,6 +27,8 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 API = ROOT / "lib" / "api.ts"
 NETWORK = ROOT / "lib" / "network" / "request.ts"
 PAGE = ROOT / "app" / "page.tsx"
+# PR009.6: the auth flow (the old AuthModal) lives in the login screen now.
+LOGIN = ROOT / "components" / "studio" / "login" / "login-screen.tsx"
 NEXT_CONFIG = ROOT / "next.config.mjs"
 
 
@@ -48,6 +50,11 @@ def network_source() -> str:
 @pytest.fixture(scope="module")
 def page_source() -> str:
     return _read(PAGE)
+
+
+@pytest.fixture(scope="module")
+def login_source() -> str:
+    return _read(LOGIN)
 
 
 # ---------------------------------------------------------------------------
@@ -117,7 +124,7 @@ def test_the_director_is_the_front_door(page_source: str) -> None:
 def test_the_director_never_answers_with_a_prompt_string(page_source: str) -> None:
     """The brief panel shows concept, logline, script, beats — not a prompt box."""
 
-    director = page_source.split("function DirectorStudio(", 1)[1].split("\nfunction AuthModal", 1)[0]
+    director = page_source.split("function DirectorStudio(", 1)[1].split("\nfunction PageHeader", 1)[0]
     assert "brief.concept" in director
     assert "brief.logline" in director
     assert "brief.beats.map" in director
@@ -217,8 +224,13 @@ def test_fetch_lives_only_in_the_network_layer(api_source: str, network_source: 
     assert "x-brobond-trace" in network_source
 
 
-def test_a_rejected_login_is_not_reported_as_offline(page_source: str) -> None:
-    assert "if (result.status)" in page_source
+def test_a_rejected_login_is_not_reported_as_offline(login_source: str) -> None:
+    # PR009.6 moved the auth flow from the AuthModal in page.tsx into
+    # components/studio/login/login-screen.tsx — logic unchanged, so the
+    # guard follows the code it protects (same fixup style as PR012's
+    # Sidebar Premium rewire).
+    assert "authenticate(" in login_source
+    assert "if (result.status)" in login_source
 
 
 def test_the_controls_drive_the_request(page_source: str) -> None:

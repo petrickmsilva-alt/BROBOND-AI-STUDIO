@@ -75,6 +75,11 @@ novo `LoginScreen`.
   readiness que o Home já lia.
 - **PT/EN** — seletor discreto no canto superior direito; dicionário
   `login-copy.ts` com contrato de paridade testado.
+- **Guarda de honestidade** — `test_a_rejected_login_is_not_reported_as_
+  offline` passa a ler o `login-screen.tsx` (o código de login mudou de
+  casa, a proteção que "rejeitado ≠ offline" não muda) e o split da
+  seção Director usa `PageHeader` como limite — mesmo estilo de fixup
+  do PR012 após o Sidebar Premium.
 - **"Lembrar de mim" (30 dias)** — novo seam
   `lib/memory/remembered_login.ts`: cookie com expiração nativa de 30
   dias carregando apenas email + nome (nunca credencial; o JWT continua
