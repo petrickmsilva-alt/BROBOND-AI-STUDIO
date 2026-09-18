@@ -1,91 +1,63 @@
 'use client';
 
 /**
- * PR009.6 — the login hero column.
+ * PR009.6.1 — Pixel Perfect Login: the hero column (58% of the viewport).
  *
- * The official founder photograph (/brand/login-hero.jpg) is the backdrop:
- * black tint 55%, a very soft gold radial and blur only at the edges, so
- * the center keeps its cinematic contrast. On powerful desktops the same
- * column upgrades to the 11-second brand film (/brand/login-hero.mp4 —
- * RAM ao pôr do sol, bastidores Brobond) with the photograph as the
- * universal fallback: the film fades in only after `canplay`, and any
- * error leaves the photograph exactly where it was. No device ever sees
- * an empty column, and `prefers-reduced-motion` is respected before the
- * film is even mounted.
+ * Reproduces the approved mockup exactly. The official photograph
+ * (/brand/login-hero.jpg) fills the whole column with `object-fit: cover`
+ * and `object-position: 50% 28%` so the founder's face is never cropped.
+ * Above it, in this order: a black tint at 42%, a gold radial coming from
+ * the top-right corner, an edge vignette, and a bottom shade that anchors
+ * the copy. The previous brand-film upgrade is gone — the mockup is the
+ * photograph, and nothing may reinterpret it.
+ *
+ * The column is a three-row grid (top bar / centred brand block / footer
+ * cards), so the five pillar cards can never overlap the copy.
  */
-import { useEffect, useState } from 'react';
 import LoginFeatures from './login-features';
 import type { LoginCopy } from './login-copy';
 
-type NetworkInformation = { saveData?: boolean; effectiveType?: string };
-
-/** "Desktop potente": laptop-width, hover pointer, motion allowed, 4+
- *  logical cores and no data-saver / 2G connection. Anything else — every
- *  tablet and phone, every reduced-motion preference — gets the photo. */
-function filmAllowedHere(): boolean {
-  if (typeof window === 'undefined') return false;
-  const desktop = window.matchMedia(
-    '(min-width: 1024px) and (hover: hover) and (prefers-reduced-motion: no-preference)',
-  );
-  if (!desktop.matches) return false;
-  if ((window.navigator.hardwareConcurrency ?? 4) < 4) return false;
-  const connection = (window.navigator as Navigator & { connection?: NetworkInformation }).connection;
-  return !(connection?.saveData === true || connection?.effectiveType === '2g');
-}
-
 export function LoginHeroPanel({ copy }: { copy: LoginCopy }) {
-  const [filmAllowed, setFilmAllowed] = useState(false);
-  const [filmReady, setFilmReady] = useState(false);
-
-  useEffect(() => {
-    const desktop = window.matchMedia(
-      '(min-width: 1024px) and (hover: hover) and (prefers-reduced-motion: no-preference)',
-    );
-    const sync = () => setFilmAllowed(filmAllowedHere());
-    sync();
-    desktop.addEventListener('change', sync);
-    return () => desktop.removeEventListener('change', sync);
-  }, []);
-
   return (
     <aside className="bb-login-hero" aria-label={copy.heroAlt}>
-      <div className="bb-login-hero-banner">
-        <div className="bb-login-hero-media" aria-hidden="true">
-          {/* The official photograph: always present, always the fallback. */}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="bb-login-hero-photo" src="/brand/login-hero.jpg" alt="" />
-          {filmAllowed && (
-            <video
-              className={`bb-login-hero-film${filmReady ? ' is-ready' : ''}`}
-              src="/brand/login-hero.mp4"
-              autoPlay
-              muted
-              loop
-              playsInline
-              preload="auto"
-              onCanPlay={() => setFilmReady(true)}
-              onError={() => setFilmReady(false)}
-            />
-          )}
-          {/* Overlay stack: black 55% → soft gold radial → edge-only blur →
-              bottom shade that anchors the copy and the feature row. */}
-          <div className="bb-login-hero-tint" />
-          <div className="bb-login-hero-gold" />
-          <div className="bb-login-hero-blur bb-login-hero-blur-x" />
-          <div className="bb-login-hero-blur bb-login-hero-blur-y" />
-          <div className="bb-login-hero-shade" />
-        </div>
-        <p className="bb-login-hero-topbar">{copy.topBar}</p>
-        <div className="bb-login-hero-content">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img className="bb-login-hero-logo" src="/brand/brobond-logo.png" alt="Brobond" />
-          <span className="bb-login-hero-eyebrow">{copy.eyebrow}</span>
-          <h1 className="bb-login-hero-title">{copy.title}</h1>
-          <p className="bb-login-hero-subtitle">{copy.subtitle}</p>
-        </div>
+      {/* Photo + overlay stack. Decorative: the column carries the label. */}
+      <div className="bb-login-hero-media" aria-hidden="true">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className="bb-login-hero-photo" src="/brand/login-hero.jpg" alt="" />
+        <div className="bb-login-hero-tint" />
+        <div className="bb-login-hero-sun" />
+        <div className="bb-login-hero-gold" />
+        <div className="bb-login-hero-vignette" />
+        <div className="bb-login-hero-shade" />
       </div>
-      <div className="bb-login-hero-features">
+
+      {/* Top bar: brand line left, manifesto right. */}
+      <div className="bb-login-hero-topbar">
+        <span className="bb-login-hero-topbar-left">{copy.topBar}</span>
+        <span className="bb-login-hero-topbar-right">
+          <i aria-hidden="true" />
+          {copy.topBarRight}
+        </span>
+      </div>
+
+      {/* Centre-bottom brand block: logo 420px, título, subtítulo. */}
+      <div className="bb-login-hero-content">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img className="bb-login-hero-logo" src="/brand/brobond-logo-light.png" alt="Brobond Wear" />
+        <h1 className="bb-login-hero-title">
+          {copy.titleLead}
+          <span>{copy.titleAccent}</span>
+        </h1>
+        <p className="bb-login-hero-subtitle">{copy.subtitle}</p>
+      </div>
+
+      {/* Hero footer: the five equal cards, then the accent tagline. */}
+      <div className="bb-login-hero-footer">
         <LoginFeatures copy={copy} />
+        <p className="bb-login-hero-tagline">
+          <i aria-hidden="true" />
+          {copy.tagline}
+        </p>
       </div>
     </aside>
   );

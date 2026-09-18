@@ -49,6 +49,10 @@ export default defineConfig({
       // visual composition itself stays guarded by `next build`, like every
       // other screen beyond the PR012 shell components.
       'components/studio/login/login-copy.test.ts',
+      // PR009.6.1 — Pixel Perfect Login: the structural contract of the
+      // approved mockup (58/42 columns, hero overlay stack, five aligned
+      // cards, the card's twelve blocks in order).
+      'components/studio/login/login-layout.test.tsx',
       'lib/memory/remembered_login.test.ts',
     ],
     coverage: {

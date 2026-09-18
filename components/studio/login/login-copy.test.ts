@@ -20,7 +20,21 @@ describe('PR009.6 login copy (PT/EN lockstep)', () => {
     }
   });
 
+  it('splits the hero title into the mockup\'s two lines', () => {
+    for (const language of ['pt', 'en'] as const) {
+      const copy = LOGIN_COPY[language];
+      expect(`${copy.titleLead} ${copy.titleAccent}`).toBe(copy.title);
+    }
+  });
+
   it('lists the five hero features, in order, in both languages', () => {
+    expect(LOGIN_COPY.pt.features.map(feature => feature.subtitle)).toEqual([
+      'CONCEITO',
+      'PLANEJAMENTO',
+      'GERAÇÃO',
+      'BIBLIOTECA',
+      'APROVAÇÃO',
+    ]);
     expect(LOGIN_COPY.pt.features.map(feature => feature.title)).toEqual([
       'Diretor IA',
       'Storyboard',
@@ -44,12 +58,20 @@ describe('PR009.6 login copy (PT/EN lockstep)', () => {
 
   it('carries the exact brand strings', () => {
     expect(LOGIN_COPY.pt.topBar).toBe('IA • CINEMA • MARCA • IMPACTO');
+    expect(LOGIN_COPY.pt.topBarRight).toBe('CRIATIVIDADE VESTE O FUTURO');
+    expect(LOGIN_COPY.pt.tagline).toBe('MAIS QUE ESTILO, UMA VISÃO');
     expect(LOGIN_COPY.pt.eyebrow).toBe('BROBOND WEAR');
     expect(LOGIN_COPY.pt.title).toBe('Transforme ideias em grandes campanhas.');
     expect(LOGIN_COPY.pt.cardTitle).toBe('Bem-vindo de volta');
     expect(LOGIN_COPY.pt.cardSubtitle).toBe('Entre no seu estúdio e continue criando o extraordinário.');
     expect(LOGIN_COPY.pt.signIn).toBe('Entrar no Brobond Studio');
     expect(LOGIN_COPY.pt.google).toBe('Entrar com Google');
+    expect(LOGIN_COPY.pt.orDivider).toBe('ou continue com');
+    expect(LOGIN_COPY.pt.emailPlaceholder).toBe('E-mail ou usuário');
+    expect(LOGIN_COPY.pt.remember).toBe('Lembrar de mim');
+    expect(LOGIN_COPY.pt.forgot).toBe('Esqueceu sua senha?');
+    expect(LOGIN_COPY.pt.noAccount).toBe('Ainda não tem uma conta?');
+    expect(LOGIN_COPY.pt.createAccount).toBe('Criar conta');
     expect(LOGIN_COPY.pt.version).toBe('Brobond Studio v4.0.1');
     expect(LOGIN_COPY.pt.online).toBe('Sistema Online');
   });

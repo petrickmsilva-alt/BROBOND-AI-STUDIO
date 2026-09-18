@@ -136,6 +136,15 @@ export default function Home() {
     });
   };
 
+  // PR009.6.1 — Pixel Perfect Login: `?login=1` abre a mesma tela de login
+  // que o botão de perfil já abre, para revisão visual do mockup. É apenas
+  // um atalho sobre o estado que esta página já possui — nenhuma rota nova,
+  // nenhum hook novo, nenhuma mudança de autenticação.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (new URLSearchParams(window.location.search).get('login') === '1') setAuthOpen(true);
+  }, []);
+
   useEffect(() => {
     setGreeting(greetingFor(new Date().getHours()));
     gpuInfo().then(result => { if (result.remote) setGpu(result.data); });
