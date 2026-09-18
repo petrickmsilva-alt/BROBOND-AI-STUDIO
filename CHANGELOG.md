@@ -6,6 +6,58 @@ versões de produto do `ROADMAP.md`.
 
 ---
 
+## [Unreleased] — PR012: BROBOND UI 4.0 (Cinematic Design System)
+
+Redesign de UI/UX puro do frontend — luxuoso, cinematográfico, minimal,
+premium, rápido, escuro, no padrão de Runway + Linear + DaVinci Resolve.
+**Zero alteração** em FastAPI, Providers, Director Engine, Storyboard
+Engine, Quality Engine, banco de dados, APIs ou rotas: todo componente novo
+é presentacional puro, consumindo as mesmas funções de `lib/api.ts` que já
+existiam.
+
+- **ETAPA 1** — `lib/theme/tokens.ts`: paleta exata (Background `#07070A`,
+  Surface `#111113`, Surface2 `#18181B`, Border `#27272A`, Primary
+  `#8B5CF6`, Success `#22C55E`, Warning `#F59E0B`, Danger `#EF4444`, Text
+  Primary `#FAFAFA`, Text Secondary `#A1A1AA`). Nunca branco ou preto puro.
+- **ETAPA 2** — hierarquia tipográfica Inter Variable (Display XL 48/Bold,
+  H1 34/Bold, H2 26/Semibold, H3 20/Semibold, Body 15/Regular, Caption
+  12/Medium).
+- **ETAPA 3** — `components/studio/sidebar.tsx`: Sidebar Premium fixa em
+  248px, grupos CREATE/STUDIO/LIBRARY, badges restritos a GPU/SQL/AI
+  (`isAllowedBadge` derruba qualquer outro — GRAPH/V3.2/V3.3/V3.4 saíram do
+  produto).
+- **ETAPA 4** — `components/studio/hero-workspace.tsx`: Hero Workspace
+  substitui os dois painéis vazios do Director — Creative Brief à esquerda,
+  Live Storyboard Preview (placeholders cinematográficos) à direita.
+- **ETAPA 5** — `components/studio/identity-bar.tsx`: Identity Bar sempre
+  visível acima do workspace — avatar, persona, estilo, LoRA, paleta,
+  status.
+- **ETAPA 6** — `components/studio/status-dock.tsx` +
+  `lib/theme/status_mapping.ts`: barra inferior de no máximo 52px com seis
+  indicadores (API, Database, Storage, GPU, FLUX, WAN) coloridos
+  dinamicamente, substituindo a lista lateral de "Readiness".
+- **ETAPA 7** — `components/studio/storyboard-cards.tsx`: cada cena vira um
+  card cinematográfico (thumbnail, cena, objetivo, lente, câmera, duração,
+  mood), com drag/drop plugado no `StoryboardState` existente. Substitui
+  `app/studio/director/StoryboardCanvas.tsx` (removido).
+- **ETAPA 8** — motion sutil: hover 120ms, escala de card 1.01, elevação em
+  botões, fade de sidebar — nunca chamativo.
+- **ETAPA 9** — breakpoints Desktop 1440 / Laptop 1024 / Tablet 768 /
+  Mobile 480; o Director permanece usável em qualquer tamanho.
+- **ETAPA 10** — contraste WCAG AA, foco visível em todo elemento
+  interativo `bb-*`, ARIA labels, navegação por teclado completa.
+- Testes: `components/studio/{sidebar,hero,storyboard_cards,status_dock,
+  identity_bar}.test.tsx` + `lib/theme/{tokens,status_mapping}.test.ts` —
+  suíte completa 14 arquivos / 191 testes verde; cobertura de frontend
+  **99.91%/99.28%/98.75%/99.91%** (stmts/branch/funcs/lines), acima do piso
+  de 98%.
+- Documentação: `docs/UI_4.0.md` (novo), `ARCHITECTURE.md`, `README.md`
+  atualizados. Lighthouse Desktop ≥95 não pôde ser medido neste sandbox
+  (sem Chromium/Playwright disponível) — ver `docs/UI_4.0.md` para o que foi
+  e não foi verificado.
+
+---
+
 ## [Unreleased] — PR010.0: PLATFORM FREEZE
 
 Estabilização antes do AI Core. **Nenhuma feature nova, nenhuma alteração

@@ -110,6 +110,7 @@ ponta a ponta: GPU, pesos e providers instalados. Ver `docs/LIMITATIONS.md`.
 - [x] Ritmo, montagem, música e iluminação por intenção no plano (PR005; PR006 permite ajustar duração, iluminação, movimento e mood por cena; ainda sem render)
 - [ ] Voice Clone
 - [ ] Lip Sync
+- [x] **BROBOND UI 4.0 / PR012**: redesign de UI/UX puro — Sidebar Premium fixa 248px (CREATE/STUDIO/LIBRARY, badges só GPU/SQL/AI), Hero Workspace (Creative Brief + Live Storyboard Preview) e Identity Bar sempre visível no Director, Storyboard Cards cinematográficos substituindo `StoryboardCanvas`, Status Dock de 52px com 6 indicadores dinâmicos substituindo a lista lateral de Readiness, tokens de design (`lib/theme/tokens.ts`) e motion sutil (hover 120ms, escala de card 1.01). Zero alteração em FastAPI, Providers, Director/Storyboard/Quality Engine, banco ou rotas; cobertura de frontend 99%+. Ver `docs/UI_4.0.md`.
 
 ## v4.0 — Escala
 

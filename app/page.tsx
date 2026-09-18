@@ -4,9 +4,10 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   API_URL, Asset, AuthUser, DirectorBrief, GpuInfo, Job, LoraVersion, ModelOption, PersonaProfile, Readiness,
+  UniversalProvider,
   authenticate, buildStoryboard, cancelJob, createImageJob, createPersona, createVideoJob, directIntent,
-  enhancePrompt, gpuInfo, imageModels, listAssets, listPersonaLoras, listPersonaProfiles, readiness, trainPersona,
-  uploadAsset, videoModels, wsUrl,
+  enhancePrompt, gpuInfo, imageModels, listAssets, listPersonaLoras, listPersonaProfiles, listProviders, readiness,
+  trainPersona, uploadAsset, videoModels, wsUrl,
 } from '../lib/api';
 import PersonaSelector, { mainImage } from './components/studio/PersonaSelector';
 // V3.2.1: failures arrive typed from the network layer — the UI branches on
@@ -24,6 +25,15 @@ import {
   getAuthToken,
   setLegacyPersonaId,
 } from '../lib/memory/project_memory';
+// PR012 — BROBOND UI 4.0: the cinematic shell. These are presentational
+// only — they render exactly the navigation / identity / health data this
+// file already owns; no FastAPI, Provider, Director or Storyboard code is
+// touched by wiring them in.
+import { Sidebar, type SidebarGroup } from '../components/studio/sidebar';
+import { IdentityBar } from '../components/studio/identity-bar';
+import { StatusDock } from '../components/studio/status-dock';
+import { HeroWorkspace, type HeroWorkspaceScenePreview } from '../components/studio/hero-workspace';
+import { buildStatusDockIndicators } from '../lib/theme/status_mapping';
 import {
   Aperture, ArrowUpRight, AlertTriangle, Bell, Box, ChevronDown, CircleHelp, Clapperboard,
   Clock3, Download, Folder, Gauge, Grid2X2, Image as ImageIcon, Layers3, Library,
@@ -76,6 +86,11 @@ export default function Home() {
   const [gpu, setGpu] = useState<GpuInfo | null>(null);
   const [system, setSystem] = useState<Readiness | null>(null);
   const [assetCount, setAssetCount] = useState<number | null>(null);
+  // PR012 — ETAPA 6: Status Dock inputs. `providers` and `apiOnline` are new
+  // reads of the same untouched endpoints (`/api/v1/providers`,
+  // `readiness()`'s own `.remote` flag) — no new backend surface.
+  const [providers, setProviders] = useState<UniversalProvider[] | null>(null);
+  const [apiOnline, setApiOnline] = useState(false);
   const [greeting, setGreeting] = useState('Welcome');
   // PR004 — the persona pipeline state is owned by Home so the same identity,
   // style, LoRA and wardrobe selection flow into the Image Studio, the Video
@@ -113,8 +128,9 @@ export default function Home() {
   useEffect(() => {
     setGreeting(greetingFor(new Date().getHours()));
     gpuInfo().then(result => { if (result.remote) setGpu(result.data); });
-    readiness().then(result => { if (result.remote) setSystem(result.data); });
+    readiness().then(result => { setApiOnline(result.remote); if (result.remote) setSystem(result.data); });
     listAssets().then(result => { if (result.remote) setAssetCount(result.data.length); });
+    listProviders().then(result => { if (result.remote) setProviders(result.data); });
     listPersonaProfiles().then(result => {
       if (result.remote) setPersonas(result.data);
       setPersonasReady(true);
@@ -175,45 +191,92 @@ export default function Home() {
 
   const moduleTitle = modules.find(m => m.id === active)?.label ?? 'Overview';
   const create = () => { setActive('director'); };
-  const readyChecks = system?.checks ?? {};
+
+  // PR012 — ETAPA 3: the Sidebar Premium groups. CREATE / STUDIO / LIBRARY
+  // exactly as specced; badges are limited to GPU/SQL/AI by the component
+  // itself (`isAllowedBadge`), so anything else passed here is dropped —
+  // GRAPH/V3.2/V3.3/V3.4 no longer render.
+  const sidebarGroups: SidebarGroup[] = [
+    {
+      id: 'create',
+      label: 'Create',
+      items: [
+        { id: 'director', label: 'Director', icon: MessageSquareText, badge: 'AI' },
+        { id: 'storyboard', label: 'Storyboard', icon: Layers3 },
+        { id: 'render', label: 'Render Queue', icon: Film },
+      ],
+    },
+    {
+      id: 'studio',
+      label: 'Studio',
+      items: [
+        { id: 'persona', label: 'Personas', icon: UserRound, badge: 'SQL' },
+        { id: 'image', label: 'Image', icon: ImageIcon },
+        { id: 'video', label: 'Video', icon: Clapperboard, badge: 'GPU' },
+        { id: 'campaigns', label: 'Campaigns', icon: Megaphone },
+      ],
+    },
+    {
+      id: 'library',
+      label: 'Library',
+      items: [
+        { id: 'assets', label: 'Assets', icon: Library },
+        { id: 'knowledge', label: 'Knowledge', icon: Network },
+        { id: 'continuity', label: 'Continuity', icon: Film },
+        { id: 'quality', label: 'Quality', icon: Gauge },
+      ],
+    },
+  ];
+
+  const sidebarRoutes: Record<string, string> = {
+    render: '/studio/render',
+    campaigns: '/studio/campaigns',
+    knowledge: '/studio/knowledge',
+    continuity: '/studio/continuity',
+    quality: '/studio/quality',
+  };
+
+  const handleSidebarNavigate = (id: string) => {
+    const route = sidebarRoutes[id];
+    if (route) { router.push(route); return; }
+    setActive(id);
+  };
+
+  // PR012 — ETAPA 6: the Status Dock replaces the old sidebar "Readiness"
+  // block. `buildStatusDockIndicators` is a pure mapping over the exact
+  // same `readiness()` / `gpuInfo()` / `listProviders()` reads above.
+  const statusDockIndicators = buildStatusDockIndicators({ readiness: system, gpu, providers, apiOnline });
 
   return <main className="app-shell">
-    <aside className={`sidebar ${sidebar ? '' : 'collapsed'}`}>
-      <div className="brand"><div className="brand-mark"><Aperture size={19} /></div><span>BROBOND</span><small>AI STUDIO</small></div>
-      <div className="workspace-select"><div className="workspace-avatar">B</div><div><strong>Personal workspace</strong><span>{API_URL ? 'Remote API' : 'Local instance'}</span></div><ChevronDown size={14} /></div>
-      <div className="nav-label">WORKSPACE</div>
-      <nav>{modules.filter(item => ['director', 'dashboard', 'storyboard'].includes(item.id)).map(item => { const Icon = item.icon; return <button key={item.id} className={active === item.id ? 'selected' : ''} onClick={() => setActive(item.id)}><Icon size={18} /><span>{item.label}</span>{item.id === 'director' && <b className="nav-badge">CORE</b>}</button>; })}</nav>
-      {/* PR004 (ETAPA 7): the Studio group — Personas, Image, Video and
-          Projects — is the persona-driven flow; "Projects" is the assets
-          library where every project's creations live. */}
-      <div className="nav-label studio-label">STUDIO</div>
-      <nav>{[{ id: 'persona', label: 'Personas', icon: UserRound }, { id: 'image', label: 'Image', icon: ImageIcon }, { id: 'video', label: 'Video', icon: Clapperboard }, { id: 'assets', label: 'Projects', icon: Folder }].map(item => { const Icon = item.icon; return <button key={item.id} className={active === item.id ? 'selected' : ''} onClick={() => setActive(item.id)}><Icon size={18} /><span>{item.label}</span>{item.id === 'persona' && <b className="nav-badge">IDENTITY</b>}</button>; })}</nav>
-      <div className="nav-label library-label">LIBRARY</div>
-      <nav><button onClick={() => router.push('/studio/personas')}><UserRound size={18} /><span>Persona profiles</span><b className="nav-badge">SQL</b></button><button onClick={() => router.push('/studio/knowledge')}><Network size={18} /><span>Knowledge</span><b className="nav-badge">GRAPH</b></button><button onClick={() => router.push('/studio/continuity')}><Film size={18} /><span>Continuity</span><b className="nav-badge">V3.2</b></button><button onClick={() => router.push('/studio/campaigns')}><Megaphone size={18} /><span>Campaigns</span><b className="nav-badge">V3.3</b></button><button onClick={() => router.push('/studio/quality')}><Gauge size={18} /><span>Quality</span><b className="nav-badge">V3.4</b></button><button onClick={() => setActive('assets')}><Library size={18} /><span>All assets</span></button></nav>
-      <div className="sidebar-bottom">
-        <div className="gpu-card">
-          <div className="gpu-head"><span><span className={`status-dot ${gpu?.available ? '' : 'off'}`} /> {gpu === null ? 'Checking…' : gpu.available ? 'GPU ready' : 'No GPU'}</span><MoreHorizontal size={16} /></div>
-          <strong>{gpu === null ? 'Reading system' : gpu.available ? 'CUDA device' : (gpu.backend || 'cpu').toUpperCase()}</strong>
-          <div className="gpu-meter"><i style={{ width: gpu?.available ? '100%' : '0%' }} /></div>
-          <small>{gpu === null ? 'querying /api/v1/system/gpu' : (gpu.message ?? (gpu.available ? 'inference capable' : 'inference disabled'))}</small>
-        </div>
-        <div className="gpu-card">
-          <div className="gpu-head"><span>Readiness</span><span>{system ? `${Object.values(readyChecks).filter(Boolean).length}/${Object.keys(readyChecks).length}` : '—'}</span></div>
-          <div className="readiness-list">
-            {system === null ? <small>querying…</small> : Object.entries(readyChecks).map(([name, okState]) => (
-              <small key={name} className={okState ? 'ok' : 'missing'}>{name}{okState ? '' : ' · missing'}</small>
-            ))}
+    {/* PR012 — ETAPA 3: the cinematic Sidebar Premium. Same navigation
+        surface as before (embedded views via setActive, full routes via
+        router.push) — only the visual organization and the badge
+        allow-list change. */}
+    <Sidebar
+      groups={sidebarGroups}
+      activeId={active}
+      onNavigate={handleSidebarNavigate}
+      collapsed={!sidebar}
+      brand={{ name: 'BROBOND', sub: API_URL ? 'Remote API' : 'Local instance' }}
+      onBrandClick={() => setActive('dashboard')}
+      footer={
+        <>
+          <div className="gpu-card">
+            <div className="gpu-head"><span><span className={`status-dot ${gpu?.available ? '' : 'off'}`} /> {gpu === null ? 'Checking…' : gpu.available ? 'GPU ready' : 'No GPU'}</span><MoreHorizontal size={16} /></div>
+            <strong>{gpu === null ? 'Reading system' : gpu.available ? 'CUDA device' : (gpu.backend || 'cpu').toUpperCase()}</strong>
+            <div className="gpu-meter"><i style={{ width: gpu?.available ? '100%' : '0%' }} /></div>
+            <small>{gpu === null ? 'querying /api/v1/system/gpu' : (gpu.message ?? (gpu.available ? 'inference capable' : 'inference disabled'))}</small>
           </div>
-        </div>
-        <button className="settings" onClick={() => setActive('assets')}><Settings2 size={17} /><span>Settings</span></button>
-        <button className="profile" onClick={() => setAuthOpen(true)}><div className="avatar">{user ? user.name.slice(0, 2).toUpperCase() : '—'}</div><span><strong>{user?.name ?? 'Not signed in'}</strong><small>{user ? user.email : 'Sign in to sync'}</small></span><MoreHorizontal size={16} /></button>
-      </div>
-    </aside>
+          <button className="settings" onClick={() => setActive('assets')}><Settings2 size={17} /><span>Settings</span></button>
+          <button className="profile" onClick={() => setAuthOpen(true)}><div className="avatar">{user ? user.name.slice(0, 2).toUpperCase() : '—'}</div><span><strong>{user?.name ?? 'Not signed in'}</strong><small>{user ? user.email : 'Sign in to sync'}</small></span><MoreHorizontal size={16} /></button>
+        </>
+      }
+    />
 
     <section className="main-area">
-      <header className="topbar"><button className="icon-button mobile-menu" onClick={() => setSidebar(!sidebar)}><Menu size={19} /></button><div className="crumb"><span>Workspace</span><span>/</span><strong>{moduleTitle}</strong></div>{activePersona && <div className="active-identity" title="Active identity — applied to every generation in this workspace"><span className="active-identity-avatar">{mainImage(activePersona)?.url ? <img src={mainImage(activePersona)!.url!} alt={activePersona.name} /> : <UserRound size={14} />}</span><span className="active-identity-meta"><strong>{activePersona.name}</strong><small>{style || activePersona.default_style || 'persona identity'}</small></span></div>}<div className="top-actions"><div className="search"><Search size={16} /><input placeholder="Search projects..." /></div><button className="icon-button"><CircleHelp size={18} /></button><button className="icon-button notification"><Bell size={18} /><i /></button><button className="new-button" onClick={create}><Plus size={17} /> New creation</button></div></header>
+      <header className="topbar"><button className="icon-button mobile-menu" onClick={() => setSidebar(!sidebar)}><Menu size={19} /></button><div className="crumb"><span>Workspace</span><span>/</span><strong>{moduleTitle}</strong></div><div className="top-actions"><div className="search"><Search size={16} /><input placeholder="Search projects..." /></div><button className="icon-button"><CircleHelp size={18} /></button><button className="icon-button notification"><Bell size={18} /><i /></button><button className="new-button" onClick={create}><Plus size={17} /> New creation</button></div></header>
       <div className="content">
-        {active === 'director' && <DirectorStudio onRenderImage={text => { setPrompt(text); setActive('image'); setGenerated(false); }} />}
+        {active === 'director' && <DirectorStudio activePersona={activePersona} style={style} selectedLora={selectedLora} loras={loras} onRenderImage={text => { setPrompt(text); setActive('image'); setGenerated(false); }} />}
         {active === 'dashboard' && <Dashboard onNavigate={setActive} onCreate={create} user={user} greeting={greeting} assetCount={assetCount} system={system} />}
         {active === 'image' && <ImageStudio prompt={prompt} setPrompt={setPrompt} generated={generated} setGenerated={setGenerated} personas={personas} activePersona={activePersona} onSelectPersona={selectPersona} style={style} setStyle={setStyle} loras={loras} selectedLora={selectedLora} setSelectedLora={setSelectedLora} selectedWardrobe={selectedWardrobe} onToggleWardrobe={toggleWardrobe} aspectRatio={aspectRatio} setAspectRatio={setAspectRatio} duration={duration} setDuration={setDuration} cameraPreset={cameraPreset} setCameraPreset={setCameraPreset} />}
         {active === 'video' && <VideoStudio personas={personas} activePersona={activePersona} onSelectPersona={selectPersona} style={style} setStyle={setStyle} loras={loras} selectedLora={selectedLora} setSelectedLora={setSelectedLora} selectedWardrobe={selectedWardrobe} onToggleWardrobe={toggleWardrobe} aspectRatio={aspectRatio} setAspectRatio={setAspectRatio} duration={duration} setDuration={setDuration} cameraPreset={cameraPreset} setCameraPreset={setCameraPreset} />}
@@ -221,6 +284,9 @@ export default function Home() {
         {active === 'storyboard' && <Storyboard />}
         {active === 'assets' && <Assets onCounted={setAssetCount} />}
       </div>
+      {/* PR012 — ETAPA 6: Status Dock. Replaces the old sidebar "Readiness"
+          list with a single bottom bar (never taller than 52px). */}
+      <StatusDock indicators={statusDockIndicators} />
     </section>
     {authOpen && <AuthModal user={user} onAuthenticated={setUser} onClose={() => setAuthOpen(false)} />}
   </main>;
@@ -234,9 +300,23 @@ export default function Home() {
  * the product, and it answers with direction — concept, logline, script, beats,
  * music, pacing, duration — never with a prompt string.
  */
-function DirectorStudio({ onRenderImage }: { onRenderImage: (prompt: string) => void }) {
+type DirectorStudioProps = {
+  onRenderImage: (prompt: string) => void;
+  activePersona: PersonaProfile | null;
+  style: string;
+  selectedLora: string;
+  loras: LoraVersion[];
+};
+
+function DirectorStudio({ onRenderImage, activePersona, style, selectedLora, loras }: DirectorStudioProps) {
   const [intent, setIntent] = useState('');
-  const [sceneCount, setSceneCount] = useState<number | null>(null);
+  // 0 means "auto" — the director clamps to 4–8 scenes, exactly like the
+  // previous chip row (`null` scene_count). HeroWorkspace's numeric field
+  // (ETAPA 4) needs a plain number, so 0 is the sentinel translated back to
+  // `null` right before the (unchanged) `directIntent` call below.
+  const [sceneCount, setSceneCount] = useState(0);
+  const [language, setLanguage] = useState('pt-BR');
+  const [platform, setPlatform] = useState('instagram');
   const [brief, setBrief] = useState<DirectorBrief | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | undefined>();
@@ -246,7 +326,7 @@ function DirectorStudio({ onRenderImage }: { onRenderImage: (prompt: string) => 
   const direct = async () => {
     if (!intent.trim()) return;
     setLoading(true); setError(undefined); setErrorType(undefined);
-    const result = await directIntent({ intent: intent.trim(), scene_count: sceneCount });
+    const result = await directIntent({ intent: intent.trim(), scene_count: sceneCount || null });
     if (result.remote) setBrief(result.data); else setBrief(null);
     setError(result.error); setStatus(result.status); setErrorType(result.errorType);
     setLoading(false);
@@ -259,62 +339,87 @@ function DirectorStudio({ onRenderImage }: { onRenderImage: (prompt: string) => 
     'A product commercial for shoes',
   ];
 
+  // PR012 — ETAPA 4: the Live Storyboard Preview reads straight off the
+  // same `DirectorBrief.beats` this file already gets from `directIntent`
+  // (untouched contract) — one preview "scene" per beat, exactly the
+  // cinematic-placeholder behaviour the spec asks for before anything
+  // renders.
+  const scenePreviews: HeroWorkspaceScenePreview[] = (brief?.beats ?? []).map(beat => ({
+    id: `beat-${beat.number}`,
+    sceneNumber: beat.number,
+    title: beat.objective,
+    mood: beat.emotion,
+  }));
+
+  const loraName = loras.find(item => item.asset_id === selectedLora)?.name ?? null;
+
   return <>
     <PageHeader eyebrow="BROBOND CORE · DIRECTOR" title="Say what you want to exist" description="Describe the intention in plain language. The director answers with concept, script, scenes, cameras, music and duration — you never write a technical prompt.">
       <button className="primary-button" onClick={direct} disabled={loading || !intent.trim()}>{loading ? 'Directing…' : <><Sparkles size={16} /> Direct it</>}</button>
     </PageHeader>
 
-    <div className="director-layout">
-      <div className="control-panel">
-        <div className="panel-heading"><span>Your intention</span><span className="muted">PT or EN</span></div>
-        <textarea value={intent} onChange={event => setIntent(event.target.value)} placeholder="Quero vender uma camiseta artesanal feita à mão…" />
-        <div className="prompt-meta"><span>{intent.length} / 1,000</span><button onClick={() => setIntent('')}>Clear</button></div>
-        <label>Scenes <span>Optional — the director clamps to 4–8</span>
-          <div className="chip-row">
-            {[null, 4, 6, 8].map(value => <Chip key={String(value)} active={sceneCount === value} onClick={() => setSceneCount(value)}>{value ?? 'auto'}</Chip>)}
-          </div>
-        </label>
-        <div className="example-row">
-          {examples.map(example => <button key={example} className="example-chip" onClick={() => setIntent(example)}>{example}</button>)}
-        </div>
-        <Notice error={error} status={status} errorType={errorType} />
-      </div>
+    {/* PR012 — ETAPA 5: the Identity Bar, always visible above the
+        workspace, showing exactly what this generation will use. */}
+    <IdentityBar
+      avatarUrl={(activePersona ? mainImage(activePersona)?.url : null) ?? null}
+      personaName={activePersona?.name ?? null}
+      style={style || activePersona?.default_style || null}
+      lora={loraName}
+      status="ready"
+    />
 
-      <div className="brief-canvas">
-        {!brief ? <div className="empty-canvas">
-          <div className="empty-icon"><MessageSquareText size={23} /></div>
-          <h3>The director is listening</h3>
-          <p>State an intention and you will get a brief,<br />not a prompt field.</p>
-          {isUnreachable({ errorType }) && <span className="muted">The API did not answer — nothing is being faked here.</span>}
-        </div> : <>
-          {brief.clarification && <div className="clarification"><MessageSquareText size={15} /><div><strong>The director needs one answer</strong><p>{brief.clarification}</p></div></div>}
-          <div className="brief-head">
-            <div><span className="brief-format">{brief.format}</span><h2>{brief.concept}</h2><p className="brief-logline">{brief.logline}</p></div>
-            <div className="brief-facts">
-              <span><Timer size={13} /> {brief.duration_seconds}s</span>
-              <span><Film size={13} /> {brief.scene_count} scenes</span>
-              <span><Layers3 size={13} /> {brief.style_hint}</span>
-            </div>
-          </div>
-          <div className="brief-body">
-            <div className="brief-block"><h4>Script</h4><p>{brief.script}</p></div>
-            <div className="brief-facts-row">
-              <span><Music4 size={13} /> {brief.music}</span>
-              <span><Gauge size={13} /> {brief.pacing}</span>
-              <span><Move3d size={13} /> {brief.camera_language}</span>
-              <span><Sparkles size={13} /> {brief.lighting_language}</span>
-            </div>
-            <div className="beat-list">
-              {brief.beats.map(beat => <div className="beat" key={beat.number}>
-                <span className="beat-number">{String(beat.number).padStart(2, '0')}</span>
-                <div><strong>{beat.objective}</strong><p>{beat.camera} · {beat.lighting}</p><small>{beat.emotion} · {beat.duration_seconds}s{beat.shot_code ? ` · ${beat.shot_code}` : ''}</small></div>
-              </div>)}
-            </div>
-            <button className="secondary-button full" onClick={() => onRenderImage(brief.logline)}>Take this to the image studio <ArrowUpRight size={14} /></button>
-          </div>
-        </>}
-      </div>
+    <div className="example-row">
+      {examples.map(example => <button key={example} className="example-chip" onClick={() => setIntent(example)}>{example}</button>)}
     </div>
+
+    {/* PR012 — ETAPA 4: the Hero Workspace — Creative Brief (left) and
+        Live Storyboard Preview (right), replacing the previous
+        control-panel / brief-canvas pair. `direct()` is the exact same
+        `directIntent()` call as before. */}
+    <HeroWorkspace
+      brief={intent}
+      onBriefChange={setIntent}
+      sceneCount={sceneCount}
+      onSceneCountChange={setSceneCount}
+      language={language}
+      onLanguageChange={setLanguage}
+      platform={platform}
+      onPlatformChange={setPlatform}
+      onSubmit={direct}
+      submitting={loading}
+      scenes={scenePreviews}
+    />
+
+    <Notice error={error} status={status} errorType={errorType} />
+    {isUnreachable({ errorType }) && !brief && <p className="muted">The API did not answer — nothing is being faked here.</p>}
+
+    {brief && <div className="brief-canvas">
+      {brief.clarification && <div className="clarification"><MessageSquareText size={15} /><div><strong>The director needs one answer</strong><p>{brief.clarification}</p></div></div>}
+      <div className="brief-head">
+        <div><span className="brief-format">{brief.format}</span><h2>{brief.concept}</h2><p className="brief-logline">{brief.logline}</p></div>
+        <div className="brief-facts">
+          <span><Timer size={13} /> {brief.duration_seconds}s</span>
+          <span><Film size={13} /> {brief.scene_count} scenes</span>
+          <span><Layers3 size={13} /> {brief.style_hint}</span>
+        </div>
+      </div>
+      <div className="brief-body">
+        <div className="brief-block"><h4>Script</h4><p>{brief.script}</p></div>
+        <div className="brief-facts-row">
+          <span><Music4 size={13} /> {brief.music}</span>
+          <span><Gauge size={13} /> {brief.pacing}</span>
+          <span><Move3d size={13} /> {brief.camera_language}</span>
+          <span><Sparkles size={13} /> {brief.lighting_language}</span>
+        </div>
+        <div className="beat-list">
+          {brief.beats.map(beat => <div className="beat" key={beat.number}>
+            <span className="beat-number">{String(beat.number).padStart(2, '0')}</span>
+            <div><strong>{beat.objective}</strong><p>{beat.camera} · {beat.lighting}</p><small>{beat.emotion} · {beat.duration_seconds}s{beat.shot_code ? ` · ${beat.shot_code}` : ''}</small></div>
+          </div>)}
+        </div>
+        <button className="secondary-button full" onClick={() => onRenderImage(brief.logline)}>Take this to the image studio <ArrowUpRight size={14} /></button>
+      </div>
+    </div>}
   </>;
 }
 

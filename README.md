@@ -14,6 +14,17 @@ The product constitution lives in `SYSTEM_PROMPT.md`, `ARCHITECTURE.md`, `STYLE_
 
 These files are versioned design knowledge today. The next Core milestone is migrating them into PostgreSQL-backed, workspace-scoped records while preserving these documents as seed and governance sources.
 
+## UI 4.0 — Cinematic Design System (PR012)
+
+The frontend runs on a dedicated design system now: fixed 248px Sidebar
+Premium (CREATE / STUDIO / LIBRARY, badges limited to GPU/SQL/AI), a Hero
+Workspace (Creative Brief + Live Storyboard Preview) and an Identity Bar
+above the Director, cinematic Storyboard Cards, and a 52px-max bottom
+Status Dock for API/Database/Storage/GPU/FLUX/WAN health — replacing the
+old lateral "Readiness" list. Tokens live in `lib/theme/tokens.ts`; see
+`docs/UI_4.0.md` for the full spec. **UI/UX only** — no FastAPI route,
+Provider, Director/Storyboard/Quality engine or database contract changed.
+
 ## Current slice
 
 A Next.js studio whose front door is the **Director**: the user states an intention in plain
