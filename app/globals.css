@@ -712,7 +712,7 @@
 .bb-login-hero-shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(7,7,7,.62) 0,transparent 24%,transparent 50%,rgba(0,0,0,.86) 100%)}
 .bb-login-hero-topbar{position:absolute;top:0;left:0;right:0;z-index:2;margin:0;padding:20px 56px;font-size:10px;font-weight:600;letter-spacing:.34em;text-transform:uppercase;color:rgba(245,245,245,.52);text-align:center;border-bottom:1px solid rgba(255,255,255,.06);background:rgba(7,7,7,.28);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
 .bb-login-hero-content{position:relative;z-index:1;padding:0 56px 26px;animation:bb-login-rise .3s var(--bb-motion-ease) both;animation-delay:.08s}
-.bb-login-hero-logo{height:44px;width:auto;object-fit:contain;object-position:left bottom;margin-bottom:20px;filter:drop-shadow(0 6px 22px rgba(0,0,0,.6))}
+.bb-login-hero-logo{height:56px;width:auto;object-fit:contain;object-position:left bottom;margin-bottom:22px;background:#fff;border-radius:11px;padding:8px 18px;box-shadow:0 10px 34px rgba(0,0,0,.5)}
 .bb-login-hero-eyebrow{display:block;font-size:11px;font-weight:700;letter-spacing:.42em;text-transform:uppercase;color:var(--bb-l-gold);margin-bottom:14px}
 .bb-login-hero-title{margin:0 0 14px;font-size:44px;line-height:1.1;font-weight:700;letter-spacing:-.02em;color:#fff;max-width:520px}
 .bb-login-hero-subtitle{margin:0;font-size:14.5px;line-height:1.65;color:var(--bb-l-secondary);max-width:480px}
@@ -728,7 +728,7 @@
 .bb-login-side{flex:1;min-width:0;display:flex;justify-content:center;overflow-y:auto;padding:56px 44px;position:relative}
 .bb-login-side:before{content:'';position:absolute;inset:0;background:radial-gradient(60% 46% at 50% 30%,rgba(200,138,42,.055),transparent 70%);pointer-events:none}
 .bb-login-card{position:relative;width:470px;max-width:100%;margin:auto;background:rgba(17,17,17,.55);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:1px solid var(--bb-l-line);border-radius:24px;padding:42px 40px 26px;box-shadow:0 34px 90px rgba(0,0,0,.55),0 0 70px rgba(200,138,42,.07);animation:bb-login-rise .3s var(--bb-motion-ease) both;animation-delay:.14s}
-.bb-login-card-logo{height:32px;width:auto;object-fit:contain;margin:0 auto 24px;display:block;filter:drop-shadow(0 6px 20px rgba(0,0,0,.6))}
+.bb-login-card-logo{height:42px;width:auto;object-fit:contain;margin:0 auto 26px;display:block;background:#fff;border-radius:9px;padding:6px 15px;box-shadow:0 8px 26px rgba(0,0,0,.45)}
 .bb-login-card h2{margin:0 0 8px;font-size:25px;font-weight:700;letter-spacing:-.02em;color:#fff;text-align:center}
 .bb-login-card-sub{margin:0 0 26px;text-align:center;font-size:13px;line-height:1.6;color:var(--bb-l-secondary)}
 

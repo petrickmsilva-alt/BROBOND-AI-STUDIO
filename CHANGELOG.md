@@ -6,6 +6,23 @@ versões de produto do `ROADMAP.md`.
 
 ---
 
+## [Unreleased] — PR009.6.2: ASSETS OFICIAIS DA MARCA
+
+Os stand-ins de IA saem de cena: a fotografia oficial do fundador ao
+lado da RAM 2026 (enviada pela marca em `brand/` na main) entra como
+`public/brand/login-hero.jpg` em resolução integral (1312×1199,
+conversão PNG→JPG q90), e o logo oficial colorido entra como
+`public/brand/brobond-logo.png` — arquivo original byte a byte, sem
+qualquer retoque em tipografia, proporções ou cores. Como o logo é
+desenhado para fundo claro (54% dos traços em marrom-escuro — contraste
+de ~1.6:1 sobre o #070707 da tela), as duas exibições (hero e card)
+ganham uma placa branca arredondada discreta, o padrão de UI escura
+para logos claros — ajuste exclusivamente visual em duas regras CSS.
+Nenhuma mudança de componente, layout, rota ou autenticação. Os
+originais seguem arquivados em `brand/` na main.
+
+---
+
 ## [Unreleased] — PR009.6.1: HERO SEM FILME STAND-IN
 
 O filme do hero (montado a partir de frames de IA) é removido em linha
