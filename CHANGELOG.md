@@ -6,6 +6,63 @@ versões de produto do `ROADMAP.md`.
 
 ---
 
+## [Unreleased] — PR009.6.1: PIXEL PERFECT LOGIN
+
+A tela de login passa a reproduzir **exatamente** o mockup aprovado
+(`brand/3f12c5f4-5de0-46ea-86db-9ab89777672b.png`) — nenhuma
+reinterpretação, nenhuma proposta nova. Trabalho 100% de UI.
+
+**Estrutura.** Viewport `100vw × 100vh`, grid fixo `58% hero / 42%
+login`, sem margens externas. A coluna do hero é um grid de três linhas
+(barra superior · bloco de marca · rodapé), o que torna impossível os
+cards sobreporem o texto.
+
+**Hero (58%).** `login-hero.jpg` ocupa a coluna inteira em
+`object-fit: cover`. O enquadramento (`object-position: 57% 2%`) foi
+resolvido contra o próprio mockup — o sol e a linha da RAM batem pixel a
+pixel, e o rosto do fundador nunca é cortado. Pilha de overlays: preto
+42% → bloom quente sobre o pôr do sol → gradiente radial dourado vindo
+do canto superior direito → vinheta nas bordas → sombra inferior.
+A barra superior traz `IA • CINEMA • MARCA • IMPACTO` à esquerda e
+`CRIATIVIDADE VESTE O FUTURO` à direita, com `letter-spacing: 6px`.
+Abaixo, o logo Brobond a 420px, o título em duas linhas (branca +
+dourada) e o subtítulo. No rodapé, cinco cards iguais (110×88,
+`rgba(10,10,10,.38)`, blur 16px, borda dourada 10%, ícone dourado,
+título branco, legenda cinza) e a tagline `MAIS QUE ESTILO, UMA VISÃO`.
+
+**Login (42%).** Fundo preto absoluto `#070707` e card perfeitamente
+centralizado nos dois eixos: 470px, radius 24px, blur 24px,
+`rgba(17,17,17,.55)`, borda `rgba(255,255,255,.08)`, padding 40px.
+Ordem exata do mockup: PT/EN → logo 220px → "Bem-vindo de volta" →
+subtítulo → Email → Senha → Lembrar-me + Esqueceu senha → botão dourado
+(`#C88A2A`, hover `#D89A36`, 56px, radius 14px, glow discreto) →
+separador → Google → Criar conta → `Brobond Studio v4.0.1` +
+`● Sistema Online`. Tipografia Inter: 48 hero / 24 login / 16 texto /
+12 caption.
+
+**Correções pedidas.** Logo do hero aumentado para 420px; ícones
+sobrepostos removidos (um único ícone por card); os cinco cards
+alinhados numa linha; overlay da foto reduzido de 55% para 42%;
+luminosidade do pôr do sol aumentada; card de login centralizado; foto
+oficial sem corte no rosto.
+
+**Assets.** `public/brand/brobond-logo-light.png` é derivado do logo
+oficial (`brobond-logo.png`) apenas por remoção do fundo branco e
+inversão dos traços escuros para branco — tipografia, proporções e o
+dourado da marca intactos. Isso elimina a placa branca que o PR009.6.2
+precisou usar sobre fundo escuro, exatamente como no mockup.
+
+**Nada fora da UI mudou.** Backend, JWT, hooks, API e rotas seguem
+intocados (`git diff` vazio em `backend/`, `lib/` e `app/page.tsx`);
+não existe rota `/login` — a tela continua sendo o overlay que o Home
+já abria. `LoginScreen` manteve `authenticate()`, o fallback local, o
+"Lembrar de mim" (30 dias) e o logout linha a linha; só a marcação
+mudou. Contrato novo em `components/studio/login/login-layout.test.tsx`
+(colunas, pilha de overlays, cinco cards irmãos, os doze blocos do card
+em ordem). Suíte: 323 testes verdes, `next build` limpo.
+
+---
+
 ## [Unreleased] — PR009.6.2: ASSETS OFICIAIS DA MARCA
 
 Os stand-ins de IA saem de cena: a fotografia oficial do fundador ao

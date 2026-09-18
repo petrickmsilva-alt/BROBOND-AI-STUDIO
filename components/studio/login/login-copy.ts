@@ -1,23 +1,39 @@
 /**
  * PR009.6 — Premium Login Experience: the login screen's bilingual copy.
  *
+ * PR009.6.1 (Pixel Perfect Login) replaces the previous interpretation with
+ * the approved mockup, verbatim: the hero top bar carries the brand line on
+ * the left and "CRIATIVIDADE VESTE O FUTURO" on the right, the five studio
+ * pillars carry the short uppercase captions of the mockup (CONCEITO,
+ * PLANEJAMENTO, GERAÇÃO, BIBLIOTECA, APROVAÇÃO), and the card reads exactly
+ * as designed ("E-mail ou usuário", "ou continue com", "Ainda não tem uma
+ * conta? Criar conta").
+ *
  * The studio shell speaks English, but the login experience is the brand's
  * front door and ships in Portuguese by default, with a discrete PT/EN
- * switch in the top-right corner. This module is pure data: one key per
- * screen string, PT and EN in lockstep — the companion contract test
- * asserts the two dictionaries never drift and that the exact brand
- * strings (título, subtítulo, botões, rodapé) stay verbatim.
+ * switch in the card's top-right corner. This module is pure data: one key
+ * per screen string, PT and EN in lockstep — the companion contract test
+ * asserts the two dictionaries never drift and that the exact brand strings
+ * (título, subtítulo, botões, rodapé) stay verbatim.
  */
 
 export type LoginLanguage = 'pt' | 'en';
 
 export type LoginCopy = {
-  /** Discreet top bar over the hero: "IA • CINEMA • MARCA • IMPACTO". */
+  /** Discreet top bar over the hero, left: "IA • CINEMA • MARCA • IMPACTO". */
   topBar: string;
-  /** Brand line under the logo. */
+  /** Same bar, right: "CRIATIVIDADE VESTE O FUTURO". */
+  topBarRight: string;
+  /** Brand line under the logo (kept for the brand lockup contract). */
   eyebrow: string;
   title: string;
+  /** The hero title, split exactly as the mockup sets it: white line… */
+  titleLead: string;
+  /** …then the gold line. `titleLead + ' ' + titleAccent === title`. */
+  titleAccent: string;
   subtitle: string;
+  /** Hero footer accent under the five pillars. */
+  tagline: string;
   cardTitle: string;
   cardSubtitle: string;
   email: string;
@@ -52,23 +68,28 @@ export type LoginCopy = {
   online: string;
   offline: string;
   closeLabel: string;
+  languageLabel: string;
   heroAlt: string;
-  /** The five studio pillars shown on the hero (grid / carousel). */
+  /** The five studio pillars shown on the hero footer (five equal cards). */
   features: Array<{ title: string; subtitle: string }>;
 };
 
 export const LOGIN_COPY: Record<LoginLanguage, LoginCopy> = {
   pt: {
     topBar: 'IA • CINEMA • MARCA • IMPACTO',
+    topBarRight: 'CRIATIVIDADE VESTE O FUTURO',
     eyebrow: 'BROBOND WEAR',
     title: 'Transforme ideias em grandes campanhas.',
+    titleLead: 'Transforme ideias em',
+    titleAccent: 'grandes campanhas.',
     subtitle: 'O estúdio de IA da Brobond para criação, produção e gestão de conteúdo visual e audiovisual de alto impacto.',
+    tagline: 'MAIS QUE ESTILO, UMA VISÃO',
     cardTitle: 'Bem-vindo de volta',
     cardSubtitle: 'Entre no seu estúdio e continue criando o extraordinário.',
     email: 'Email',
-    emailPlaceholder: 'seu@email.com',
+    emailPlaceholder: 'E-mail ou usuário',
     password: 'Senha',
-    passwordPlaceholder: 'Sua senha',
+    passwordPlaceholder: 'Senha',
     showPassword: 'Mostrar senha',
     hidePassword: 'Esconder senha',
     remember: 'Lembrar de mim',
@@ -76,7 +97,7 @@ export const LOGIN_COPY: Record<LoginLanguage, LoginCopy> = {
     forgot: 'Esqueceu sua senha?',
     forgotNotice: 'A recuperação de senha chega em breve. Por enquanto, entre com seu email e senha.',
     signIn: 'Entrar no Brobond Studio',
-    orDivider: 'ou',
+    orDivider: 'ou continue com',
     google: 'Entrar com Google',
     googleNotice: 'Login com Google ainda não está configurado neste ambiente.',
     noAccount: 'Ainda não tem uma conta?',
@@ -97,26 +118,31 @@ export const LOGIN_COPY: Record<LoginLanguage, LoginCopy> = {
     online: 'Sistema Online',
     offline: 'Sistema Offline',
     closeLabel: 'Fechar',
+    languageLabel: 'Idioma',
     heroAlt: 'Fundador da Brobond ao lado da RAM 2026',
     features: [
-      { title: 'Diretor IA', subtitle: 'Direção completa a partir de um briefing.' },
-      { title: 'Storyboard', subtitle: 'Cenas numeradas prontas para produção.' },
-      { title: 'Imagem & Vídeo', subtitle: 'Geração cinematográfica de alta qualidade.' },
-      { title: 'Assets', subtitle: 'Biblioteca centralizada do projeto.' },
-      { title: 'Quality', subtitle: 'Controle de qualidade automatizado.' },
+      { title: 'Diretor IA', subtitle: 'CONCEITO' },
+      { title: 'Storyboard', subtitle: 'PLANEJAMENTO' },
+      { title: 'Imagem & Vídeo', subtitle: 'GERAÇÃO' },
+      { title: 'Assets', subtitle: 'BIBLIOTECA' },
+      { title: 'Quality', subtitle: 'APROVAÇÃO' },
     ],
   },
   en: {
     topBar: 'AI • CINEMA • BRAND • IMPACT',
+    topBarRight: 'CREATIVITY WEARS THE FUTURE',
     eyebrow: 'BROBOND WEAR',
     title: 'Turn ideas into great campaigns.',
+    titleLead: 'Turn ideas into',
+    titleAccent: 'great campaigns.',
     subtitle: "Brobond's AI studio for creating, producing and managing high-impact visual and audiovisual content.",
+    tagline: 'MORE THAN STYLE, A VISION',
     cardTitle: 'Welcome back',
     cardSubtitle: 'Enter your studio and keep creating the extraordinary.',
     email: 'Email',
-    emailPlaceholder: 'you@email.com',
+    emailPlaceholder: 'E-mail or username',
     password: 'Password',
-    passwordPlaceholder: 'Your password',
+    passwordPlaceholder: 'Password',
     showPassword: 'Show password',
     hidePassword: 'Hide password',
     remember: 'Remember me',
@@ -124,7 +150,7 @@ export const LOGIN_COPY: Record<LoginLanguage, LoginCopy> = {
     forgot: 'Forgot your password?',
     forgotNotice: 'Password recovery is coming soon. For now, sign in with your email and password.',
     signIn: 'Sign in to Brobond Studio',
-    orDivider: 'or',
+    orDivider: 'or continue with',
     google: 'Sign in with Google',
     googleNotice: 'Google sign-in is not configured in this environment yet.',
     noAccount: 'No account yet?',
@@ -145,13 +171,14 @@ export const LOGIN_COPY: Record<LoginLanguage, LoginCopy> = {
     online: 'System Online',
     offline: 'System Offline',
     closeLabel: 'Close',
+    languageLabel: 'Language',
     heroAlt: 'Brobond founder beside the RAM 2026',
     features: [
-      { title: 'AI Director', subtitle: 'Full direction from a single brief.' },
-      { title: 'Storyboard', subtitle: 'Numbered scenes ready for production.' },
-      { title: 'Image & Video', subtitle: 'Cinematic generation in high quality.' },
-      { title: 'Assets', subtitle: 'Centralized project library.' },
-      { title: 'Quality', subtitle: 'Automated quality control.' },
+      { title: 'AI Director', subtitle: 'CONCEPT' },
+      { title: 'Storyboard', subtitle: 'PLANNING' },
+      { title: 'Image & Video', subtitle: 'GENERATION' },
+      { title: 'Assets', subtitle: 'LIBRARY' },
+      { title: 'Quality', subtitle: 'APPROVAL' },
     ],
   },
 };

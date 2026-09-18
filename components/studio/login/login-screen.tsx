@@ -2,11 +2,12 @@
 
 /**
  * PR009.6 — Premium Login Experience.
+ * PR009.6.1 — Pixel Perfect Login.
  *
- * Replaces the old auth modal with a fullscreen, two-column overlay: the
- * founder hero (official photograph, or the brand film on powerful
- * desktops) on the left, the glassmorphism card on the right, and a
- * discrete PT/EN switch in the top-right corner. The authentication logic
+ * A fullscreen 100vw × 100vh surface split by a fixed grid: the founder
+ * hero (the official photograph) at 58% and the glass login card at 42%,
+ * with no outer margins. The PT/EN switch now lives inside the card, where
+ * the approved mockup puts it. The authentication logic
  * below is the logic the modal owned, unchanged: the same `authenticate()`
  * call against the same endpoints, the same local-session fallback when
  * the API is unreachable, the same sign-out. Nothing in lib/api's auth
@@ -119,15 +120,9 @@ export function LoginScreen({ user, online, onAuthenticated, onClose }: LoginScr
     <div className="bb-login-overlay" role="dialog" aria-modal="true" aria-label={copy.cardTitle}>
       <LoginHeroPanel copy={copy} />
       <section className="bb-login-side">
-        <div className="bb-login-controls">
-          <div className="bb-login-lang" role="group" aria-label="Idioma · Language">
-            <button type="button" className={language === 'pt' ? 'active' : ''} onClick={() => setLanguage('pt')}>PT</button>
-            <button type="button" className={language === 'en' ? 'active' : ''} onClick={() => setLanguage('en')}>EN</button>
-          </div>
-          <button type="button" className="bb-login-close" onClick={onClose} aria-label={copy.closeLabel}>
-            <X size={17} />
-          </button>
-        </div>
+        <button type="button" className="bb-login-close" onClick={onClose} aria-label={copy.closeLabel}>
+          <X size={18} />
+        </button>
         <LoginCard
           copy={copy}
           mode={mode}
@@ -136,10 +131,12 @@ export function LoginScreen({ user, online, onAuthenticated, onClose }: LoginScr
           online={online}
           message={message}
           notice={notice}
+          language={language}
           email={email}
           password={password}
           name={name}
           remember={remember}
+          onLanguageChange={setLanguage}
           onEmailChange={setEmail}
           onPasswordChange={setPassword}
           onNameChange={setName}
