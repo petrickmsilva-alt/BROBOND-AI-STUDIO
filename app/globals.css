@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Inter:wght@400;500;600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap');
 :root{--bg:#0d0d0e;--panel:#151516;--panel2:#1a1a1b;--line:#29292b;--muted:#88878b;--text:#eeedef;--purple:#a98aff;--purple2:#7958d8;
 /* PR012 — BROBOND UI 4.0 design tokens. Literal mirror of
    lib/theme/tokens.ts#tokensToCssVariables() — kept as a static block here
@@ -679,4 +679,163 @@
   .al-facts{border-left:0;border-top:1px solid #232227}
   .al-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr))}
   .al-filters-row{gap:7px}
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PR009.6 — PREMIUM LOGIN EXPERIENCE (Brobond Studio v4.0.1)
+   Fullscreen overlay that replaces the old auth modal. Scoped design
+   system: background #070707 · surface #111111 · gold #C88A2A · text
+   #F5F5F5 · secondary #A1A1AA · Inter. Motion: fade-in 300ms, slide 16px,
+   hover lift 2px + gold glow at 220ms — all disabled under
+   prefers-reduced-motion. Every rule is namespaced .bb-login-*.
+   Breakpoints: 1920/1440 desktop 50/50 · 1024/768 tablet 45/55 · mobile
+   hero em banner 30vh + login largura total (padding 24, radius 22) —
+   nenhum overflow horizontal.
+   ═══════════════════════════════════════════════════════════════════════ */
+.bb-login-overlay{--bb-l-bg:#070707;--bb-l-surface:#111111;--bb-l-gold:#C88A2A;--bb-l-gold-hover:#D89A36;--bb-l-text:#F5F5F5;--bb-l-secondary:#A1A1AA;--bb-l-line:rgba(255,255,255,.08);position:fixed;inset:0;z-index:70;display:flex;background:var(--bb-l-bg);color:var(--bb-l-text);font-family:'Inter',var(--bb-font-sans),-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;overflow:hidden;animation:bb-login-fade .3s var(--bb-motion-ease) both}
+@keyframes bb-login-fade{from{opacity:0}to{opacity:1}}
+@keyframes bb-login-rise{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
+@keyframes bb-login-pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* ── Left column: the founder hero ─────────────────────────────────────── */
+.bb-login-hero{position:relative;flex:none;width:50%;display:flex;flex-direction:column;justify-content:flex-end;overflow:hidden}
+.bb-login-hero-banner{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:flex-end}
+.bb-login-hero-media{position:absolute;inset:0}
+.bb-login-hero-photo{width:100%;height:100%;object-fit:cover;display:block}
+.bb-login-hero-film{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transition:opacity .9s ease}
+.bb-login-hero-film.is-ready{opacity:1}
+.bb-login-hero-tint{position:absolute;inset:0;background:rgba(0,0,0,.55)}
+.bb-login-hero-gold{position:absolute;inset:0;background:radial-gradient(120% 90% at 28% 16%,rgba(200,138,42,.15),transparent 58%)}
+.bb-login-hero-blur{position:absolute;inset:0;backdrop-filter:blur(9px);-webkit-backdrop-filter:blur(9px)}
+.bb-login-hero-blur-x{-webkit-mask-image:linear-gradient(90deg,#000 0,transparent 13%,transparent 87%,#000 100%);mask-image:linear-gradient(90deg,#000 0,transparent 13%,transparent 87%,#000 100%)}
+.bb-login-hero-blur-y{-webkit-mask-image:linear-gradient(180deg,#000 0,transparent 11%,transparent 89%,#000 100%);mask-image:linear-gradient(180deg,#000 0,transparent 11%,transparent 89%,#000 100%)}
+.bb-login-hero-shade{position:absolute;inset:0;background:linear-gradient(180deg,rgba(7,7,7,.62) 0,transparent 24%,transparent 50%,rgba(0,0,0,.86) 100%)}
+.bb-login-hero-topbar{position:absolute;top:0;left:0;right:0;z-index:2;margin:0;padding:20px 56px;font-size:10px;font-weight:600;letter-spacing:.34em;text-transform:uppercase;color:rgba(245,245,245,.52);text-align:center;border-bottom:1px solid rgba(255,255,255,.06);background:rgba(7,7,7,.28);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.bb-login-hero-content{position:relative;z-index:1;padding:0 56px 26px;animation:bb-login-rise .3s var(--bb-motion-ease) both;animation-delay:.08s}
+.bb-login-hero-logo{height:56px;width:auto;object-fit:contain;object-position:left bottom;margin-bottom:22px;background:#fff;border-radius:11px;padding:8px 18px;box-shadow:0 10px 34px rgba(0,0,0,.5)}
+.bb-login-hero-eyebrow{display:block;font-size:11px;font-weight:700;letter-spacing:.42em;text-transform:uppercase;color:var(--bb-l-gold);margin-bottom:14px}
+.bb-login-hero-title{margin:0 0 14px;font-size:44px;line-height:1.1;font-weight:700;letter-spacing:-.02em;color:#fff;max-width:520px}
+.bb-login-hero-subtitle{margin:0;font-size:14.5px;line-height:1.65;color:var(--bb-l-secondary);max-width:480px}
+.bb-login-hero-features{position:relative;z-index:1;padding:0 56px 44px}
+.bb-login-features{list-style:none;margin:24px 0 0;padding:0;display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.bb-login-feature{display:flex;flex-direction:column;gap:6px;padding:14px 13px;border:1px solid rgba(255,255,255,.07);border-radius:14px;background:rgba(8,8,8,.42);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);transition:transform .22s var(--bb-motion-ease),border-color .22s,background .22s}
+.bb-login-feature:hover{transform:translateY(-2px);border-color:rgba(200,138,42,.42);background:rgba(20,15,9,.5)}
+.bb-login-feature-icon{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;color:var(--bb-l-gold);background:rgba(200,138,42,.12);border:1px solid rgba(200,138,42,.22);margin-bottom:4px}
+.bb-login-feature strong{font-size:12px;font-weight:600;color:#fff;letter-spacing:.01em}
+.bb-login-feature small{font-size:10.5px;line-height:1.45;color:var(--bb-l-secondary)}
+
+/* ── Right column: the glass card ──────────────────────────────────────── */
+.bb-login-side{flex:1;min-width:0;display:flex;justify-content:center;overflow-y:auto;padding:56px 44px;position:relative}
+.bb-login-side:before{content:'';position:absolute;inset:0;background:radial-gradient(60% 46% at 50% 30%,rgba(200,138,42,.055),transparent 70%);pointer-events:none}
+.bb-login-card{position:relative;width:470px;max-width:100%;margin:auto;background:rgba(17,17,17,.55);backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border:1px solid var(--bb-l-line);border-radius:24px;padding:42px 40px 26px;box-shadow:0 34px 90px rgba(0,0,0,.55),0 0 70px rgba(200,138,42,.07);animation:bb-login-rise .3s var(--bb-motion-ease) both;animation-delay:.14s}
+.bb-login-card-logo{height:42px;width:auto;object-fit:contain;margin:0 auto 26px;display:block;background:#fff;border-radius:9px;padding:6px 15px;box-shadow:0 8px 26px rgba(0,0,0,.45)}
+.bb-login-card h2{margin:0 0 8px;font-size:25px;font-weight:700;letter-spacing:-.02em;color:#fff;text-align:center}
+.bb-login-card-sub{margin:0 0 26px;text-align:center;font-size:13px;line-height:1.6;color:var(--bb-l-secondary)}
+
+/* controls (language + close) — top-right of the overlay */
+.bb-login-controls{position:absolute;top:24px;right:28px;z-index:5;display:flex;align-items:center;gap:10px}
+.bb-login-lang{display:flex;padding:3px;gap:2px;border:1px solid var(--bb-l-line);border-radius:999px;background:rgba(17,17,17,.55);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.bb-login-lang button{padding:6px 12px;border-radius:999px;font-size:10.5px;font-weight:700;letter-spacing:.1em;color:var(--bb-l-secondary);transition:color .22s,background .22s}
+.bb-login-lang button.active{background:var(--bb-l-gold);color:#171004}
+.bb-login-lang button:not(.active):hover{color:var(--bb-l-text)}
+.bb-login-close{width:38px;height:38px;border-radius:50%;border:1px solid var(--bb-l-line);background:rgba(17,17,17,.55);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);display:grid;place-items:center;color:var(--bb-l-secondary);transition:color .22s,border-color .22s,transform .22s var(--bb-motion-ease)}
+.bb-login-close:hover{color:var(--bb-l-text);border-color:rgba(200,138,42,.5);transform:rotate(90deg)}
+
+/* fields */
+.bb-login-field{display:flex;flex-direction:column;gap:7px;margin-bottom:14px}
+.bb-login-field>span:first-child{font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--bb-l-secondary)}
+.bb-login-field-box{position:relative;display:flex;align-items:center}
+.bb-login-field-box>svg{position:absolute;left:14px;color:#67676d;pointer-events:none}
+.bb-login-input{width:100%;height:48px;padding:0 44px 0 42px;background:rgba(255,255,255,.04);border:1px solid var(--bb-l-line);border-radius:13px;font-size:14px;color:var(--bb-l-text);outline:0;transition:border-color .22s,box-shadow .22s,background .22s}
+.bb-login-input::placeholder{color:#5b5b61}
+.bb-login-input:focus{border-color:rgba(200,138,42,.55);background:rgba(255,255,255,.06);box-shadow:0 0 0 4px rgba(200,138,42,.12)}
+.bb-login-eye{position:absolute;right:6px;width:36px;height:36px;display:grid;place-items:center;color:#67676d;border-radius:9px;transition:color .22s}
+.bb-login-eye:hover{color:var(--bb-l-text)}
+
+/* remember / forgot */
+.bb-login-row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:2px 0 6px}
+.bb-login-check{display:flex;align-items:center;gap:9px;cursor:pointer;font-size:12.5px;color:var(--bb-l-secondary);user-select:none}
+.bb-login-check input{appearance:none;-webkit-appearance:none;width:18px;height:18px;margin:0;border:1.5px solid rgba(255,255,255,.2);border-radius:6px;background:rgba(255,255,255,.04);cursor:pointer;display:grid;place-items:center;transition:background .22s,border-color .22s}
+.bb-login-check input:checked{background:var(--bb-l-gold);border-color:var(--bb-l-gold)}
+.bb-login-check input:checked:after{content:'';width:9px;height:5px;border-left:2px solid #171004;border-bottom:2px solid #171004;transform:rotate(-45deg) translateY(-1px)}
+.bb-login-check input:focus-visible{outline:2px solid rgba(200,138,42,.7);outline-offset:2px}
+.bb-login-remember-hint{margin:0 0 20px;font-size:10.5px;color:#606067}
+.bb-login-link{font-size:12.5px;font-weight:600;color:var(--bb-l-gold);padding:0;transition:filter .22s}
+.bb-login-link:hover{filter:brightness(1.18);text-decoration:underline;text-underline-offset:3px}
+
+/* buttons */
+.bb-login-submit{width:100%;height:50px;display:flex;align-items:center;justify-content:center;gap:9px;background:var(--bb-l-gold);color:#171004;font-size:14px;font-weight:700;border-radius:14px;border:1px solid rgba(255,255,255,.06);box-shadow:0 10px 30px rgba(200,138,42,.22),inset 0 1px 0 rgba(255,255,255,.18);transition:transform .22s var(--bb-motion-ease),box-shadow .22s,background .22s}
+.bb-login-submit:hover{background:var(--bb-l-gold-hover);transform:translateY(-2px);box-shadow:0 14px 38px rgba(200,138,42,.34),inset 0 1px 0 rgba(255,255,255,.2)}
+.bb-login-submit:active{transform:none}
+.bb-login-divider{display:flex;align-items:center;gap:14px;margin:20px 0;color:#5d5d64;font-size:10.5px;font-weight:600;letter-spacing:.2em;text-transform:uppercase}
+.bb-login-divider:before,.bb-login-divider:after{content:'';flex:1;height:1px;background:var(--bb-l-line)}
+.bb-login-google{width:100%;height:48px;display:flex;align-items:center;justify-content:center;gap:10px;background:rgba(255,255,255,.045);border:1px solid var(--bb-l-line);border-radius:13px;color:var(--bb-l-text);font-size:13.5px;font-weight:600;transition:transform .22s var(--bb-motion-ease),border-color .22s,background .22s}
+.bb-login-google:hover{transform:translateY(-2px);border-color:rgba(255,255,255,.2);background:rgba(255,255,255,.07)}
+.bb-login-ghost{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:46px;border:1px solid var(--bb-l-line);border-radius:13px;color:var(--bb-l-secondary);font-size:13px;font-weight:600;transition:color .22s,border-color .22s}
+.bb-login-ghost:hover{color:var(--bb-l-text);border-color:rgba(200,138,42,.45)}
+
+/* notices, messages, switch, remembered chip */
+.bb-login-notice{display:flex;align-items:flex-start;gap:8px;margin-top:16px;padding:10px 12px;border-radius:10px;border:1px solid rgba(200,138,42,.26);background:rgba(200,138,42,.08);color:#d8b478;font-size:11.5px;line-height:1.5}
+.bb-login-message{display:block;margin-top:14px;text-align:center;font-size:11.5px;line-height:1.5;color:#cba86e}
+.bb-login-switch{margin-top:22px;text-align:center;font-size:12.5px;color:var(--bb-l-secondary)}
+.bb-login-remembered{display:flex;align-items:center;gap:11px;padding:10px 12px;margin-bottom:22px;border:1px solid rgba(200,138,42,.28);background:rgba(200,138,42,.07);border-radius:12px}
+.bb-login-remembered-avatar{width:32px;height:32px;flex:none;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:700;color:#171004;background:linear-gradient(135deg,#D89A36,#A8741F)}
+.bb-login-remembered-text{font-size:12px;color:var(--bb-l-secondary)}
+.bb-login-remembered-text strong{color:var(--bb-l-text);font-weight:600}
+
+/* account (signed-in) view */
+.bb-login-account{display:flex;flex-direction:column;align-items:center;text-align:center}
+.bb-login-avatar{width:64px;height:64px;border-radius:50%;display:grid;place-items:center;font-size:20px;font-weight:700;color:#171004;background:linear-gradient(135deg,#D89A36,#A8741F);box-shadow:0 12px 32px rgba(200,138,42,.3);margin-bottom:18px}
+.bb-login-account-name{font-size:21px}
+.bb-login-session{display:inline-flex;align-items:center;gap:7px;margin:2px 0 26px;font-size:11.5px;color:var(--bb-l-secondary)}
+.bb-login-session i{width:7px;height:7px;border-radius:50%;background:#22c55e;box-shadow:0 0 8px rgba(34,197,94,.75)}
+.bb-login-account-actions{display:flex;flex-direction:column;gap:10px;width:100%}
+
+/* card footer: version + honest system indicator */
+.bb-login-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:24px;padding-top:16px;border-top:1px solid var(--bb-l-line);font-size:11px;color:#6c6c73}
+.bb-login-status{display:inline-flex;align-items:center;gap:7px;font-weight:600;letter-spacing:.02em}
+.bb-login-status i{width:7px;height:7px;border-radius:50%;background:#22c55e;box-shadow:0 0 8px rgba(34,197,94,.8);animation:bb-login-pulse 2.4s ease-in-out infinite}
+.bb-login-status.is-offline i{background:#5c5c63;box-shadow:none;animation:none}
+
+/* gold focus ring inside the overlay */
+.bb-login-overlay button:focus-visible{outline:2px solid rgba(200,138,42,.75);outline-offset:2px}
+
+/* ── Tablet (768–1279): 45/55 + feature carousel ───────────────────────── */
+@media (max-width:1279.98px){
+.bb-login-hero{width:45%}
+.bb-login-hero-content{padding:0 36px 22px}
+.bb-login-hero-features{padding:0 36px 36px}
+.bb-login-hero-title{font-size:33px;max-width:420px}
+.bb-login-hero-logo{height:38px}
+.bb-login-hero-topbar{padding:16px 36px;letter-spacing:.28em}
+.bb-login-features{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:10px;padding-bottom:6px;scrollbar-width:none;-ms-overflow-style:none}
+.bb-login-features::-webkit-scrollbar{display:none}
+.bb-login-feature{flex:0 0 205px;scroll-snap-align:start}
+}
+
+/* ── Mobile (<768): hero vira banner 30vh, login largura total ─────────── */
+@media (max-width:767.98px){
+.bb-login-overlay{flex-direction:column;overflow-y:auto;overflow-x:hidden}
+.bb-login-hero{width:100%;flex:none}
+.bb-login-hero-banner{position:relative;flex:none;height:30vh;min-height:220px}
+.bb-login-hero-topbar{padding:13px 150px 13px 20px;text-align:left;letter-spacing:.22em;font-size:9px}
+.bb-login-hero-content{padding:0 24px 16px}
+.bb-login-hero-logo{height:28px;margin-bottom:12px}
+.bb-login-hero-eyebrow{font-size:9.5px;letter-spacing:.32em;margin-bottom:9px}
+.bb-login-hero-title{font-size:21px;margin-bottom:8px;max-width:100%}
+.bb-login-hero-subtitle{font-size:11.5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.bb-login-hero-features{padding:18px 24px 6px}
+.bb-login-feature{flex:0 0 185px}
+.bb-login-side{padding:10px 24px 32px}
+.bb-login-card{border-radius:22px;padding:30px 24px 20px}
+.bb-login-controls{top:12px;right:16px}
+}
+@media (max-width:430px){
+.bb-login-card h2{font-size:22px}
+.bb-login-hero-title{font-size:19px}
+}
+
+/* reduced motion: everything settles instantly */
+@media (prefers-reduced-motion: reduce){
+.bb-login-overlay,.bb-login-overlay *{animation:none!important;transition:none!important}
 }

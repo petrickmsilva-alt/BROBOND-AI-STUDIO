@@ -6,6 +6,96 @@ versões de produto do `ROADMAP.md`.
 
 ---
 
+## [Unreleased] — PR009.6.2: ASSETS OFICIAIS DA MARCA
+
+Os stand-ins de IA saem de cena: a fotografia oficial do fundador ao
+lado da RAM 2026 (enviada pela marca em `brand/` na main) entra como
+`public/brand/login-hero.jpg` em resolução integral (1312×1199,
+conversão PNG→JPG q90), e o logo oficial colorido entra como
+`public/brand/brobond-logo.png` — arquivo original byte a byte, sem
+qualquer retoque em tipografia, proporções ou cores. Como o logo é
+desenhado para fundo claro (54% dos traços em marrom-escuro — contraste
+de ~1.6:1 sobre o #070707 da tela), as duas exibições (hero e card)
+ganham uma placa branca arredondada discreta, o padrão de UI escura
+para logos claros — ajuste exclusivamente visual em duas regras CSS.
+Nenhuma mudança de componente, layout, rota ou autenticação. Os
+originais seguem arquivados em `brand/` na main.
+
+---
+
+## [Unreleased] — PR009.6.1: HERO SEM FILME STAND-IN
+
+O filme do hero (montado a partir de frames de IA) é removido em linha
+com a direção "remova todos os stand-ins": a coluna esquerda exibe
+sempre a fotografia do fundador, como pede a validação do PR. Nenhum
+componente muda — o `<video>` já degrada para a foto por design, e um
+filme oficial depositado em `/public/brand/login-hero.mp4` reativa a
+exibição em desktops potentes automaticamente, sem tocar em código.
+
+---
+
+## [Unreleased] — PR009.6: PREMIUM LOGIN EXPERIENCE
+
+A entrada do Brobond Studio deixa de ser um modal utilitário e vira tela
+premium fullscreen em duas colunas: hero cinematográfico do fundador à
+esquerda e card glassmorphism à direita. Design system próprio da tela:
+fundo `#070707`, surface `#111111`, ouro `#C88A2A`, texto `#F5F5F5`,
+secundário `#A1A1AA`, fonte Inter. **Zero alteração** em autenticação,
+JWT, API, providers, hooks, rotas ou banco — a lógica do antigo AuthModal
+(login/registro, fallback de sessão local, logout) foi movida 1:1 para o
+novo `LoginScreen`.
+
+- **Overlay fullscreen** substitui o modal (`app/page.tsx` renderiza
+  `components/studio/login/*`): hero 50% à esquerda (45% em tablet),
+  card de 470px centralizado à direita, mobile com hero em banner de
+  30vh, login em largura total (padding 24px, radius 22px) e os 5
+  recursos em carrossel horizontal com scroll-snap. Sem overflow
+  horizontal em 1920/1440/1024/768/430.
+- **Hero** — foto oficial do fundador (`/public/brand/login-hero.jpg`)
+  com overlay preto 55%, gradiente radial dourado muito suave e blur
+  apenas nas bordas; "BROBOND WEAR", "Transforme ideias em grandes
+  campanhas." e subtítulo institucional; barra superior discreta
+  "IA • CINEMA • MARCA • IMPACTO"; 5 recursos com ícones Lucide
+  dourados, título branco e subtítulo cinza (Diretor IA, Storyboard,
+  Imagem & Vídeo, Assets, Quality).
+- **Filme do hero** — `/public/brand/login-hero.mp4` (11s, 1080×1440,
+  RAM ao pôr do sol + bastidores) substitui a foto em desktops potentes
+  (hover + ≥1024px + ≥4 núcleos + sem economia de dados), com
+  `prefers-reduced-motion` respeitado; a foto permanece como fallback
+  universal — o vídeo só aparece após `canplay`.
+- **Card glassmorphism** — blur 24px, fundo rgba(17,17,17,.55), borda
+  1px rgba(255,255,255,.08), radius 24px (22px mobile), sombra dourada
+  extremamente suave. Logo oficial, "Bem-vindo de volta", email/senha
+  com toggle de visibilidade, "Lembrar de mim", "Esqueceu sua senha?"
+  (aviso honesto: recuperação ainda não existe), botão ouro #C88A2A
+  (hover #D89A36, glow discreto, sobe 2px em 220ms), "Entrar com
+  Google" (presente na UI; a integração não existe hoje — o clique
+  avisa "não configurado" em vez de fingir login) e rodapé "Brobond
+  Studio v4.0.1" + indicador "Sistema Online" honesto, ligado ao
+  readiness que o Home já lia.
+- **PT/EN** — seletor discreto no canto superior direito; dicionário
+  `login-copy.ts` com contrato de paridade testado.
+- **Guarda de honestidade** — `test_a_rejected_login_is_not_reported_as_
+  offline` passa a ler o `login-screen.tsx` (o código de login mudou de
+  casa, a proteção que "rejeitado ≠ offline" não muda) e o split da
+  seção Director usa `PageHeader` como limite — mesmo estilo de fixup
+  do PR012 após o Sidebar Premium.
+- **"Lembrar de mim" (30 dias)** — novo seam
+  `lib/memory/remembered_login.ts`: cookie com expiração nativa de 30
+  dias carregando apenas email + nome (nunca credencial; o JWT continua
+  sendo a única autenticação). O Home restaura a sessão via
+  `GET /api/v1/auth/me` **já existente** (`authMe()` em `lib/api.ts` é
+  uma leitura nova de um endpoint que já estava lá; token rejeitado
+  desconecta honestamente). O adapter de Project Memory não ganhou
+  chave — o contrato `test_project_memory_contract.py` (exatamente 3
+  chaves) permanece intocado, e nenhum componente toca
+  `localStorage`.
+- **Animações** — fade-in 300ms, slide vertical de 16px com stagger,
+  hover 2px + glow 220ms; tudo desligado sob
+  `prefers-reduced-motion: reduce`.
+
+---
+
 ## [Unreleased] — PR013: CINEMATIC ASSET STUDIO (V4.0.1)
 
 A aba Assets deixa de ser placeholder e vira biblioteca profissional:

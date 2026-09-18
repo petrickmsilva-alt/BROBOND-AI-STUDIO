@@ -142,6 +142,16 @@ export async function authenticate(
   return result;
 }
 
+/**
+ * PR009.6 — the profile behind the stored token. A read of the endpoint the
+ * backend already serves (GET /api/v1/auth/me) so "Lembrar de mim" can
+ * restore the session on load; the request layer attaches the same bearer
+ * token every other call uses. Nothing about the auth surface changes.
+ */
+export function authMe() {
+  return get<AuthUser>('/api/v1/auth/me');
+}
+
 // ---------------------------------------------------------------------------
 // Legacy generation surface
 // ---------------------------------------------------------------------------
