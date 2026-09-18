@@ -6,6 +6,17 @@ versões de produto do `ROADMAP.md`.
 
 ---
 
+## [Unreleased] — PR009.6.1: HERO SEM FILME STAND-IN
+
+O filme do hero (montado a partir de frames de IA) é removido em linha
+com a direção "remova todos os stand-ins": a coluna esquerda exibe
+sempre a fotografia do fundador, como pede a validação do PR. Nenhum
+componente muda — o `<video>` já degrada para a foto por design, e um
+filme oficial depositado em `/public/brand/login-hero.mp4` reativa a
+exibição em desktops potentes automaticamente, sem tocar em código.
+
+---
+
 ## [Unreleased] — PR009.6: PREMIUM LOGIN EXPERIENCE
 
 A entrada do Brobond Studio deixa de ser um modal utilitário e vira tela
