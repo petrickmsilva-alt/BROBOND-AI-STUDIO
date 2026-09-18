@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import {
   API_URL, Asset, AuthUser, DirectorBrief, GpuInfo, Job, LoraVersion, ModelOption, PersonaProfile, Readiness,
   UniversalProvider,
-  authenticate, buildStoryboard, cancelJob, createImageJob, createPersona, createVideoJob, directIntent,
+  authMe, buildStoryboard, cancelJob, createImageJob, createPersona, createVideoJob, directIntent,
   enhancePrompt, gpuInfo, imageModels, listAssets, listPersonaLoras, listPersonaProfiles, listProviders, readiness,
   trainPersona, uploadAsset, videoModels, wsUrl,
 } from '../lib/api';
@@ -26,10 +26,10 @@ import PersonaPreview from './components/studio/PersonaPreview';
 import { useProjectMemory } from '../lib/memory/use_project_memory';
 import {
   PROJECT_ID,
-  clearAuthToken,
   getAuthToken,
   setLegacyPersonaId,
 } from '../lib/memory/project_memory';
+import { getRememberedLogin } from '../lib/memory/remembered_login';
 // PR012 — BROBOND UI 4.0: the cinematic shell. These are presentational
 // only — they render exactly the navigation / identity / health data this
 // file already owns; no FastAPI, Provider, Director or Storyboard code is
@@ -38,12 +38,18 @@ import { Sidebar, type SidebarGroup } from '../components/studio/sidebar';
 import { IdentityBar } from '../components/studio/identity-bar';
 import { StatusDock } from '../components/studio/status-dock';
 import { HeroWorkspace, type HeroWorkspaceScenePreview } from '../components/studio/hero-workspace';
+// PR009.6 — Premium Login Experience: the fullscreen overlay that replaces
+// the old auth modal. Presentational only — it renders the same `user`
+// state and calls the same `authenticate()` flow this file already owned;
+// no FastAPI, Provider, Director or Storyboard code is touched by wiring
+// it in.
+import { LoginScreen } from '../components/studio/login/login-screen';
 import { buildStatusDockIndicators } from '../lib/theme/status_mapping';
 import {
   Aperture, ArrowUpRight, AlertTriangle, Bell, Box, ChevronDown, CircleHelp, Clapperboard,
   Clock3, Download, Folder, Gauge, Grid2X2, Image as ImageIcon, Layers3, Library,
   Megaphone, Menu, MessageSquareText, MoreHorizontal, Move3d, Play, Plus, Search, Settings2,
-  Sparkles, Square, UserRound, WandSparkles, X, Zap, LogIn, LockKeyhole, Film, Music4, Network, Timer,
+  Sparkles, Square, UserRound, WandSparkles, Zap, Film, Music4, Network, Timer,
 } from 'lucide-react';
 
 const modules = [
@@ -140,6 +146,26 @@ export default function Home() {
       if (result.remote) setPersonas(result.data);
       setPersonasReady(true);
     });
+  }, []);
+
+  // PR009.6 — "Lembrar de mim" (30 days): a remembered login restores the
+  // session on load. With a token it reads the profile through the endpoint
+  // the backend already serves (GET /api/v1/auth/me); a local session
+  // (signed in while the API was unreachable) restores from the remembered
+  // profile itself. A rejected token signs out honestly instead of faking
+  // a session — only an unreachable API falls back to the local profile.
+  useEffect(() => {
+    const remembered = getRememberedLogin();
+    if (!remembered) return;
+    if (!getAuthToken()) {
+      setUser({ id: 'local', email: remembered.email, name: remembered.name });
+      return;
+    }
+    authMe().then(result => {
+      if (result.remote) setUser(result.data);
+      else if (!result.status) setUser({ id: 'local', email: remembered.email, name: remembered.name });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot restore
   }, []);
 
   // PR004.1: restore the project memory once, when both the memory (loaded
@@ -293,7 +319,7 @@ export default function Home() {
           list with a single bottom bar (never taller than 52px). */}
       <StatusDock indicators={statusDockIndicators} />
     </section>
-    {authOpen && <AuthModal user={user} onAuthenticated={setUser} onClose={() => setAuthOpen(false)} />}
+    {authOpen && <LoginScreen user={user} online={apiOnline} onAuthenticated={setUser} onClose={() => setAuthOpen(false)} />}
   </main>;
 }
 
@@ -426,27 +452,6 @@ function DirectorStudio({ onRenderImage, activePersona, style, selectedLora, lor
       </div>
     </div>}
   </>;
-}
-
-function AuthModal({ user, onAuthenticated, onClose }: { user: AuthUser | null; onAuthenticated: (user: AuthUser | null) => void; onClose: () => void }) {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [email, setEmail] = useState('');
-  const [name, setName] = useState('');
-  const [password, setPassword] = useState('');
-  const [message, setMessage] = useState('');
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setMessage('Connecting to workspace...');
-    const result = await authenticate(mode === 'login' ? '/api/v1/auth/login' : '/api/v1/auth/register', mode === 'login' ? { email, password } : { email, name, password });
-    if (result.remote) { onAuthenticated(result.data.user); onClose(); return; }
-    // A rejected login must not be reported as "offline": those are different
-    // problems and only one of them is fixed by starting the server.
-    if (result.status) { setMessage(result.error ?? `Request failed (${result.status})`); return; }
-    if (mode === 'login') { onAuthenticated({ id: 'local', email: email || 'local@brobond.ai', name: name || 'Local session' }); onClose(); }
-    else setMessage(failureMessage(result, 'API offline. Start FastAPI to create a persistent account.'));
-  };
-  const logout = () => { clearAuthToken(); onAuthenticated(null); onClose(); };
-  return <div className="modal-backdrop" onClick={onClose}><div className="auth-modal" onClick={event => event.stopPropagation()}><button className="modal-close" onClick={onClose}><X size={17} /></button>{user ? <><div className="auth-icon"><LockKeyhole size={20} /></div><h2>{user.name}</h2><p className="auth-subtitle">{user.email}</p><button className="secondary-button full" onClick={logout}>Sign out</button></> : <><div className="auth-icon"><LogIn size={20} /></div><div className="auth-switch"><button className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>Sign in</button><button className={mode === 'register' ? 'active' : ''} onClick={() => setMode('register')}>Create account</button></div><h2>{mode === 'login' ? 'Welcome back' : 'Create your workspace'}</h2><p className="auth-subtitle">{mode === 'login' ? 'Sign in to sync your creations and assets.' : 'Start building your private visual studio.'}</p><form onSubmit={submit}>{mode === 'register' && <input value={name} onChange={event => setName(event.target.value)} placeholder="Full name" required />}<input type="email" value={email} onChange={event => setEmail(event.target.value)} placeholder="Email address" required /><input type="password" value={password} onChange={event => setPassword(event.target.value)} placeholder="Password · 8+ characters" minLength={8} required /><button className="primary-button full" type="submit">{mode === 'login' ? 'Sign in' : 'Create account'} <ArrowUpRight size={15} /></button></form>{message && <small className="auth-message">{message}</small>}</>}</div></div>;
 }
 
 function PageHeader({ eyebrow, title, description, children }: { eyebrow: string; title: string; description: string; children?: React.ReactNode }) { return <div className="page-header"><div><div className="eyebrow"><Sparkles size={13} /> {eyebrow}</div><h1>{title}</h1><p>{description}</p></div>{children}</div>; }

@@ -44,6 +44,12 @@ export default defineConfig({
       'components/studio/identity_bar.test.tsx',
       // PR013 — V4.0.1 Cinematic Asset Studio components.
       'app/components/studio/assets/**/*.test.tsx',
+      // PR009.6 — Premium Login Experience: the bilingual copy contract and
+      // the remembered-login cookie seam ("Lembrar de mim", 30 days). The
+      // visual composition itself stays guarded by `next build`, like every
+      // other screen beyond the PR012 shell components.
+      'components/studio/login/login-copy.test.ts',
+      'lib/memory/remembered_login.test.ts',
     ],
     coverage: {
       provider: 'v8',
