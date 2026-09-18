@@ -13,6 +13,29 @@ Assets/         MinIO, signed URLs, local development adapter
 Knowledge Base/ Cinematic Bible, style, characters, shots, prompts, presets
 ```
 
+## BROBOND UI 4.0 — Cinematic Design System (PR012)
+
+Redesign de UI/UX puro do frontend, sem tocar FastAPI, Providers, Director
+Engine, Storyboard Engine, Quality Engine, banco de dados, APIs ou rotas.
+
+- `lib/theme/tokens.ts`: paleta (`#07070A` … `#FAFAFA`, nunca branco/preto
+  puro), tipografia (Inter Variable, 6 níveis), motion (hover 120ms, escala
+  de card 1.01) e breakpoints (1440/1024/768/480) — fonte única, espelhada
+  como CSS custom properties em `app/globals.css`.
+- `components/studio/{sidebar,identity-bar,hero-workspace,storyboard-cards,
+  status-dock}.tsx`: cinco componentes presentacionais puros — recebem dados
+  e callbacks das mesmas funções de `lib/api.ts` já existentes, nunca fazem
+  fetch nem conhecem rota.
+- `lib/theme/status_mapping.ts#buildStatusDockIndicators`: mapeamento puro
+  de `readiness()` / `gpuInfo()` / `listProviders()` (sem novo endpoint) para
+  os seis indicadores do Status Dock (API, Database, Storage, GPU, FLUX,
+  WAN).
+- Integrado em `app/page.tsx` (Sidebar, Identity Bar, Hero Workspace, Status
+  Dock) e `app/studio/director/page.tsx` (Storyboard Cards substituindo
+  `StoryboardCanvas`).
+
+Detalhe completo — ETAPA por ETAPA — em `docs/UI_4.0.md`.
+
 ## BROBOND CORE
 
 O Core é a camada de decisão. Ele consulta a Knowledge Base, resolve memória de persona, combina preset cinematográfico, expande o prompt e entrega um `GenerationSpec` versionado ao Render Engine.
@@ -186,7 +209,6 @@ Frontend:
 
 ```text
 app/studio/director/
-├── StoryboardCanvas.tsx
 ├── Timeline.tsx
 ├── SceneInspector.tsx
 ├── CameraPanel.tsx
@@ -196,6 +218,11 @@ app/studio/director/
 
 A API não ganhou rota de render. O editor consome o plano de
 `/api/v1/core/director/production-plan` e mantém as edições em `StoryboardState`.
+
+> **PR012 (BROBOND UI 4.0):** `StoryboardCanvas.tsx` foi substituído pelo
+> componente cinemático `components/studio/storyboard-cards.tsx` (Storyboard
+> Cards) — mesma fiação de `reorderScene`/`StoryboardState`, apenas a
+> apresentação mudou. Ver `docs/UI_4.0.md`.
 
 ---
 

@@ -1,14 +1,20 @@
 'use client';
 
-import { SlidersHorizontal } from 'lucide-react';
+import { Copy, SlidersHorizontal, Trash2 } from 'lucide-react';
 import type { ScenePatch, StoryboardScene } from '../../../lib/storyboard/storyboard_state';
 
 type SceneInspectorProps = {
   scene?: StoryboardScene;
   onUpdateScene: (sceneId: string, patch: ScenePatch) => void;
+  /** PR012 — ETAPA 7: Storyboard Cards dropped the per-card duplicate/
+   * remove buttons in favour of the cinematic card layout; both actions
+   * still exist, now anchored to the selected scene here. */
+  onDuplicateScene?: (sceneId: string) => void;
+  onRemoveScene?: (sceneId: string) => void;
+  removeDisabled?: boolean;
 };
 
-export function SceneInspector({ scene, onUpdateScene }: SceneInspectorProps) {
+export function SceneInspector({ scene, onUpdateScene, onDuplicateScene, onRemoveScene, removeDisabled }: SceneInspectorProps) {
   if (!scene) {
     return <aside className="storyboard-panel scene-inspector" aria-label="SceneInspector">
       <div className="panel-heading"><span>SceneInspector</span><SlidersHorizontal size={14} /></div>
@@ -19,7 +25,14 @@ export function SceneInspector({ scene, onUpdateScene }: SceneInspectorProps) {
   const update = (patch: ScenePatch) => onUpdateScene(scene.id, patch);
 
   return <aside className="storyboard-panel scene-inspector" aria-label="SceneInspector">
-    <div className="panel-heading"><span>SceneInspector</span><span className="muted">Cena {scene.scene_number}</span></div>
+    <div className="panel-heading">
+      <span>SceneInspector</span>
+      <span className="muted">Cena {scene.scene_number}</span>
+      {(onDuplicateScene || onRemoveScene) && <div className="scene-inspector-actions">
+        {onDuplicateScene && <button type="button" onClick={() => onDuplicateScene(scene.id)}><Copy size={13} /> Duplicar</button>}
+        {onRemoveScene && <button type="button" onClick={() => onRemoveScene(scene.id)} disabled={removeDisabled}><Trash2 size={13} /> Remover</button>}
+      </div>}
+    </div>
     <label>Título
       <input value={scene.title} onChange={event => update({ title: event.target.value })} />
     </label>

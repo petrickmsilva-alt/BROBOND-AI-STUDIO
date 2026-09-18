@@ -14,6 +14,17 @@ The product constitution lives in `SYSTEM_PROMPT.md`, `ARCHITECTURE.md`, `STYLE_
 
 These files are versioned design knowledge today. The next Core milestone is migrating them into PostgreSQL-backed, workspace-scoped records while preserving these documents as seed and governance sources.
 
+## UI 4.0 — Cinematic Design System (PR012)
+
+The frontend runs on a dedicated design system now: fixed 248px Sidebar
+Premium (CREATE / STUDIO / LIBRARY, badges limited to GPU/SQL/AI), a Hero
+Workspace (Creative Brief + Live Storyboard Preview) and an Identity Bar
+above the Director, cinematic Storyboard Cards, and a 52px-max bottom
+Status Dock for API/Database/Storage/GPU/FLUX/WAN health — replacing the
+old lateral "Readiness" list. Tokens live in `lib/theme/tokens.ts`; see
+`docs/UI_4.0.md` for the full spec. **UI/UX only** — no FastAPI route,
+Provider, Director/Storyboard/Quality engine or database contract changed.
+
 ## Current slice
 
 A Next.js studio whose front door is the **Director**: the user states an intention in plain
@@ -337,7 +348,7 @@ BROBOND-AI-STUDIO/
 │   ├── app/services/     # service adapters
 │   ├── app/main.py       # composition root: wires the Core, exposes the routes
 │   ├── app/models.py     # SQLAlchemy models
-│   └── tests/            # pytest suite (2,412 tests)
+│   └── tests/            # pytest suite (2,413 tests)
 ├── docker-compose.yml    # local Postgres, Redis and MinIO
 └── requirements.txt      # Python service dependencies
 ```
@@ -412,7 +423,7 @@ npm run build
 
 The end-to-end backend test covers registration, authenticated upload, generation job creation, storyboard expansion and asset listing.
 
-The backend suite is **2,412 tests** and total backend coverage is **98%**, held by a `--fail-under=95` gate in CI. The whole
+The backend suite is **2,413 tests** and total backend coverage is **98%**, held by a `--fail-under=95` gate in CI. The whole
 `backend/app/core/` directory reads 98%, with PR005 Director AI and PR006 StoryboardState covered above the 95% floor. The remainder of the gap is the pre-existing dead
 cluster from `AUDIT.md` P0-1 — four modules, 100 statements, that do not import at all; see
 `docs/LIMITATIONS.md` §5. `core/persona_memory.py`,

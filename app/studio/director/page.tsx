@@ -25,8 +25,11 @@ import {
 import { CameraPanel } from './CameraPanel';
 import { MoodPanel } from './MoodPanel';
 import { SceneInspector } from './SceneInspector';
-import { StoryboardCanvas } from './StoryboardCanvas';
 import { Timeline } from './Timeline';
+// PR012 — ETAPA 7: the cinematic Storyboard Cards replace the previous
+// StoryboardCanvas. Same props, same reorder/select wiring against the
+// untouched StoryboardState — visual only.
+import { StoryboardCards, type StoryboardCardScene } from '../../../components/studio/storyboard-cards';
 
 const platformOptions = [
   { value: 'instagram', label: 'Instagram' },
@@ -202,16 +205,29 @@ export default function DirectorPage() {
             onDurationChange={(sceneId, nextDuration) => commit(state => updateScene(state, sceneId, { duration: nextDuration }))}
           />
           <div className="storyboard-editor-grid">
-            <StoryboardCanvas
-              scenes={storyboard.scenes}
+            <StoryboardCards
+              scenes={storyboard.scenes.map((scene): StoryboardCardScene => ({
+                id: scene.id,
+                sceneNumber: scene.scene_number,
+                title: scene.title,
+                objective: scene.objective,
+                camera: scene.camera,
+                lens: scene.lens,
+                duration: scene.duration,
+                mood: scene.mood,
+              }))}
               selectedSceneId={selectedScene?.id}
               onSelectScene={setSelectedSceneId}
               onReorderScene={(sourceSceneId, targetSceneId) => commit(state => reorderScene(state, sourceSceneId, targetSceneId))}
-              onDuplicateScene={duplicateSelectedScene}
-              onRemoveScene={removeSelectedScene}
             />
             <div className="storyboard-side-stack">
-              <SceneInspector scene={selectedScene} onUpdateScene={updateSelectedScene} />
+              <SceneInspector
+                scene={selectedScene}
+                onUpdateScene={updateSelectedScene}
+                onDuplicateScene={duplicateSelectedScene}
+                onRemoveScene={removeSelectedScene}
+                removeDisabled={storyboard.scenes.length <= 1}
+              />
               <CameraPanel scene={selectedScene} onSelectPreset={(sceneId, preset) => commit(state => updateCameraPreset(state, sceneId, preset as CameraPresetName))} />
               <MoodPanel scene={selectedScene} onSelectMood={(sceneId, nextMood) => commit(state => updateSceneMood(state, sceneId, nextMood))} />
             </div>
