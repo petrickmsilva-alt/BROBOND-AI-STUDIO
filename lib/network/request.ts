@@ -23,10 +23,10 @@
  * the UI can say "Servidor iniciando…" instead of "offline".
  */
 
-/** The base every request is built on: the env var, verbatim, or the empty
- * string (same-origin, proxied by `next.config.mjs`). Re-exported by
- * `lib/api.ts`. */
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
+import { getApiBaseUrl } from './api-base-url';
+
+/** The single base used by API requests, uploads and authentication. */
+export const API_URL = getApiBaseUrl();
 
 export const DEFAULT_TIMEOUT_MS = 10000;
 export const UPLOAD_TIMEOUT_MS = 30000;
