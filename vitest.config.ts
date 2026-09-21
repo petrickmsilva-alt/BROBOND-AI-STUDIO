@@ -57,6 +57,10 @@ export default defineConfig({
       // cards, the card's twelve blocks in order).
       'components/studio/login/login-layout.test.tsx',
       'lib/memory/remembered_login.test.ts',
+      // PR009.6.2.1 — Google OAuth hotfix: the origin decision, its live
+      // wrappers and the next.config rewrite mirror that caused the
+      // production ECONNREFUSED to localhost:8000.
+      'lib/network/next-config-rewrites.test.ts',
     ],
     coverage: {
       provider: 'v8',

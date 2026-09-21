@@ -19,7 +19,7 @@ import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { authenticate, type AuthUser } from '../../../lib/api';
 import { clearAuthToken, setAuthToken } from '../../../lib/memory/project_memory';
-import { getApiBaseUrl } from '../../../lib/network/api-base-url';
+import { apiConfigurationError, getApiBaseUrl } from '../../../lib/network/api-base-url';
 import { failureMessage } from '../../../lib/network/status';
 import {
   clearRememberedLogin,
@@ -149,6 +149,18 @@ export function LoginScreen({ user, online, onAuthenticated, onClose }: LoginScr
           onRememberChange={setRemember}
           onSubmit={submit}
           onGoogle={() => {
+            // PR009.6.2.1 — a full browser navigation, never a fetch: the
+            // OAuth consent screen has to own the tab, and an XHR to
+            // Google would be blocked by CORS anyway. The base comes from
+            // `getApiBaseUrl()` so this leaves for the real API origin
+            // instead of the studio's own (where the rewrite proxy used to
+            // send it to localhost:8000 and refuse the connection).
+            const misconfigured = apiConfigurationError();
+            if (misconfigured) {
+              setNotice(null);
+              setMessage(copy.googleUnconfigured);
+              return;
+            }
             window.location.href = `${getApiBaseUrl()}/api/v1/auth/google/login`;
           }}
           onForgot={() => { setNotice('forgot'); setMessage(''); }}

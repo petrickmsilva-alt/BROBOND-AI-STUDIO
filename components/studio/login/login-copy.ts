@@ -50,6 +50,7 @@ export type LoginCopy = {
   orDivider: string;
   google: string;
   googleNotice: string;
+  googleUnconfigured: string;
   noAccount: string;
   createAccount: string;
   hasAccount: string;
@@ -100,6 +101,7 @@ export const LOGIN_COPY: Record<LoginLanguage, LoginCopy> = {
     orDivider: 'ou continue com',
     google: 'Entrar com Google',
     googleNotice: 'Login com Google ainda não está configurado neste ambiente.',
+    googleUnconfigured: 'API não configurada — avise o suporte para definir NEXT_PUBLIC_API_URL.',
     noAccount: 'Ainda não tem uma conta?',
     createAccount: 'Criar conta',
     hasAccount: 'Já tem uma conta?',
@@ -153,6 +155,7 @@ export const LOGIN_COPY: Record<LoginLanguage, LoginCopy> = {
     orDivider: 'or continue with',
     google: 'Sign in with Google',
     googleNotice: 'Google sign-in is not configured in this environment yet.',
+    googleUnconfigured: 'API not configured — ask support to set NEXT_PUBLIC_API_URL.',
     noAccount: 'No account yet?',
     createAccount: 'Create account',
     hasAccount: 'Already have an account?',

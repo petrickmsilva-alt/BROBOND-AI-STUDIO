@@ -25,6 +25,7 @@
  * identical in production.
  */
 
+import { apiConfigurationError } from './api-base-url';
 import {
   API_URL,
   NetworkError,
@@ -123,6 +124,16 @@ export function runUpload(
     log(traceId, path, outcome.kind === 'response' ? String(outcome.response.status) : outcome.error.type, Date.now() - started);
     return outcome;
   };
+
+  // PR009.6.2.1 — same guard as `runRequest`: with no configured origin in
+  // a production bundle there is nowhere to POST, so name the real cause
+  // instead of letting XHR fail as a generic network error.
+  if (apiConfigurationError()) {
+    return Promise.resolve(finish({
+      kind: 'error',
+      error: new NetworkError(NetworkErrorType.MISCONFIGURED, { traceId, durationMs: 0 }),
+    }));
+  }
 
   return new Promise(resolve => {
     let transport: UploadTransport;

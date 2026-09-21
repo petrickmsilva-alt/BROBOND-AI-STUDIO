@@ -13,7 +13,8 @@ export type StatusCenterState =
   | 'initializing'
   | 'offline'
   | 'unauthorized'
-  | 'server_error';
+  | 'server_error'
+  | 'misconfigured';
 
 export type ProbeSignal = {
   /** Set when the request failed at the network layer. */
@@ -31,9 +32,19 @@ export const STATUS_CENTER_META: Record<
   offline: { label: 'Sem internet', color: '#f0a9b4', action: 'Verificar a conexão e tentar de novo.' },
   unauthorized: { label: 'Sessão expirada', color: '#b6a6e8', action: 'Entrar novamente.' },
   server_error: { label: 'Erro interno', color: '#f0a9b4', action: 'Tentar novamente em instantes.' },
+  // PR009.6.2.1 — a deploy-time mistake, not a runtime one: retrying cannot
+  // help, so the action names the fix instead of offering hope.
+  misconfigured: {
+    label: 'API não configurada',
+    color: '#e8c268',
+    action: 'Definir NEXT_PUBLIC_API_URL no serviço e refazer o deploy.',
+  },
 };
 
 const PRIORITY: StatusCenterState[] = [
+  // A missing API URL outranks everything: every other symptom is its
+  // consequence, and it is the only one with an actionable fix.
+  'misconfigured',
   'initializing',
   'offline',
   'unauthorized',
@@ -51,6 +62,8 @@ function stateOf(probe: ProbeSignal): StatusCenterState {
       return 'unauthorized';
     case NetworkErrorType.SERVER_ERROR:
       return 'server_error';
+    case NetworkErrorType.MISCONFIGURED:
+      return 'misconfigured';
     default:
       return probe.status !== undefined && probe.status >= 500 ? 'server_error' : 'online';
   }

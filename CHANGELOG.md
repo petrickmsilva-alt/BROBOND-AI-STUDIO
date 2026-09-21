@@ -6,6 +6,60 @@ versões de produto do `ROADMAP.md`.
 
 ---
 
+## [Unreleased] — PR009.6.2.1: HOTFIX GOOGLE OAUTH (RENDER)
+
+Correção da camada de comunicação Frontend↔Backend em produção. **Nada de
+backend**: JWT, login por e-mail, PostgreSQL, usuários, rotas e contrato da
+API permanecem intocados (`git diff` vazio em `backend/`, `lib/api.ts`,
+`docs/API_SNAPSHOT.json`).
+
+### Causa raiz
+
+O sintoma era `ECONNREFUSED http://localhost:8000`. `ECONNREFUSED` é um erro
+de **Node**, não de navegador — logo quem falhava era o próprio servidor
+Next: o *rewrite proxy* do `next.config.mjs` encaminhando `/api/v1/*` para
+`localhost:8000`, onde nada escuta dentro de um serviço Render. Tanto o
+config quanto o helper decidiam o destino olhando `NODE_ENV` **antes** de
+`NEXT_PUBLIC_API_URL`; qualquer deploy cujo ambiente diga `development`
+redirecionava todo o tráfego de produção para o localhost.
+
+### Corrigido
+
+- **Precedência invertida** em `lib/network/api-base-url.ts` e espelhada no
+  `next.config.mjs`: `NEXT_PUBLIC_API_URL` sempre vence, qualquer que seja o
+  `NODE_ENV`; só sem configuração o modo `development` significa localhost.
+- **Sem chute em produção**: faltando a variável, o base fica vazio e não há
+  proxy registrado (em vez de um proxy para localhost). Removido também o
+  fallback fixo para `brobond-ai-api.onrender.com` — é assim que uma URL
+  velha sobrevive a uma renomeação de serviço.
+- **"API não configurada"** (ETAPA 5): novo `NetworkErrorType.MISCONFIGURED`.
+  `runRequest` e `runUpload` falham na hora, sem gastar timeout nem retry, e
+  o Status Center ganha o estado `misconfigured` com a ação que resolve
+  ("definir NEXT_PUBLIC_API_URL"). Não é tratado como "sem conexão": a rede
+  está boa, o deploy é que não disse onde fica a API.
+- **Botão Google** (ETAPA 3): segue sendo `window.location.href` para
+  `${getApiBaseUrl()}/api/v1/auth/google/login` — navegação completa, sem
+  fetch e sem proxy local — agora com guarda que mostra o aviso amigável
+  (pt/en) quando a API não está configurada, em vez de navegar para lugar
+  nenhum.
+- **Zero localhost no bundle de produção**: `BUILD_LOCAL_API_URL` colapsa
+  para `''` quando `NODE_ENV !== 'development'`, então o webpack elimina o
+  literal. Verificado por grep no artefato: nenhuma ocorrência de
+  `localhost:8000` em `.next/static` ou `.next/server` (resta apenas o
+  parser de URL do polyfill do próprio Next).
+
+### Testes
+
+- +29 testes (470 no total, gate verde, `lib/network` em 99.74%): resolução
+  dev/prod, precedência sobre `NODE_ENV`, normalização de barra/espaço,
+  destino real do redirect do Google, os *rewrites* lidos do
+  `next.config.mjs` de verdade e o caminho "API não configurada".
+- Os guardas de regressão foram validados reintroduzindo o bug: exatamente
+  5 testes falham, entre eles "resolves configured over a development
+  NODE_ENV (the ECONNREFUSED bug)".
+
+---
+
 ## [Unreleased] — PR009.7: BIBLIOTECA CRIATIVA
 
 O módulo **Assets** vira uma biblioteca profissional no nível de Callour
