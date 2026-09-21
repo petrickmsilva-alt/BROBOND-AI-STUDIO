@@ -19,6 +19,7 @@ import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { authenticate, type AuthUser } from '../../../lib/api';
 import { clearAuthToken, setAuthToken } from '../../../lib/memory/project_memory';
+import { getApiBaseUrl } from '../../../lib/network/api-base-url';
 import { failureMessage } from '../../../lib/network/status';
 import {
   clearRememberedLogin,
@@ -147,7 +148,9 @@ export function LoginScreen({ user, online, onAuthenticated, onClose }: LoginScr
           onNameChange={setName}
           onRememberChange={setRemember}
           onSubmit={submit}
-          onGoogle={() => { window.location.href = '/api/v1/auth/google/login'; }}
+          onGoogle={() => {
+            window.location.href = `${getApiBaseUrl()}/api/v1/auth/google/login`;
+          }}
           onForgot={() => { setNotice('forgot'); setMessage(''); }}
           onLogout={logout}
           onBackToStudio={onClose}

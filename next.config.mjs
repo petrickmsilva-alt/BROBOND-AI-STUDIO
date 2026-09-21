@@ -1,11 +1,12 @@
 /** @type {import('next').NextConfig} */
 
-// The browser must never be told to reach a hard-coded origin. Everything under
-// /api/v1 is proxied to the FastAPI backend, so the UI can use relative URLs and
-// work unchanged behind any host — a laptop, a container, or a preview proxy.
-// Before this, `lib/api.ts` defaulted to http://localhost:8000, which only works
-// when the browser happens to be on the same machine as the API.
-const backend = process.env.BROBOND_API_PROXY_TARGET ?? 'http://localhost:8000';
+// Render builds with NEXT_PUBLIC_API_URL set to the separately hosted FastAPI
+// service. Local development keeps using the local API. A production build
+// can never silently proxy to localhost.
+const apiBaseUrl = process.env.NODE_ENV === 'development'
+  ? 'http://localhost:8000'
+  : (process.env.NEXT_PUBLIC_API_URL || 'https://brobond-ai-api.onrender.com');
+const backend = apiBaseUrl.replace(/\/$/, '');
 
 const nextConfig = {
   reactStrictMode: true,
@@ -15,8 +16,6 @@ const nextConfig = {
         source: '/api/v1/:path*',
         destination: `${backend}/api/v1/:path*`,
       },
-      // PR008: the render progress socket speaks the same relative language —
-      // the browser opens /ws/render/{batch_id} on its own origin.
       {
         source: '/ws/:path*',
         destination: `${backend}/ws/:path*`,
