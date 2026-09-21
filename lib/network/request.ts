@@ -23,7 +23,7 @@
  * the UI can say "Servidor iniciando…" instead of "offline".
  */
 
-import { getApiBaseUrl } from './api-base-url';
+import { API_NOT_CONFIGURED_MESSAGE, apiConfigurationError, getApiBaseUrl } from './api-base-url';
 
 /** The single base used by API requests, uploads and authentication. */
 export const API_URL = getApiBaseUrl();
@@ -50,6 +50,11 @@ export enum NetworkErrorType {
   CORS = 'cors',
   UNAUTHORIZED = 'unauthorized',
   SERVER_ERROR = 'server_error',
+  /** PR009.6.2.1 — a production bundle shipped without NEXT_PUBLIC_API_URL.
+   *  Distinct from OFFLINE on purpose: nothing is wrong with the network or
+   *  the server, the deploy simply never said where the API lives. Telling
+   *  the operator "sem conexão" would send them debugging the wrong thing. */
+  MISCONFIGURED = 'misconfigured',
   UNKNOWN = 'unknown',
 }
 
@@ -150,6 +155,8 @@ export function networkProblemText(error: NetworkError): string {
       return 'Sessão expirada ou ausente — entre novamente.';
     case NetworkErrorType.SERVER_ERROR:
       return `Erro interno da API${error.status ? ` (${error.status})` : ''}${error.detail ? `: ${error.detail}` : ''}`;
+    case NetworkErrorType.MISCONFIGURED:
+      return `${API_NOT_CONFIGURED_MESSAGE} — defina NEXT_PUBLIC_API_URL no serviço e faça um novo deploy.`;
     default:
       return error.detail ? `Falha na requisição: ${error.detail}` : 'Falha desconhecida na requisição.';
   }
@@ -221,6 +228,19 @@ export async function runRequest(
   const retryDelaysMs = options.retryDelaysMs ?? RETRY_DELAYS_MS;
   const traceId = newTraceId();
   const method = (init.method ?? 'GET').toUpperCase();
+
+  // PR009.6.2.1 — a production bundle with no NEXT_PUBLIC_API_URL has no
+  // origin to call. Firing the request anyway would hit the studio's own
+  // origin and read as a 404 or a CORS block; we name the real cause
+  // instead, without spending a timeout on it.
+  if (apiConfigurationError()) {
+    log(traceId, method, path, NetworkErrorType.MISCONFIGURED, 0);
+    return {
+      kind: 'error',
+      error: new NetworkError(NetworkErrorType.MISCONFIGURED, { traceId, durationMs: 0 }),
+    };
+  }
+
   const crossOrigin = isCrossOrigin(path);
   const started = Date.now();
 

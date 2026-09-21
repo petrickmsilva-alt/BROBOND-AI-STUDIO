@@ -66,7 +66,7 @@ restou:
 
 ## 3. Autorização (P0-4, fechado no PR002; ampliado no PR003, no PR008, na V3.1, na V3.2, na V3.3, na V3.4 e na V4.0.1)
 
-**76 de 114 rotas** tocam identidade, e a diferença entre elas importa:
+**76 de 116 rotas** tocam identidade, e a diferença entre elas importa:
 
 - **73** exigem token — `Depends(current_user)`: `/auth/me`, `/knowledge`, `/queue`,
   `/jobs/{id}`, `/jobs/{id}/cancel`, `/assets/upload`, `/assets`,
@@ -132,7 +132,7 @@ from app.main import app
 import inspect
 n = sum(1 for r in app.routes if isinstance(r, APIRoute) and r.path.startswith('/api/v1')
         and 'user' in inspect.signature(r.endpoint).parameters)
-print(f'{n} de 114 rotas com identidade')"
+print(f'{n} de 116 rotas com identidade')"
 ```
 
 ---

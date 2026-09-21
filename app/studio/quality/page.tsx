@@ -195,16 +195,16 @@ export default function QualityPage() {
       )}
 
       <div className="quality-grid">
-        <section className="quality-panel quality-assets" aria-label="Assets">
+        <section className="quality-panel quality-assets" aria-label="Biblioteca">
           <header>
             <h2>
-              <ListChecks size={15} /> Asset Library
+              <ListChecks size={15} /> Biblioteca
             </h2>
             <p>Imagens e vídeos do workspace, com o badge do último veredito.</p>
           </header>
           {assets.length === 0 ? (
             <p className="quality-muted">
-              Nenhum asset de mídia — faça um upload na tela inicial ou renderize em /studio/render.
+              Nenhum arquivo de mídia na Biblioteca — faça um upload na tela inicial ou renderize em /studio/render.
             </p>
           ) : (
             <ul className="quality-asset-list">

@@ -24,6 +24,13 @@ Pillow>=10.4.0
 PyJWT==2.14.0
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
+# backend/app/main.py drives the Google OAuth flow through Authlib, and the
+# `starlette.middleware.sessions.SessionMiddleware` it installs signs its
+# cookie with itsdangerous. Both are imported at module scope in main.py, so
+# a missing pin is not a degraded feature — the whole app fails to import.
+# Kept byte-identical to backend/requirements.txt (see the note there).
+Authlib==1.4.1
+itsdangerous==2.2.0
 pytest==8.3.4
 httpx==0.28.1
 coverage==7.6.1

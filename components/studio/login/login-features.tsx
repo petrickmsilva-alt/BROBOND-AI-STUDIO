@@ -2,7 +2,7 @@
 
 /**
  * PR009.6.1 — Pixel Perfect Login: the five studio pillars in the hero
- * footer (Diretor IA, Storyboard, Imagem & Vídeo, Assets, Quality).
+ * footer (Diretor IA, Storyboard, Imagem & Vídeo, Biblioteca, Quality).
  *
  * Five identical cards, horizontally aligned on one row: 110×88, glass at
  * rgba(10,10,10,.38) with a 16px blur and a 10% gold border, a gold icon,

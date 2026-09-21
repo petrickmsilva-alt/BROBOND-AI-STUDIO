@@ -6,6 +6,177 @@ versões de produto do `ROADMAP.md`.
 
 ---
 
+## [Unreleased] — CI: verde de novo (dívida herdada do PR #25)
+
+O CI já estava vermelho na `main` (`c061a1c`), antes desta branch: `backend`
+e `API Snapshot Guard` falhavam nos mesmos dois jobs. O PR #25 entregou o
+Google OAuth, mas deixou três rastros para trás. Nenhuma linha de
+`backend/app/` foi alterada aqui — só a pinagem, os docs gerados e os
+registros dos testes.
+
+### Corrigido
+
+- **`authlib` e `itsdangerous` ausentes do `requirements.txt` da raiz.**
+  `backend/app/main.py` importa os dois no escopo do módulo (Authlib para o
+  fluxo OAuth, itsdangerous para assinar o cookie do `SessionMiddleware`),
+  então faltar o pin não degradava um recurso: **a aplicação inteira não
+  importava** (`ModuleNotFoundError: No module named 'authlib'`), derrubando
+  os 11 testes do snapshot e o job `backend`.
+  O `backend/requirements.txt` já tinha ambos; o da raiz, criado no mesmo
+  merge, não. **Isso também quebrava a imagem de produção**: o
+  `Dockerfile.api` — o que o `render.yaml` usa — copia o `requirements.txt`
+  da raiz. Verificado instalando só esse arquivo num venv limpo: antes,
+  falha no import; agora, 118 rotas carregam.
+- **Snapshot e docs desatualizados.** As rotas `/api/v1/auth/google/login` e
+  `/api/v1/auth/google/callback` existiam na aplicação mas não em
+  `docs/API_SNAPSHOT.json` nem em `docs/API.md`. Ambos são **gerados** —
+  regenerados com os scripts do próprio repositório, não editados à mão.
+  Contagens atualizadas onde estavam registradas: 114 → **116** rotas, 38 →
+  **40** públicas (as duas do OAuth antecedem a sessão, por natureza), em
+  `test_api_snapshot.py`, `test_core_api.py`, `docs/ETAPAS.md` e
+  `docs/LIMITATIONS.md`.
+- **`test_frontend_honesty.py` afirmava detalhes de implementação vencidos.**
+  Exigia a string literal `process.env.NEXT_PUBLIC_API_URL ?? ''` em
+  `request.ts` e a variável `BROBOND_API_PROXY_TARGET` no `next.config.mjs`
+  — ambas de antes do PR009.6.2.1. Reescrito para afirmar a **intenção**, e
+  fortalecido: agora também exige que `NEXT_PUBLIC_API_URL` seja consultada
+  **antes** de qualquer ramo de `NODE_ENV`, tanto no cliente quanto no proxy.
+  Esse é justamente o bug do `ECONNREFUSED`, agora travado também pelo lado
+  Python.
+
+### Verificação
+
+Os cinco jobs do CI rodados localmente: `backend` **2464 passed**, cobertura
+**97%** (piso 95%), Architecture Guard 51, Import Boundary Guard 75, API
+Snapshot Guard 16 + regeneração byte-idêntica, frontend 470 testes e build
+compilando.
+
+---
+
+## [Unreleased] — PR009.6.2.1: HOTFIX GOOGLE OAUTH (RENDER)
+
+Correção da camada de comunicação Frontend↔Backend em produção. **Nada de
+backend**: JWT, login por e-mail, PostgreSQL, usuários, rotas e contrato da
+API permanecem intocados (`git diff` vazio em `backend/`, `lib/api.ts`,
+`docs/API_SNAPSHOT.json`).
+
+### Causa raiz
+
+O sintoma era `ECONNREFUSED http://localhost:8000`. `ECONNREFUSED` é um erro
+de **Node**, não de navegador — logo quem falhava era o próprio servidor
+Next: o *rewrite proxy* do `next.config.mjs` encaminhando `/api/v1/*` para
+`localhost:8000`, onde nada escuta dentro de um serviço Render. Tanto o
+config quanto o helper decidiam o destino olhando `NODE_ENV` **antes** de
+`NEXT_PUBLIC_API_URL`; qualquer deploy cujo ambiente diga `development`
+redirecionava todo o tráfego de produção para o localhost.
+
+### Corrigido
+
+- **Precedência invertida** em `lib/network/api-base-url.ts` e espelhada no
+  `next.config.mjs`: `NEXT_PUBLIC_API_URL` sempre vence, qualquer que seja o
+  `NODE_ENV`; só sem configuração o modo `development` significa localhost.
+- **Sem chute em produção**: faltando a variável, o base fica vazio e não há
+  proxy registrado (em vez de um proxy para localhost). Removido também o
+  fallback fixo para `brobond-ai-api.onrender.com` — é assim que uma URL
+  velha sobrevive a uma renomeação de serviço.
+- **"API não configurada"** (ETAPA 5): novo `NetworkErrorType.MISCONFIGURED`.
+  `runRequest` e `runUpload` falham na hora, sem gastar timeout nem retry, e
+  o Status Center ganha o estado `misconfigured` com a ação que resolve
+  ("definir NEXT_PUBLIC_API_URL"). Não é tratado como "sem conexão": a rede
+  está boa, o deploy é que não disse onde fica a API.
+- **Botão Google** (ETAPA 3): segue sendo `window.location.href` para
+  `${getApiBaseUrl()}/api/v1/auth/google/login` — navegação completa, sem
+  fetch e sem proxy local — agora com guarda que mostra o aviso amigável
+  (pt/en) quando a API não está configurada, em vez de navegar para lugar
+  nenhum.
+- **Zero localhost no bundle de produção**: `BUILD_LOCAL_API_URL` colapsa
+  para `''` quando `NODE_ENV !== 'development'`, então o webpack elimina o
+  literal. Verificado por grep no artefato: nenhuma ocorrência de
+  `localhost:8000` em `.next/static` ou `.next/server` (resta apenas o
+  parser de URL do polyfill do próprio Next).
+
+### Testes
+
+- +29 testes (470 no total, gate verde, `lib/network` em 99.74%): resolução
+  dev/prod, precedência sobre `NODE_ENV`, normalização de barra/espaço,
+  destino real do redirect do Google, os *rewrites* lidos do
+  `next.config.mjs` de verdade e o caminho "API não configurada".
+- Os guardas de regressão foram validados reintroduzindo o bug: exatamente
+  5 testes falham, entre eles "resolves configured over a development
+  NODE_ENV (the ECONNREFUSED bug)".
+
+---
+
+## [Unreleased] — PR009.7: BIBLIOTECA CRIATIVA
+
+O módulo **Assets** vira uma biblioteca profissional no nível de Callour
+Studio, Runway e TaleTech. Trabalho 100% de UI: **nenhuma rota, endpoint,
+JWT, upload, migração ou tabela foi tocada** — as APIs continuam em
+`/api/v1/assets` e o `git diff` de `backend/`, `lib/api.ts`,
+`lib/network/` e `docs/API_SNAPSHOT.json` é vazio.
+
+**Nomenclatura (REGRA 1).** A palavra "Assets" não aparece mais em lugar
+nenhum da interface. Sidebar → `Biblioteca`; header → `Biblioteca
+Criativa`; breadcrumb → `Workspace / Biblioteca`; "Open Library" →
+`Abrir Biblioteca`. As strings visíveis vivem em um único lugar
+(`BIBLIOTECA_COPY`, em `lib/assets/biblioteca.ts`) e um teste garante que
+nenhuma delas carrega a palavra "asset". As rotas (`id: 'assets'`) e os
+endpoints continuam exatamente como estavam.
+
+**Design.** Escopo `.bib-*`: background `#070707`, surface `#111111`,
+accent `#C88A2A`, Inter, radius 18 (16 nos cards), animações 180–250ms.
+Header de 72px com pesquisa, filtro, ordenação e botão Upload dourado.
+
+**Rail de categorias (240px).** Todos · Imagens · Vídeos · Áudios ·
+Favoritos · Aprovados · Campanhas · Bastidores · Produtos — cada um com
+seu contador real, hover dourado e item ativo em vidro. As categorias
+temáticas são derivadas dos metadados já gravados (tags, projeto,
+persona, nome); sem metadado o arquivo simplesmente não entra na
+categoria — nada é classificado por adivinhação.
+
+**Grid responsivo.** 5 colunas no desktop, 4 no notebook, 3 no tablet e
+2 no mobile, gap 20px. O card (≈220×250, radius 16, vidro escuro) traz
+thumbnail grande, badge de tipo (IMG · VIDEO · AUDIO), badge lateral de
+qualidade (`quality_status` quando existe, senão as faixas do score) e
+rodapé com nome, resolução, data e tamanho. No hover: preview, favoritar
+e o menu (...), com `scale(1.02)` e sombra dourada discreta.
+
+**Drag & drop.** A área inteira aceita arquivos, com área pontilhada
+permanente ("Arraste imagens e vídeos aqui"). A fila mostra nome,
+percentual, velocidade e barra — valores reais do XHR, nunca simulados.
+O endpoint é o que já existia (`POST /api/v1/assets/upload`, via
+`uploadLibraryAsset`); ao 201 o arquivo é prependido e a Biblioteca se
+atualiza sozinha, **sem refresh** (um teste prova que a listagem não é
+relida).
+
+**Preview fullscreen** (fade 220ms). Imagem: zoom, download, copiar URL e
+informações. Vídeo: player, timeline, volume, tela cheia e informações.
+Nenhum endpoint novo — tudo é o arquivo já armazenado.
+
+**Tags, favoritos e busca.** As tags são visuais, montadas sobre os
+metadados existentes. A estrela salva **localmente**, em um cookie
+nomeado (`lib/assets/favorites.ts`) — mesmo precedente do
+`remembered_login`, porque as chaves do Memory Adapter são congeladas por
+contrato; o backend não sabe de favoritos. A busca é instantânea sobre
+nome, tipo e tag (sem acento, sem caixa), e a ordenação oferece Mais
+recente · Mais antigo · Nome A-Z · Nome Z-A · Maior arquivo.
+
+**Responsividade.** Sidebar fixa no desktop, recolhida no tablet e
+bottom sheet de filtros no mobile. `prefers-reduced-motion` desliga todas
+as animações.
+
+**Honestidade.** O contrato do repositório continua valendo: o que o
+backend não sabe aparece como `—`, nunca como zero, unidade chutada ou
+rótulo inventado. Sem resposta da API a tela diz exatamente isso; um erro
+aparece com as palavras do servidor. Sem área de transferência, "Copiar
+URL" mostra a URL em vez de afirmar uma cópia que não aconteceu.
+
+**Testes.** 441 testes no runner do frontend (56 novos), com o gate de
+98% de cobertura mantido: `lib/assets/biblioteca.ts` e
+`lib/assets/favorites.ts` a 100%, e o módulo de UI a 100% de linhas.
+
+---
+
 ## [Unreleased] — PR009.6.1: PIXEL PERFECT LOGIN
 
 A tela de login passa a reproduzir **exatamente** o mockup aprovado

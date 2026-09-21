@@ -13,7 +13,7 @@ mudar e o documento não for regenerado, a suíte falha.
 
 ## Resumo
 
-- **114** rotas HTTP sob `/api/v1`
+- **116** rotas HTTP sob `/api/v1`
 - **32** delas são `/api/v1/core/*` — a camada de decisão
 - **3** WebSockets
 - **19** tags
@@ -39,10 +39,12 @@ PR006 Storyboard Cinematic Engine não adiciona rotas de render: a UI edita um `
 | `POST` | `/api/v1/assets/upload` | Upload an asset to MinIO or the local media adapter. |
 | `POST` | `/api/v1/assets/{asset_id}/conditioning` | create_conditioning_asset |
 
-## `auth` — 3
+## `auth` — 5
 
 | Método | Rota | Descrição |
 | --- | --- | --- |
+| `GET` | `/api/v1/auth/google/callback` | google_callback |
+| `GET` | `/api/v1/auth/google/login` | google_login |
 | `POST` | `/api/v1/auth/login` | Sign in (PR002: rate-limited, and every attempt — success or failure — audited). |
 | `GET` | `/api/v1/auth/me` | get_current_user |
 | `POST` | `/api/v1/auth/register` | Create an account (PR002: rate-limited and audited). |
