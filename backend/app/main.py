@@ -5,11 +5,16 @@ import json
 from pathlib import Path
 import sys
 import time
+import secrets
+from urllib.parse import urlencode
+
+from authlib.integrations.starlette_client import OAuth
+from starlette.middleware.sessions import SessionMiddleware
 from uuid import UUID
 
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -245,6 +250,11 @@ app = FastAPI(
     version="0.1.0",
     description="Local-first orchestration API for generative visual workflows.",
 )
+
+# OAuth state and nonce live in a signed, short-lived session cookie.
+app.add_middleware(SessionMiddleware, secret_key=settings.jwt_secret, https_only=not settings.database_url.startswith("sqlite"), same_site="lax")
+oauth = OAuth()
+oauth.register(name="google", client_id=settings.google_client_id, client_secret=settings.google_client_secret, server_metadata_url="https://accounts.google.com/.well-known/openid-configuration", client_kwargs={"scope": "openid email profile"})
 def _bootstrap_database(retries: int = 12, delay_seconds: float = 5.0) -> None:
     """Apply migrations and seed knowledge, retrying while the database is
     still booting. On Render the managed Postgres can take a few minutes to
@@ -633,6 +643,35 @@ def video_models() -> list[dict[str, str]]:
         {"id": "wan-2.1-t2v", "label": "Wan 2.1 Text to Video", "status": "local-provider"},
         {"id": "hunyuan-video", "label": "Hunyuan Video", "status": "planned-provider"},
     ]
+
+
+@app.get("/api/v1/auth/google/login", tags=["auth"])
+async def google_login(request: Request):
+    if request.url.scheme != "https" and request.client and request.client.host not in {"127.0.0.1", "localhost", "testclient"}:
+        raise HTTPException(status_code=400, detail="HTTPS is required for Google authentication")
+    if not settings.google_client_id or not settings.google_client_secret or not settings.google_redirect_uri:
+        raise HTTPException(status_code=503, detail="Google authentication is not configured")
+    nonce = secrets.token_urlsafe(32)
+    request.session["google_nonce"] = nonce
+    return await oauth.google.authorize_redirect(request, settings.google_redirect_uri, nonce=nonce)
+
+
+@app.get("/api/v1/auth/google/callback", tags=["auth"])
+async def google_callback(request: Request, db: Session = Depends(get_db)):
+    try:
+        token = await oauth.google.authorize_access_token(request)
+        claims = token.get("userinfo") or await oauth.google.parse_id_token(request, token)
+        if not claims or not claims.get("email") or not claims.get("email_verified"):
+            raise HTTPException(status_code=401, detail="Google account email is not verified")
+        if not secrets.compare_digest(str(claims.get("nonce", "")), str(request.session.pop("google_nonce", ""))):
+            raise HTTPException(status_code=400, detail="Invalid OAuth nonce")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail="Google authentication failed") from exc
+    result = google_user(db, email=claims["email"], name=claims.get("name", "Google user"))
+    target = settings.google_studio_url or str(request.base_url).rstrip("/")
+    return RedirectResponse(f"{target}/?oauth_token={result.access_token}")
 
 
 @app.post("/api/v1/auth/register", response_model=TokenResponse, status_code=201, tags=["auth"])

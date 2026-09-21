@@ -164,3 +164,18 @@ def login(request: LoginRequest, db: Session) -> TokenResponse:
     if not user or not _verify_password(request.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Incorrect email or password")
     return TokenResponse(access_token=_token_for(user), user=UserResponse.model_validate(user, from_attributes=True))
+
+
+def google_user(db: Session, *, email: str, name: str) -> TokenResponse:
+    """Find or provision a Google identity without storing provider tokens."""
+    normalized = email.lower()
+    user = db.scalar(select(User).where(User.email == normalized))
+    if not user:
+        # Google accounts do not use the password flow; retain the existing
+        # schema and make the generated value intentionally unreachable.
+        user = User(email=normalized, name=name[:120] or normalized, password_hash=_hash_password(os.urandom(32).hex()))
+        user.workspaces.append(Workspace(name="Personal workspace"))
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    return TokenResponse(access_token=_token_for(user), user=UserResponse.model_validate(user, from_attributes=True))

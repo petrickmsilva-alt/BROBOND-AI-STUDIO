@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     jwt_secret: str = "brobond-local-development-secret-0123456789-abcdefghijklmnopqrstuvwxyz"
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = 60
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_redirect_uri: str = ""
+    google_studio_url: str = ""
     #: PR002: auth endpoints (login/register) accept at most this many attempts
     #: per client IP per minute, per process. Set to 0 to disable the limiter.
     rate_limit_auth_per_minute: int = 20
