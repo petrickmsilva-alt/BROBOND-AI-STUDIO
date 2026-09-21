@@ -231,7 +231,7 @@ export default function PersonaProfilesPage() {
   };
 
   const remove = async (profile: PersonaProfile) => {
-    if (!window.confirm(`Excluir a persona “${profile.name}”? Assets referenciados e histórico de treino permanecem.`)) return;
+    if (!window.confirm(`Excluir a persona “${profile.name}”? Arquivos da Biblioteca e histórico de treino permanecem.`)) return;
     setBusy(true);
     const result = await deletePersonaProfile(profile.id);
     if (result.remote || result.status === 204) {

@@ -32,21 +32,21 @@ describe('PR009.6 login copy (PT/EN lockstep)', () => {
       'CONCEITO',
       'PLANEJAMENTO',
       'GERAÇÃO',
-      'BIBLIOTECA',
+      'ACERVO',
       'APROVAÇÃO',
     ]);
     expect(LOGIN_COPY.pt.features.map(feature => feature.title)).toEqual([
       'Diretor IA',
       'Storyboard',
       'Imagem & Vídeo',
-      'Assets',
+      'Biblioteca',
       'Quality',
     ]);
     expect(LOGIN_COPY.en.features.map(feature => feature.title)).toEqual([
       'AI Director',
       'Storyboard',
       'Image & Video',
-      'Assets',
+      'Biblioteca',
       'Quality',
     ]);
     for (const language of ['pt', 'en'] as const) {

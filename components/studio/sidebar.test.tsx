@@ -34,7 +34,7 @@ const groups: SidebarGroup[] = [
     id: 'library',
     label: 'LIBRARY',
     items: [
-      { id: 'assets', label: 'Assets', icon: ImageIcon },
+      { id: 'assets', label: 'Biblioteca', icon: ImageIcon },
       { id: 'knowledge', label: 'Knowledge', icon: Film, badge: 'SQL' },
       { id: 'continuity', label: 'Continuity', icon: Film },
       { id: 'quality', label: 'Quality', icon: Gauge },
@@ -55,7 +55,7 @@ describe('Sidebar', () => {
 
   it('renders every item across every group as an accessible navigation button', () => {
     render(<Sidebar groups={groups} activeId="director" onNavigate={() => {}} />);
-    ['Director', 'Storyboard', 'Render Queue', 'Personas', 'Image', 'Video', 'Campaigns', 'Assets', 'Knowledge', 'Continuity', 'Quality'].forEach(label => {
+    ['Director', 'Storyboard', 'Render Queue', 'Personas', 'Image', 'Video', 'Campaigns', 'Biblioteca', 'Knowledge', 'Continuity', 'Quality'].forEach(label => {
       expect(screen.getByRole('button', { name: new RegExp(label) })).toBeInTheDocument();
     });
   });

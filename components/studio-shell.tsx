@@ -99,9 +99,9 @@ const navGroups: { label: string; items: NavItem[] }[] = [
     ],
   },
   {
-    label: "Library",
+    label: "Biblioteca",
     items: [
-      { id: "assets", label: "Assets", icon: Library },
+      { id: "assets", label: "Biblioteca", icon: Library },
       { id: "projects", label: "Projects", icon: FolderOpen },
     ],
   },
@@ -223,7 +223,7 @@ export default function StudioShell() {
   const [duration, setDuration] = useState("05s");
   const [selectedMotion, setSelectedMotion] = useState("Dolly in");
   const [selectedScene, setSelectedScene] = useState(0);
-  const [assetFilter, setAssetFilter] = useState("All assets");
+  const [assetFilter, setAssetFilter] = useState("Todos");
   const [generating, setGenerating] = useState<string | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
   const [uploadedFile, setUploadedFile] = useState<string | null>(null);
@@ -624,10 +624,10 @@ function StoryboardView({ selectedScene, setSelectedScene, onGenerate, generatin
 }
 
 function AssetsView({ filter, setFilter, onToast }: { filter: string; setFilter: (value: string) => void; onToast: (title: string, message: string) => void }) {
-  const filters = ["All assets", "Images", "Videos", "Audio", "LoRAs"];
-  const visibleAssets = assetItems.filter((asset) => filter === "All assets" || (filter === "Images" && asset.kind === "image") || (filter === "Videos" && asset.kind === "video") || (filter === "Audio" && asset.kind === "audio") || (filter === "LoRAs" && asset.kind === "lora"));
+  const filters = ["Todos", "Imagens", "Vídeos", "Áudios", "LoRAs"];
+  const visibleAssets = assetItems.filter((asset) => filter === "Todos" || (filter === "Imagens" && asset.kind === "image") || (filter === "Vídeos" && asset.kind === "video") || (filter === "Áudios" && asset.kind === "audio") || (filter === "LoRAs" && asset.kind === "lora"));
   return (
-    <div className="studio-page page-enter"><div className="page-heading"><div><div className="eyebrow"><span className="eyebrow-dot assets-dot" /> Your library</div><h1>Everything you <em>made.</em></h1><p>A calm home for your images, films, sounds, models and ideas.</p></div><div className="heading-actions"><button type="button" className="secondary-button" onClick={() => onToast("New folder", "A new folder can organize your next creative direction.")}><Plus size={15} /> New folder</button><button type="button" className="primary-button small-button" onClick={() => onToast("Upload", "Upload files directly into your local asset library.")}><UploadCloud size={15} /> Upload</button></div></div><div className="asset-toolbar"><div className="asset-filters">{filters.map((item) => <button type="button" key={item} className={filter === item ? "selected" : ""} onClick={() => setFilter(item)}>{item}{item === "All assets" && <span>24</span>}</button>)}</div><div className="asset-toolbar-right"><div className="asset-search"><Search size={15} /><input placeholder="Search assets" /><kbd>/</kbd></div><IconButton label="Grid view" className="active"><Grid2X2 size={16} /></IconButton><IconButton label="Sort assets" onClick={() => onToast("Sort assets", "Assets are currently sorted by most recent.")}><SlidersHorizontal size={16} /></IconButton></div></div><div className="folder-path"><FolderOpen size={15} /><span>Library</span><ChevronRight size={13} /><strong>All assets</strong><span className="path-spacer" /><span>Updated just now</span></div><div className="assets-grid">{visibleAssets.map((asset) => <button type="button" className="asset-card" key={asset.title} onClick={() => onToast("Asset selected", `${asset.title} is ready for your next composition.`)}><div className={`asset-preview ${asset.className}`}><span className="asset-kind">{asset.kind === "lora" ? "MODEL" : asset.kind.toUpperCase()}</span>{asset.kind === "video" && <span className="asset-play"><Play size={13} fill="currentColor" /></span>}{asset.kind === "audio" && <div className="asset-wave"><i /><i /><i /><i /><i /><i /><i /><i /><i /></div>}<span className="asset-more"><MoreHorizontal size={15} /></span></div><div className="asset-card-copy"><strong>{asset.title}</strong><span>{asset.meta}</span></div></button>)}</div></div>
+    <div className="studio-page page-enter"><div className="page-heading"><div><div className="eyebrow"><span className="eyebrow-dot assets-dot" /> Biblioteca Criativa</div><h1>Everything you <em>made.</em></h1><p>A calm home for your images, films, sounds, models and ideas.</p></div><div className="heading-actions"><button type="button" className="secondary-button" onClick={() => onToast("New folder", "A new folder can organize your next creative direction.")}><Plus size={15} /> New folder</button><button type="button" className="primary-button small-button" onClick={() => onToast("Upload", "Envie arquivos direto para a sua Biblioteca.")}><UploadCloud size={15} /> Upload</button></div></div><div className="asset-toolbar"><div className="asset-filters">{filters.map((item) => <button type="button" key={item} className={filter === item ? "selected" : ""} onClick={() => setFilter(item)}>{item}{item === "Todos" && <span>24</span>}</button>)}</div><div className="asset-toolbar-right"><div className="asset-search"><Search size={15} /><input placeholder="Pesquisar na Biblioteca" /><kbd>/</kbd></div><IconButton label="Grid view" className="active"><Grid2X2 size={16} /></IconButton><IconButton label="Ordenar" onClick={() => onToast("Ordenação", "A Biblioteca está ordenada pelos mais recentes.")}><SlidersHorizontal size={16} /></IconButton></div></div><div className="folder-path"><FolderOpen size={15} /><span>Workspace</span><ChevronRight size={13} /><strong>Biblioteca</strong><span className="path-spacer" /><span>Updated just now</span></div><div className="assets-grid">{visibleAssets.map((asset) => <button type="button" className="asset-card" key={asset.title} onClick={() => onToast("Arquivo selecionado", `${asset.title} is ready for your next composition.`)}><div className={`asset-preview ${asset.className}`}><span className="asset-kind">{asset.kind === "lora" ? "MODEL" : asset.kind.toUpperCase()}</span>{asset.kind === "video" && <span className="asset-play"><Play size={13} fill="currentColor" /></span>}{asset.kind === "audio" && <div className="asset-wave"><i /><i /><i /><i /><i /><i /><i /><i /><i /></div>}<span className="asset-more"><MoreHorizontal size={15} /></span></div><div className="asset-card-copy"><strong>{asset.title}</strong><span>{asset.meta}</span></div></button>)}</div></div>
   );
 }
 

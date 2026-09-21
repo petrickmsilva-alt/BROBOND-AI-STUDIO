@@ -44,6 +44,9 @@ export default defineConfig({
       'components/studio/identity_bar.test.tsx',
       // PR013 — V4.0.1 Cinematic Asset Studio components.
       'app/components/studio/assets/**/*.test.tsx',
+      // PR009.7 — Biblioteca Criativa: o domínio puro (categorias, tags,
+      // qualidade, busca, ordenação), o seam de favoritos e o módulo de UI.
+      'app/components/studio/biblioteca/**/*.test.tsx',
       // PR009.6 — Premium Login Experience: the bilingual copy contract and
       // the remembered-login cookie seam ("Lembrar de mim", 30 days). The
       // visual composition itself stays guarded by `next build`, like every
@@ -73,6 +76,10 @@ export default defineConfig({
         // PR013 — V4.0.1: the whole Assets module (pure domain + components).
         'lib/assets/library.ts',
         'app/components/studio/assets/*.tsx',
+        // PR009.7 — Biblioteca Criativa.
+        'lib/assets/biblioteca.ts',
+        'lib/assets/favorites.ts',
+        'app/components/studio/biblioteca/*.tsx',
       ],
       // The spec's 95% floor, enforced (not just reported) — and the V3.2.1
       // network layer / PR012 UI 4.0 shell components hold themselves to

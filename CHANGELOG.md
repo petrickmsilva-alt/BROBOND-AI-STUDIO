@@ -6,6 +6,76 @@ versões de produto do `ROADMAP.md`.
 
 ---
 
+## [Unreleased] — PR009.7: BIBLIOTECA CRIATIVA
+
+O módulo **Assets** vira uma biblioteca profissional no nível de Callour
+Studio, Runway e TaleTech. Trabalho 100% de UI: **nenhuma rota, endpoint,
+JWT, upload, migração ou tabela foi tocada** — as APIs continuam em
+`/api/v1/assets` e o `git diff` de `backend/`, `lib/api.ts`,
+`lib/network/` e `docs/API_SNAPSHOT.json` é vazio.
+
+**Nomenclatura (REGRA 1).** A palavra "Assets" não aparece mais em lugar
+nenhum da interface. Sidebar → `Biblioteca`; header → `Biblioteca
+Criativa`; breadcrumb → `Workspace / Biblioteca`; "Open Library" →
+`Abrir Biblioteca`. As strings visíveis vivem em um único lugar
+(`BIBLIOTECA_COPY`, em `lib/assets/biblioteca.ts`) e um teste garante que
+nenhuma delas carrega a palavra "asset". As rotas (`id: 'assets'`) e os
+endpoints continuam exatamente como estavam.
+
+**Design.** Escopo `.bib-*`: background `#070707`, surface `#111111`,
+accent `#C88A2A`, Inter, radius 18 (16 nos cards), animações 180–250ms.
+Header de 72px com pesquisa, filtro, ordenação e botão Upload dourado.
+
+**Rail de categorias (240px).** Todos · Imagens · Vídeos · Áudios ·
+Favoritos · Aprovados · Campanhas · Bastidores · Produtos — cada um com
+seu contador real, hover dourado e item ativo em vidro. As categorias
+temáticas são derivadas dos metadados já gravados (tags, projeto,
+persona, nome); sem metadado o arquivo simplesmente não entra na
+categoria — nada é classificado por adivinhação.
+
+**Grid responsivo.** 5 colunas no desktop, 4 no notebook, 3 no tablet e
+2 no mobile, gap 20px. O card (≈220×250, radius 16, vidro escuro) traz
+thumbnail grande, badge de tipo (IMG · VIDEO · AUDIO), badge lateral de
+qualidade (`quality_status` quando existe, senão as faixas do score) e
+rodapé com nome, resolução, data e tamanho. No hover: preview, favoritar
+e o menu (...), com `scale(1.02)` e sombra dourada discreta.
+
+**Drag & drop.** A área inteira aceita arquivos, com área pontilhada
+permanente ("Arraste imagens e vídeos aqui"). A fila mostra nome,
+percentual, velocidade e barra — valores reais do XHR, nunca simulados.
+O endpoint é o que já existia (`POST /api/v1/assets/upload`, via
+`uploadLibraryAsset`); ao 201 o arquivo é prependido e a Biblioteca se
+atualiza sozinha, **sem refresh** (um teste prova que a listagem não é
+relida).
+
+**Preview fullscreen** (fade 220ms). Imagem: zoom, download, copiar URL e
+informações. Vídeo: player, timeline, volume, tela cheia e informações.
+Nenhum endpoint novo — tudo é o arquivo já armazenado.
+
+**Tags, favoritos e busca.** As tags são visuais, montadas sobre os
+metadados existentes. A estrela salva **localmente**, em um cookie
+nomeado (`lib/assets/favorites.ts`) — mesmo precedente do
+`remembered_login`, porque as chaves do Memory Adapter são congeladas por
+contrato; o backend não sabe de favoritos. A busca é instantânea sobre
+nome, tipo e tag (sem acento, sem caixa), e a ordenação oferece Mais
+recente · Mais antigo · Nome A-Z · Nome Z-A · Maior arquivo.
+
+**Responsividade.** Sidebar fixa no desktop, recolhida no tablet e
+bottom sheet de filtros no mobile. `prefers-reduced-motion` desliga todas
+as animações.
+
+**Honestidade.** O contrato do repositório continua valendo: o que o
+backend não sabe aparece como `—`, nunca como zero, unidade chutada ou
+rótulo inventado. Sem resposta da API a tela diz exatamente isso; um erro
+aparece com as palavras do servidor. Sem área de transferência, "Copiar
+URL" mostra a URL em vez de afirmar uma cópia que não aconteceu.
+
+**Testes.** 441 testes no runner do frontend (56 novos), com o gate de
+98% de cobertura mantido: `lib/assets/biblioteca.ts` e
+`lib/assets/favorites.ts` a 100%, e o módulo de UI a 100% de linhas.
+
+---
+
 ## [Unreleased] — PR009.6.1: PIXEL PERFECT LOGIN
 
 A tela de login passa a reproduzir **exatamente** o mockup aprovado

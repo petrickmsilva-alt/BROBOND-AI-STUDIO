@@ -10,11 +10,12 @@ import {
   trainPersona, uploadAsset, videoModels, wsUrl,
 } from '../lib/api';
 import PersonaSelector, { mainImage } from './components/studio/PersonaSelector';
-// PR013 — V4.0.1 Cinematic Asset Studio: the whole Assets module is owned by
-// these components (upload engine, responsive grid, preview, filters, empty
-// states). Only their counts flow back here for the header description.
-import { AssetLibraryClient, AssetBrowseButton } from './components/studio/assets';
-import type { LibraryCounts } from '../lib/assets/library';
+// PR009.7 — Biblioteca Criativa: the Assets module is presented as
+// "Biblioteca" everywhere in the interface. The routes and the APIs are
+// untouched (`/api/v1/assets`); only the UI layer changed.
+import { Biblioteca } from './components/studio/biblioteca';
+import { BIBLIOTECA_COPY } from '../lib/assets/biblioteca';
+
 // V3.2.1: failures arrive typed from the network layer — the UI branches on
 // NetworkErrorType (never on a bare 'offline' string) and the human text is
 // produced by the layer itself (cold start aware).
@@ -59,7 +60,7 @@ const modules = [
   { id: 'video', label: 'Video generation', icon: Clapperboard },
   { id: 'persona', label: 'Personas', icon: UserRound },
   { id: 'storyboard', label: 'Storyboard', icon: Layers3 },
-  { id: 'assets', label: 'Assets', icon: Library },
+  { id: 'assets', label: BIBLIOTECA_COPY.navLabel, icon: Library },
 ];
 
 function Toggle({ on = true }: { on?: boolean }) { return <span className={`toggle ${on ? 'on' : ''}`}><i /></span>; }
@@ -260,7 +261,7 @@ export default function Home() {
       id: 'library',
       label: 'Library',
       items: [
-        { id: 'assets', label: 'Assets', icon: Library },
+        { id: 'assets', label: BIBLIOTECA_COPY.navLabel, icon: Library },
         { id: 'knowledge', label: 'Knowledge', icon: Network },
         { id: 'continuity', label: 'Continuity', icon: Film },
         { id: 'quality', label: 'Quality', icon: Gauge },
@@ -315,14 +316,14 @@ export default function Home() {
 
     <section className="main-area">
       <header className="topbar"><button className="icon-button mobile-menu" onClick={() => setSidebar(!sidebar)}><Menu size={19} /></button><div className="crumb"><span>Workspace</span><span>/</span><strong>{moduleTitle}</strong></div><div className="top-actions"><div className="search"><Search size={16} /><input placeholder="Search projects..." /></div><button className="icon-button"><CircleHelp size={18} /></button><button className="icon-button notification"><Bell size={18} /><i /></button><button className="new-button" onClick={create}><Plus size={17} /> New creation</button></div></header>
-      <div className="content">
+      <div className={active === 'assets' ? 'content content-bleed' : 'content'}>
         {active === 'director' && <DirectorStudio activePersona={activePersona} style={style} selectedLora={selectedLora} loras={loras} onRenderImage={text => { setPrompt(text); setActive('image'); setGenerated(false); }} />}
         {active === 'dashboard' && <Dashboard onNavigate={setActive} onCreate={create} user={user} greeting={greeting} assetCount={assetCount} system={system} />}
         {active === 'image' && <ImageStudio prompt={prompt} setPrompt={setPrompt} generated={generated} setGenerated={setGenerated} personas={personas} activePersona={activePersona} onSelectPersona={selectPersona} style={style} setStyle={setStyle} loras={loras} selectedLora={selectedLora} setSelectedLora={setSelectedLora} selectedWardrobe={selectedWardrobe} onToggleWardrobe={toggleWardrobe} aspectRatio={aspectRatio} setAspectRatio={setAspectRatio} duration={duration} setDuration={setDuration} cameraPreset={cameraPreset} setCameraPreset={setCameraPreset} />}
         {active === 'video' && <VideoStudio personas={personas} activePersona={activePersona} onSelectPersona={selectPersona} style={style} setStyle={setStyle} loras={loras} selectedLora={selectedLora} setSelectedLora={setSelectedLora} selectedWardrobe={selectedWardrobe} onToggleWardrobe={toggleWardrobe} aspectRatio={aspectRatio} setAspectRatio={setAspectRatio} duration={duration} setDuration={setDuration} cameraPreset={cameraPreset} setCameraPreset={setCameraPreset} />}
         {active === 'persona' && <PersonaStudio />}
         {active === 'storyboard' && <Storyboard />}
-        {active === 'assets' && <Assets onCounted={setAssetCount} />}
+        {active === 'assets' && <Biblioteca onCounted={counts => setAssetCount(counts.all)} />}
       </div>
       {/* PR012 — ETAPA 6: Status Dock. Replaces the old sidebar "Readiness"
           list with a single bottom bar (never taller than 52px). */}
@@ -468,7 +469,7 @@ function PageHeader({ eyebrow, title, description, children }: { eyebrow: string
 function Dashboard({ onNavigate, onCreate, user, greeting, assetCount, system }: { onNavigate: (id: string) => void; onCreate: () => void; user: AuthUser | null; greeting: string; assetCount: number | null; system: Readiness | null }) {
   const cards = [
     { id: 'director', title: 'Director', desc: 'State an intention, get direction', icon: MessageSquareText, color: 'purple', stat: 'CORE' },
-    { id: 'image', title: 'Image generation', desc: 'Render a directed frame', icon: ImageIcon, color: 'orange', stat: assetCount === null ? '—' : `${assetCount} assets` },
+    { id: 'image', title: 'Image generation', desc: 'Render a directed frame', icon: ImageIcon, color: 'orange', stat: assetCount === null ? '—' : `${assetCount} na Biblioteca` },
     { id: 'storyboard', title: 'Storyboard', desc: 'Cast a brief into shots', icon: Layers3, color: 'cyan', stat: 'CORE' },
     { id: 'persona', title: 'Persona', desc: 'Build consistent characters', icon: UserRound, color: 'pink', stat: 'LoRA' },
   ];
@@ -479,12 +480,12 @@ function Dashboard({ onNavigate, onCreate, user, greeting, assetCount, system }:
     <section className="hero-banner"><div className="hero-copy"><span className="pill"><Zap size={13} /> BROBOND CORE</span><h2>From a thought<br />to a <em>directed film.</em></h2><p>Intention in, direction out. Concept, script, scenes, cameras, music and duration — decided before a single frame is rendered.</p><button className="light-button" onClick={onCreate}>Start with the director <ArrowUpRight size={15} /></button></div><div className="hero-art"><div className="orb orb-one" /><div className="orb orb-two" /><div className="hero-grid" /><span className="art-caption">BROBOND / 001</span></div></section>
     <div className="section-row"><div><h2 className="section-title">Creative tools</h2><p className="section-subtitle">Everything you need to make your next idea real.</p></div></div>
     <div className="tool-grid">{cards.map(card => { const Icon = card.icon; return <button className="tool-card" key={card.id} onClick={() => onNavigate(card.id)}><div className={`tool-icon ${card.color}`}><Icon size={20} /></div><div className="card-arrow"><ArrowUpRight size={16} /></div><h3>{card.title}</h3><p>{card.desc}</p><span className="tool-stat">{card.stat}</span></button>; })}</div>
-    <div className="section-row recent-row"><div><h2 className="section-title">System state</h2><p className="section-subtitle">Read from the API, not assumed.</p></div><button className="text-button" onClick={() => onNavigate('assets')}>Open library <ArrowUpRight size={14} /></button></div>
+    <div className="section-row recent-row"><div><h2 className="section-title">System state</h2><p className="section-subtitle">Read from the API, not assumed.</p></div><button className="text-button" onClick={() => onNavigate('assets')}>{BIBLIOTECA_COPY.openLibrary} <ArrowUpRight size={14} /></button></div>
     <div className="state-grid">
       {system === null ? <div className="state-card"><h3>Readiness</h3><p>Querying the API…</p></div> : <>
         <div className="state-card"><h3>Inference</h3><p>{system.inference_ready ? 'Ready' : 'Not available on this host'}</p><span className="tool-stat">{system.gpu?.message ?? system.gpu?.backend ?? 'unknown'}</span></div>
         <div className="state-card"><h3>Media</h3><p>{system.media_ready ? 'FFmpeg present' : 'FFmpeg missing — exports disabled'}</p><span className="tool-stat">{system.media_ready ? 'export capable' : 'no assembly'}</span></div>
-        <div className="state-card"><h3>Assets</h3><p>{assetCount === null ? 'Not synced' : `${assetCount} in this workspace`}</p><span className="tool-stat">{assetCount === null ? 'sign in to sync' : 'library'}</span></div>
+        <div className="state-card"><h3>Biblioteca</h3><p>{assetCount === null ? 'Not synced' : `${assetCount} in this workspace`}</p><span className="tool-stat">{assetCount === null ? 'sign in to sync' : 'biblioteca'}</span></div>
       </>}
     </div>
   </>;
@@ -754,15 +755,8 @@ function Storyboard() {
   return <><PageHeader eyebrow="STORYBOARD · CORE" title="Shape the whole story" description="A brief is cast into real shots from the 300-shot library, then checked against the cinematic grammar. Findings are reported, not hidden."><button className="primary-button" onClick={generate}><Sparkles size={16} /> Cast scenes</button></PageHeader><div className="story-input control-panel"><div className="panel-heading"><span>Story brief</span><span className="muted">{format || 'format detected on cast'}</span></div><textarea value={brief} onChange={event => setBrief(event.target.value)} /><div className="story-options"><span>{status}{runtime ? ` · ${runtime}s` : ''}</span><span>·</span><span>{sceneCount} scenes</span><div className="chip-row">{[2, 4, 6, 8].map(value => <Chip key={value} active={sceneCount === value} onClick={() => setSceneCount(value)}>{value}</Chip>)}</div></div><Notice error={error} />{findings.length > 0 && <div className="finding-list">{findings.map((finding, index) => <div className={`finding ${finding.status}`} key={`${finding.rule}-${index}`}><b>{finding.rule}</b><span>{finding.detail}</span></div>)}</div>}</div>{scenes.length === 0 ? <div className="empty-library"><Layers3 size={22} /><h3>No storyboard yet</h3><p>Cast a brief to see the shots the director chose and why.</p></div> : <div className="scene-grid">{scenes.map((scene, i) => <div className="scene-card" key={`${scene.shot_code}-${scene.number}`}><div className={`scene-visual scene-${i % 4}`}><span>SCENE {String(scene.number).padStart(2, '0')}</span><button className="play-overlay"><Play size={13} fill="currentColor" /></button></div><div className="scene-copy"><div><h3>{scene.shot_name}</h3><p>{scene.shot_code} · {scene.family} · {scene.lens} · {scene.duration_seconds}s</p></div><MoreHorizontal size={17} /></div></div>)}</div>}</>;
 }
 
-// PR013 — V4.0.1: the whole assets experience (upload engine done there,
-// responsive grid, preview, filters, search, empty states) now lives in
-// app/components/studio/assets. This wrapper only owns the page chrome and
-// the counted description — the numbers stay real or they stay unknown.
-function Assets({ onCounted }: { onCounted: (count: number) => void }) {
-  const [counts, setCounts] = useState<LibraryCounts | null>(null);
-  const enqueue = useRef<(files: File[]) => void>(() => undefined);
-  const description = counts
-    ? `${counts.all} assets — ${counts.image} images · ${counts.video} videos. Drop files anywhere on this page.`
-    : 'Everything you make, in one calm place. Counts are read from the API.';
-  return <><PageHeader eyebrow="LIBRARY" title="Your creative archive" description={description}><AssetBrowseButton label="Upload assets" onFiles={files => enqueue.current(files)} /></PageHeader><AssetLibraryClient onCounted={(next) => { setCounts(next); onCounted(next.all); }} registerEnqueue={(handler) => { enqueue.current = handler; }} /></>;
-}
+// PR009.7 — Biblioteca Criativa: the whole experience (header, category
+// rail, responsive grid, preview, drag & drop, busca, ordenação) lives in
+// app/components/studio/biblioteca. It reads and writes exactly the same
+// endpoints the module always used — `/api/v1/assets` — so nothing here
+// touches the backend, the routes, the JWT or the upload contract.
