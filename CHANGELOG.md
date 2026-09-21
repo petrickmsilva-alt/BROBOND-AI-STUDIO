@@ -6,6 +6,53 @@ versões de produto do `ROADMAP.md`.
 
 ---
 
+## [Unreleased] — CI: verde de novo (dívida herdada do PR #25)
+
+O CI já estava vermelho na `main` (`c061a1c`), antes desta branch: `backend`
+e `API Snapshot Guard` falhavam nos mesmos dois jobs. O PR #25 entregou o
+Google OAuth, mas deixou três rastros para trás. Nenhuma linha de
+`backend/app/` foi alterada aqui — só a pinagem, os docs gerados e os
+registros dos testes.
+
+### Corrigido
+
+- **`authlib` e `itsdangerous` ausentes do `requirements.txt` da raiz.**
+  `backend/app/main.py` importa os dois no escopo do módulo (Authlib para o
+  fluxo OAuth, itsdangerous para assinar o cookie do `SessionMiddleware`),
+  então faltar o pin não degradava um recurso: **a aplicação inteira não
+  importava** (`ModuleNotFoundError: No module named 'authlib'`), derrubando
+  os 11 testes do snapshot e o job `backend`.
+  O `backend/requirements.txt` já tinha ambos; o da raiz, criado no mesmo
+  merge, não. **Isso também quebrava a imagem de produção**: o
+  `Dockerfile.api` — o que o `render.yaml` usa — copia o `requirements.txt`
+  da raiz. Verificado instalando só esse arquivo num venv limpo: antes,
+  falha no import; agora, 118 rotas carregam.
+- **Snapshot e docs desatualizados.** As rotas `/api/v1/auth/google/login` e
+  `/api/v1/auth/google/callback` existiam na aplicação mas não em
+  `docs/API_SNAPSHOT.json` nem em `docs/API.md`. Ambos são **gerados** —
+  regenerados com os scripts do próprio repositório, não editados à mão.
+  Contagens atualizadas onde estavam registradas: 114 → **116** rotas, 38 →
+  **40** públicas (as duas do OAuth antecedem a sessão, por natureza), em
+  `test_api_snapshot.py`, `test_core_api.py`, `docs/ETAPAS.md` e
+  `docs/LIMITATIONS.md`.
+- **`test_frontend_honesty.py` afirmava detalhes de implementação vencidos.**
+  Exigia a string literal `process.env.NEXT_PUBLIC_API_URL ?? ''` em
+  `request.ts` e a variável `BROBOND_API_PROXY_TARGET` no `next.config.mjs`
+  — ambas de antes do PR009.6.2.1. Reescrito para afirmar a **intenção**, e
+  fortalecido: agora também exige que `NEXT_PUBLIC_API_URL` seja consultada
+  **antes** de qualquer ramo de `NODE_ENV`, tanto no cliente quanto no proxy.
+  Esse é justamente o bug do `ECONNREFUSED`, agora travado também pelo lado
+  Python.
+
+### Verificação
+
+Os cinco jobs do CI rodados localmente: `backend` **2464 passed**, cobertura
+**97%** (piso 95%), Architecture Guard 51, Import Boundary Guard 75, API
+Snapshot Guard 16 + regeneração byte-idêntica, frontend 470 testes e build
+compilando.
+
+---
+
 ## [Unreleased] — PR009.6.2.1: HOTFIX GOOGLE OAUTH (RENDER)
 
 Correção da camada de comunicação Frontend↔Backend em produção. **Nada de

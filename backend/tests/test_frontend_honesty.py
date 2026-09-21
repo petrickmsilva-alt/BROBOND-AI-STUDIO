@@ -26,6 +26,10 @@ import pytest
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 API = ROOT / "lib" / "api.ts"
 NETWORK = ROOT / "lib" / "network" / "request.ts"
+# PR009.6.2.1: the origin decision moved out of `request.ts` into its own
+# module, shared with `next.config.mjs` so the browser and the rewrite proxy
+# cannot disagree about where the API lives.
+API_BASE = ROOT / "lib" / "network" / "api-base-url.ts"
 PAGE = ROOT / "app" / "page.tsx"
 # PR009.6: the auth flow (the old AuthModal) lives in the login screen now.
 LOGIN = ROOT / "components" / "studio" / "login" / "login-screen.tsx"
@@ -48,6 +52,11 @@ def network_source() -> str:
 
 
 @pytest.fixture(scope="module")
+def api_base_source() -> str:
+    return _read(API_BASE)
+
+
+@pytest.fixture(scope="module")
 def page_source() -> str:
     return _read(PAGE)
 
@@ -62,25 +71,48 @@ def login_source() -> str:
 # ---------------------------------------------------------------------------
 
 
-def test_the_client_does_not_default_to_localhost(api_source: str, network_source: str) -> None:
+def test_the_client_does_not_default_to_localhost(
+    api_source: str, network_source: str, api_base_source: str
+) -> None:
     """`http://localhost:8000` only works when the browser is on the API's host.
 
-    Since V3.2.1 the base URL lives in `lib/network/request.ts`; `lib/api.ts`
+    Since V3.2.1 the base URL is computed in `lib/network/`; `lib/api.ts`
     re-exports it, and `next.config.mjs` proxies `/api/v1`, so the UI works
     behind any host.
+
+    PR009.6.2.1 moved the decision itself into `api-base-url.ts` and made
+    `NEXT_PUBLIC_API_URL` outrank `NODE_ENV`: a Render service reporting
+    `development` used to rewrite production traffic to localhost:8000,
+    which is what the `ECONNREFUSED` incident was.
     """
 
     assert "localhost:8000" not in api_source
-    assert "process.env.NEXT_PUBLIC_API_URL ?? ''" in network_source
+    assert "localhost:8000" not in network_source
+    # The base is read from the environment, never hard-coded at the callsite.
+    assert "NEXT_PUBLIC_API_URL" in api_base_source
+    assert "getApiBaseUrl" in network_source
     assert "export { API_URL }" in api_source
+    # The configured URL is consulted before any NODE_ENV branch: the literal
+    # only survives as the *development* fallback, never as a production one.
+    configured = api_base_source.index("NEXT_PUBLIC_API_URL")
+    dev_branch = api_base_source.index("'development'")
+    assert configured < dev_branch, "NODE_ENV must not outrank NEXT_PUBLIC_API_URL"
 
 
 def test_the_proxy_is_configured() -> None:
     config = _read(NEXT_CONFIG)
     assert "rewrites" in config
     assert "/api/v1/:path*" in config
-    # The target is an env var, not a literal, so deployments can point elsewhere.
-    assert "BROBOND_API_PROXY_TARGET" in config
+    # The target is an env var, not a literal, so deployments can point
+    # elsewhere. PR009.6.2.1 renamed it to NEXT_PUBLIC_API_URL — the same
+    # variable the browser bundle reads — so the proxy and the client can no
+    # longer disagree about the origin.
+    assert "NEXT_PUBLIC_API_URL" in config
+    # And it is consulted before the NODE_ENV branch. Reversing these two
+    # is exactly the bug that produced `ECONNREFUSED http://localhost:8000`
+    # on Render: a service whose environment said `development` proxied
+    # every production request to a port nothing listens on.
+    assert config.index("NEXT_PUBLIC_API_URL") < config.index("'development'")
 
 
 def test_websocket_urls_are_derived_not_hardcoded(api_source: str, page_source: str) -> None:

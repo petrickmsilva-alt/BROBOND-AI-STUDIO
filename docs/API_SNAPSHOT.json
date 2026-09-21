@@ -3,14 +3,14 @@
   "snapshot_version": "1.0",
   "generator": "scripts/gen_api_snapshot.py",
   "summary": {
-    "http_routes": 114,
+    "http_routes": 116,
     "core_routes": 32,
     "websockets": 3,
     "models": 139,
     "tags": 19,
     "auth_required": 73,
     "auth_optional": 3,
-    "auth_public": 38
+    "auth_public": 40
   },
   "http": [
     {
@@ -93,6 +93,24 @@
       "status_code": 200,
       "request_model": "ExportRequest",
       "response_model": "ExportResponse"
+    },
+    {
+      "path": "/api/v1/auth/google/callback",
+      "methods": [
+        "GET"
+      ],
+      "tag": "auth",
+      "auth": "public",
+      "status_code": 200
+    },
+    {
+      "path": "/api/v1/auth/google/login",
+      "methods": [
+        "GET"
+      ],
+      "tag": "auth",
+      "auth": "public",
+      "status_code": 200
     },
     {
       "path": "/api/v1/auth/login",

@@ -266,9 +266,12 @@ def test_route_inventory_only_grew() -> None:
     # `/api/v1/continuity/*` Character Continuity Engine routes), 106 after
     # V3.3 (seven `/api/v1/campaigns/*` Campaign Builder routes), 111 after
     # V3.4 (five `/api/v1/quality/*` Quality AI Engine routes), 114 after
-    # V4.0.1 (three `/assets/library*` Cinematic Asset Studio routes).
+    # V4.0.1 (three `/assets/library*` Cinematic Asset Studio routes), 116
+    # after PR009.6.2.1 recorded the two Google OAuth routes
+    # (`/auth/google/login` and `/auth/google/callback`) that shipped with
+    # the hotfix but never reached the inventory.
     # The guard is that the number only grows: nothing was ever removed.
-    assert len([route for route in http if route.path.startswith("/api/v1")]) == 114
+    assert len([route for route in http if route.path.startswith("/api/v1")]) == 116
 
 
 # ------------------------------------------------- no generation logic in routes
