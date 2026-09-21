@@ -18,7 +18,7 @@
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { authenticate, type AuthUser } from '../../../lib/api';
-import { clearAuthToken } from '../../../lib/memory/project_memory';
+import { clearAuthToken, setAuthToken } from '../../../lib/memory/project_memory';
 import { failureMessage } from '../../../lib/network/status';
 import {
   clearRememberedLogin,
@@ -38,6 +38,11 @@ export type LoginScreenProps = {
 };
 
 export function LoginScreen({ user, online, onAuthenticated, onClose }: LoginScreenProps) {
+  useEffect(() => {
+    const token = new URLSearchParams(window.location.search).get('oauth_token');
+    if (token) { setAuthToken(token); window.history.replaceState({}, '', window.location.pathname); window.location.reload(); }
+  }, []);
+
   const [language, setLanguage] = useState<LoginLanguage>('pt');
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
@@ -142,7 +147,7 @@ export function LoginScreen({ user, online, onAuthenticated, onClose }: LoginScr
           onNameChange={setName}
           onRememberChange={setRemember}
           onSubmit={submit}
-          onGoogle={() => { setNotice('google'); setMessage(''); }}
+          onGoogle={() => { window.location.href = '/api/v1/auth/google/login'; }}
           onForgot={() => { setNotice('forgot'); setMessage(''); }}
           onLogout={logout}
           onBackToStudio={onClose}
