@@ -328,7 +328,7 @@ def test_the_authorisation_count_is_the_real_one(inventory) -> None:
     optional = len([k for k in kinds if k == "optional_user"])
     touching = required + optional
 
-    assert required == 73, f"rotas exigindo token mudaram: {required}"
+    assert required == 75, f"rotas exigindo token mudaram: {required}"
     assert optional == 3, f"rotas com identidade opcional mudaram: {optional}"
 
     text = _read(LIMITATIONS)

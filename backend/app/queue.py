@@ -68,6 +68,7 @@ def transition(
     *,
     event: str = EVENT_PROGRESS,
     error: str | None = None,
+    state: str | None = None,
 ) -> dict:
     """Move a job and emit the event, in one step.
 
@@ -105,6 +106,7 @@ def transition(
         event=event,
         output_url=job.output_url,
         error=error,
+        state=state,
     )
     return hub.publish_sync(job.id, payload)
 

@@ -1,0 +1,26 @@
+# NVIDIA worker image for PR010.0.
+# The regular Dockerfile.api remains the lightweight API-only image; this
+# profile is used by the service that executes local FLUX/Wan inference.
+FROM nvidia/cuda:12.6.3-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    NVIDIA_VISIBLE_DEVICES=all \
+    NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3 python3-pip ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+COPY backend/requirements.txt backend/requirements-gpu.txt ./
+RUN python3 -m pip install -r requirements.txt -r requirements-gpu.txt
+COPY backend ./backend
+COPY alembic ./alembic
+COPY alembic.ini .
+
+ENV PYTHONPATH=/app/backend
+EXPOSE 8000
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

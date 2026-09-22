@@ -106,7 +106,7 @@ from .quality import UnknownAssetError as UnknownQualityAssetError
 from .core.config import settings
 from .core.database_guard import database_guard
 from .db import SessionLocal, get_db
-from .events import EVENT_CANCELLED, TERMINAL_STATUSES, hub, job_event
+from .events import EVENT_CANCELLED, EVENT_QUEUED, TERMINAL_STATUSES, hub, job_event
 from .graph import (
     GraphRepositoryError,
     GraphValidationError,
@@ -141,6 +141,9 @@ from .render import (
 from .render.render_orchestrator import RenderOrchestrator, default_persona_phrase
 from .storage import storage
 from .system import gpu_info
+from .system import gpu_runtime
+from .runtime import get_flux_runtime, get_wan_runtime
+from .runtime.service import RUNTIME_STATES, persist_runtime_asset
 from .schemas import (
     AngleProfileResponse,
     QualityAssessRequest,
@@ -161,7 +164,8 @@ from .schemas import (
     FrameProfileResponse,
     FramingResponse,
     GenerationSpecRequest, GenerationSpecResponse, GenerationType, KnowledgeResponse, LoraVersionResponse,
-    ImageGenerationRequest, Job, JobResponse, JobStatus, Persona, PersonaCreateRequest,
+    ImageGenerationRequest, RuntimeImageGenerationRequest, RuntimeVideoGenerationRequest,
+    RuntimeGenerationResponse, Job, JobResponse, JobStatus, Persona, PersonaCreateRequest,
     PersonaImageAddRequest,
     PersonaImageResponse,
     PersonaProfileResponse,
@@ -527,7 +531,171 @@ def health() -> JSONResponse:
 
 @app.get("/api/v1/system/gpu", tags=["system"])
 def system_gpu() -> dict:
-    return gpu_info()
+    return gpu_runtime.detect_gpu()
+
+
+# ---------------------------------------------------------------------------
+# PR010 — local CUDA runtime routes
+# ---------------------------------------------------------------------------
+
+
+def _runtime_workspace(user: User, db: Session) -> Workspace:
+    workspace = _workspace_for(db, user)
+    if workspace is None:
+        raise HTTPException(status_code=404, detail="Workspace not found")
+    return workspace
+
+
+def _runtime_progress(job: Job, progress: int, state: str) -> None:
+    """Use the existing queue contract while exposing render milestones.
+
+    The public job state remains ``running``/``completed``.  This preserves the
+    existing JobResponse and WebSocket contracts; the optional state field on
+    the existing progress event is what gives runtime clients the precise
+    loading/generating/encoding phase.
+    """
+
+    if state not in RUNTIME_STATES:
+        raise ValueError(f"unknown runtime state: {state}")
+    transition(job, JobStatus.RUNNING, progress, event=EVENT_PROGRESS, state=state)
+
+
+def _runtime_queued(job: Job) -> None:
+    """Publish the additive queued stage without changing the queue status."""
+
+    hub.publish_sync(
+        job.id,
+        job_event(
+            job.id,
+            status=job.status.value if hasattr(job.status, "value") else str(job.status),
+            progress=int(job.progress or 0),
+            event=EVENT_QUEUED,
+            state="queued",
+        ),
+    )
+
+
+@app.post(
+    "/api/v1/models/image/generate",
+    response_model=RuntimeGenerationResponse,
+    status_code=200,
+    tags=["models"],
+)
+def generate_runtime_image(
+    request: RuntimeImageGenerationRequest,
+    http_request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> RuntimeGenerationResponse:
+    """Run FLUX on the local CUDA worker and create a library Asset."""
+
+    workspace = _runtime_workspace(user, db)
+    job = _queue_job(
+        GenerationType.IMAGE,
+        request.prompt,
+        {
+            "model": "flux-dev",
+            "runtime": "flux",
+            "workspace_id": workspace.id,
+            **request.model_dump(mode="json"),
+        },
+        user=user,
+        request=http_request,
+        dispatch=False,
+    )
+    _runtime_queued(job)
+    transition(job, JobStatus.RUNNING, 5, event=EVENT_STARTED)
+    try:
+        _runtime_progress(job, 15, "loading_model")
+        _runtime_progress(job, 35, "generating")
+        artifact = get_flux_runtime().generate(
+            request.prompt,
+            negative_prompt=request.negative_prompt,
+            width=request.width,
+            height=request.height,
+            steps=request.steps,
+            seed=request.seed,
+        )
+        _runtime_progress(job, 85, "encoding")
+        persisted = persist_runtime_asset(
+            db,
+            source_path=artifact.path,
+            workspace_id=workspace.id,
+            kind="image",
+            model=artifact.model,
+            prompt=request.prompt,
+            seed=request.seed,
+            width=artifact.width,
+            height=artifact.height,
+        )
+        job.output_url = persisted.url
+        transition(job, JobStatus.COMPLETE, 100, event=EVENT_COMPLETE, state="completed")
+        return RuntimeGenerationResponse(id=persisted.id, url=persisted.url, model=artifact.model)
+    except Exception as error:
+        transition(job, JobStatus.FAILED, error=str(error), event=EVENT_FAILED, state="failed")
+        raise HTTPException(status_code=503, detail=str(error)) from error
+
+
+@app.post(
+    "/api/v1/models/video/generate",
+    response_model=RuntimeGenerationResponse,
+    status_code=200,
+    tags=["models"],
+)
+def generate_runtime_video(
+    request: RuntimeVideoGenerationRequest,
+    http_request: Request,
+    user: User = Depends(current_user),
+    db: Session = Depends(get_db),
+) -> RuntimeGenerationResponse:
+    """Run Wan 2.2 text-to-video and create a library Asset."""
+
+    workspace = _runtime_workspace(user, db)
+    job = _queue_job(
+        GenerationType.VIDEO,
+        request.prompt,
+        {
+            "model": "wan-2.1-t2v",
+            "runtime": "wan",
+            "workspace_id": workspace.id,
+            **request.model_dump(mode="json"),
+        },
+        user=user,
+        request=http_request,
+        dispatch=False,
+    )
+    _runtime_queued(job)
+    transition(job, JobStatus.RUNNING, 5, event=EVENT_STARTED)
+    try:
+        _runtime_progress(job, 15, "loading_model")
+        _runtime_progress(job, 35, "generating")
+        artifact = get_wan_runtime().generate(
+            request.prompt,
+            duration=request.duration,
+            fps=request.fps,
+            aspect=request.aspect,
+            seed=request.seed,
+        )
+        _runtime_progress(job, 85, "encoding")
+        persisted = persist_runtime_asset(
+            db,
+            source_path=artifact.path,
+            workspace_id=workspace.id,
+            kind="video",
+            model=artifact.model,
+            prompt=request.prompt,
+            seed=request.seed,
+            width=artifact.width,
+            height=artifact.height,
+            duration=artifact.duration,
+            fps=artifact.fps,
+        )
+        job.output_url = persisted.url
+        transition(job, JobStatus.COMPLETE, 100, event=EVENT_COMPLETE, state="completed")
+        return RuntimeGenerationResponse(id=persisted.id, url=persisted.url, model=artifact.model)
+    except Exception as error:
+        transition(job, JobStatus.FAILED, error=str(error), event=EVENT_FAILED, state="failed")
+        raise HTTPException(status_code=503, detail=str(error)) from error
 
 
 def _migrations_ready() -> bool:
@@ -633,18 +801,38 @@ def knowledge(
 
 
 @app.get("/api/v1/models/image", tags=["models"])
-def image_models() -> list[dict[str, str]]:
+def image_models() -> list[dict[str, object]]:
+    """Existing catalogue shape plus truthful local runtime state."""
+
+    flux = get_flux_runtime().status()
     return [
-        {"id": "flux-1.1-pro-ultra", "label": "Flux 1.1 Pro Ultra", "status": "remote-provider"},
-        {"id": "flux-dev", "label": "FLUX.1 Dev", "status": "local-provider"},
+        {"id": "flux-1.1-pro-ultra", "label": "Flux 1.1 Pro Ultra", "status": "remote-provider", "model": "flux-1.1-pro-ultra", "loaded": False, "gpu": False},
+        {
+            "id": "flux-dev",
+            "label": "FLUX.1 Dev",
+            "status": "local-provider",
+            "model": flux["model"],
+            "loaded": flux["loaded"],
+            "gpu": flux["gpu"],
+        },
     ]
 
 
 @app.get("/api/v1/models/video", tags=["models"])
-def video_models() -> list[dict[str, str]]:
+def video_models() -> list[dict[str, object]]:
+    """Existing catalogue shape plus truthful Wan 2.2 runtime state."""
+
+    wan = get_wan_runtime().status()
     return [
-        {"id": "wan-2.1-t2v", "label": "Wan 2.1 Text to Video", "status": "local-provider"},
-        {"id": "hunyuan-video", "label": "Hunyuan Video", "status": "planned-provider"},
+        {
+            "id": "wan-2.1-t2v",
+            "label": "Wan 2.2 Text to Video",
+            "status": "local-provider",
+            "model": wan["model"],
+            "loaded": wan["loaded"],
+            "gpu": wan["gpu"],
+        },
+        {"id": "hunyuan-video", "label": "Hunyuan Video", "status": "planned-provider", "model": "hunyuan-video", "loaded": False, "gpu": False},
     ]
 
 
@@ -762,7 +950,15 @@ def _workspace_for(db: Session, user: User) -> Workspace | None:
     return db.scalar(select(Workspace).where(Workspace.owner_id == user.id))
 
 
-def _queue_job(kind: GenerationType, prompt: str, parameters: dict | None = None, user: User | None = None, request: Request | None = None) -> Job:
+def _queue_job(
+    kind: GenerationType,
+    prompt: str,
+    parameters: dict | None = None,
+    user: User | None = None,
+    request: Request | None = None,
+    *,
+    dispatch: bool = True,
+) -> Job:
     # PR004-prep: creation goes through the Core's JobService and its
     # injected JobRepository (default: the jobs table). The API object is
     # still what the route returns — only the path to persistence changed.
@@ -781,7 +977,11 @@ def _queue_job(kind: GenerationType, prompt: str, parameters: dict | None = None
         request=request,
     )
     # Redis/Celery is optional in local development; the job remains inspectable.
-    enqueue(str(job.id))
+    # Local runtime routes execute synchronously in this process so the response
+    # can return the persisted Asset immediately; dispatching those same jobs to
+    # the generic provider worker would render them a second time.
+    if dispatch:
+        enqueue(str(job.id))
     return job
 
 
@@ -2384,13 +2584,21 @@ def check_provider_health() -> list[ProviderHealthResponse]:
             continue
         adapter = provider_registry.adapter_class(entry)()
         report = adapter.health()
+        local_runtime = None
+        if provider_id == "flux-dev":
+            local_runtime = get_flux_runtime()
+        elif provider_id == "wan-2.1-t2v":
+            local_runtime = get_wan_runtime()
+        runtime_status = local_runtime.status() if local_runtime is not None else None
         reports.append(
             ProviderHealthResponse(
                 id=provider_id,
-                available=bool(report.get("available")),
-                reason=report.get("reason"),
-                model_id=str(report.get("model_id", "")),
-                loaded=bool(report.get("loaded", False)),
+                available=bool(runtime_status["loaded"]) if runtime_status else bool(report.get("available")),
+                reason=(None if runtime_status and runtime_status["loaded"] else "model not loaded") if runtime_status else report.get("reason"),
+                model_id=str(local_runtime.model_id) if local_runtime is not None else str(report.get("model_id", "")),
+                model=str(runtime_status["model"]) if runtime_status else "",
+                loaded=bool(runtime_status["loaded"]) if runtime_status else bool(report.get("loaded", False)),
+                gpu=bool(runtime_status["gpu"]) if runtime_status else False,
             )
         )
     return reports

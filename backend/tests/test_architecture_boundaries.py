@@ -103,6 +103,7 @@ MODULES: dict[str, tuple[str, ...]] = {
     "Persistence": ("app.db", "app.models"),
     "Security": ("app.auth", "app.audit"),
     "Runtime Config": ("app.core.config", "app.system", "app.readiness"),
+    "Model Runtime": ("app.runtime",),
     "Application Boundary": ("app.main", "app.schemas", "app.provider_capabilities"),
     "Dead Cluster": ("app.api", "app.services", "app.core.security"),
     "Package Root": ("app", "app.core"),
@@ -146,6 +147,7 @@ ALLOWED: dict[str, tuple[str, ...]] = {
     "Persistence": ("Runtime Config",),
     "Security": ("Persistence", "Runtime Config"),
     "Runtime Config": (),
+    "Model Runtime": ("Contracts", "Runtime Config", "Asset Library", "Persistence", "Storage"),
     # The composition root: wiring lives here by design (ETAPA 2).
     "Application Boundary": tuple(
         name for name in MODULES if name not in {"Application Boundary", "AI Core", "Dead Cluster"}

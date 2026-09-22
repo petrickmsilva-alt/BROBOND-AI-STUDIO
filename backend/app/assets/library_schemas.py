@@ -47,6 +47,10 @@ class AssetLibraryEntryResponse(BaseModel):
     project: str | None = None
     persona: str | None = None
     provider: str | None = None
+    #: Runtime-generated assets retain these two facts in their provenance
+    #: tags; uploads correctly return None because no model/prompt existed.
+    model: str | None = None
+    prompt: str | None = None
     seed: int | None = None
     tags: list[str] = []
 
@@ -82,6 +86,13 @@ def build_entry_response(
     from .library_service import LibraryRecord  # noqa: F401
 
     metadata = record.metadata
+    tags = list(record.tags)
+
+    def _tag_value(prefix: str) -> str | None:
+        for tag in tags:
+            if tag.startswith(prefix):
+                return tag[len(prefix):] or None
+        return None
 
     def _text(value: str | None) -> str | None:
         """Collapse empty strings to None — unknown, never zero."""
@@ -106,8 +117,10 @@ def build_entry_response(
         project=_text(metadata.project) if metadata is not None else None,
         persona=_text(metadata.persona) if metadata is not None else None,
         provider=_text(metadata.provider) if metadata is not None else None,
+        model=_tag_value("model:") if metadata is not None else None,
+        prompt=_tag_value("prompt:") if metadata is not None else None,
         seed=metadata.seed if metadata is not None else None,
-        tags=list(record.tags),
+        tags=tags,
         quality_score=record.asset.quality_score,
         quality_status=record.asset.quality_status,
         quality_version=record.asset.quality_version,

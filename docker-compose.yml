@@ -21,7 +21,8 @@ services:
   api:
     build:
       context: .
-      dockerfile: Dockerfile.api
+      dockerfile: backend/Dockerfile.gpu
+    gpus: all
     environment:
       BROBOND_DATABASE_URL: postgresql+psycopg://brobond:brobond_local@postgres:5432/brobond
       BROBOND_REDIS_URL: redis://redis:6379/0
@@ -40,7 +41,8 @@ services:
   worker:
     build:
       context: .
-      dockerfile: Dockerfile.api
+      dockerfile: backend/Dockerfile.gpu
+    gpus: all
     command: ["celery", "-A", "app.queue.celery_app", "worker", "--loglevel=info", "--workdir=backend"]
     environment:
       BROBOND_DATABASE_URL: postgresql+psycopg://brobond:brobond_local@postgres:5432/brobond

@@ -269,9 +269,10 @@ def test_route_inventory_only_grew() -> None:
     # V4.0.1 (three `/assets/library*` Cinematic Asset Studio routes), 116
     # after PR009.6.2.1 recorded the two Google OAuth routes
     # (`/auth/google/login` and `/auth/google/callback`) that shipped with
-    # the hotfix but never reached the inventory.
+    # the hotfix but never reached the inventory, and 119 after PR010 added
+    # the two local CUDA generation routes and the existing OAuth health route.
     # The guard is that the number only grows: nothing was ever removed.
-    assert len([route for route in http if route.path.startswith("/api/v1")]) == 116
+    assert len([route for route in http if route.path.startswith("/api/v1")]) == 119
 
 
 # ------------------------------------------------- no generation logic in routes

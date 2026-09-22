@@ -3,14 +3,14 @@
   "snapshot_version": "1.0",
   "generator": "scripts/gen_api_snapshot.py",
   "summary": {
-    "http_routes": 116,
+    "http_routes": 119,
     "core_routes": 32,
     "websockets": 3,
-    "models": 139,
+    "models": 142,
     "tags": 19,
-    "auth_required": 73,
+    "auth_required": 75,
     "auth_optional": 3,
-    "auth_public": 40
+    "auth_public": 41
   },
   "http": [
     {
@@ -884,7 +884,18 @@
       "tag": "models",
       "auth": "public",
       "status_code": 200,
-      "response_model": "array<object<string>>"
+      "response_model": "array<object>"
+    },
+    {
+      "path": "/api/v1/models/image/generate",
+      "methods": [
+        "POST"
+      ],
+      "tag": "models",
+      "auth": "required",
+      "status_code": 200,
+      "request_model": "RuntimeImageGenerationRequest",
+      "response_model": "RuntimeGenerationResponse"
     },
     {
       "path": "/api/v1/models/video",
@@ -894,7 +905,18 @@
       "tag": "models",
       "auth": "public",
       "status_code": 200,
-      "response_model": "array<object<string>>"
+      "response_model": "array<object>"
+    },
+    {
+      "path": "/api/v1/models/video/generate",
+      "methods": [
+        "POST"
+      ],
+      "tag": "models",
+      "auth": "required",
+      "status_code": 200,
+      "request_model": "RuntimeVideoGenerationRequest",
+      "response_model": "RuntimeGenerationResponse"
     },
     {
       "path": "/api/v1/personas",
@@ -1195,6 +1217,16 @@
       "response_model": "object"
     },
     {
+      "path": "/api/v1/system/oauth",
+      "methods": [
+        "GET"
+      ],
+      "tag": "system",
+      "auth": "public",
+      "status_code": 200,
+      "response_model": "object<boolean>"
+    },
+    {
       "path": "/api/v1/system/readiness",
       "methods": [
         "GET"
@@ -1242,9 +1274,11 @@
         "height": "integer|null",
         "id": "string",
         "kind": "string",
+        "model": "string|null",
         "name": "string",
         "persona": "string|null",
         "project": "string|null",
+        "prompt": "string|null",
         "provider": "string|null",
         "quality_score": "integer|null",
         "quality_status": "string|null",
@@ -2796,8 +2830,10 @@
     "ProviderHealthResponse": {
       "fields": {
         "available": "boolean",
+        "gpu": "boolean",
         "id": "string",
         "loaded": "boolean",
+        "model": "string",
         "model_id": "string",
         "reason": "string|null"
       },
@@ -3242,6 +3278,43 @@
         "status"
       ]
     },
+    "RuntimeGenerationResponse": {
+      "fields": {
+        "id": "string",
+        "model": "string",
+        "url": "string"
+      },
+      "required": [
+        "id",
+        "model",
+        "url"
+      ]
+    },
+    "RuntimeImageGenerationRequest": {
+      "fields": {
+        "height": "integer",
+        "negative_prompt": "string",
+        "prompt": "string",
+        "seed": "integer|null",
+        "steps": "integer",
+        "width": "integer"
+      },
+      "required": [
+        "prompt"
+      ]
+    },
+    "RuntimeVideoGenerationRequest": {
+      "fields": {
+        "aspect": "string",
+        "duration": "number",
+        "fps": "integer",
+        "prompt": "string",
+        "seed": "integer|null"
+      },
+      "required": [
+        "prompt"
+      ]
+    },
     "SceneBeatResponse": {
       "fields": {
         "camera": "string",
@@ -3532,11 +3605,13 @@
       "fields": {
         "available": "boolean",
         "capabilities": "ProviderCapabilitiesResponse",
+        "gpu": "boolean",
         "id": "string",
         "label": "string",
         "last_health_at": "string|null",
         "latency_ms": "number",
         "loaded": "boolean",
+        "model": "string",
         "reason": "string|null",
         "status": "string",
         "version": "string"
