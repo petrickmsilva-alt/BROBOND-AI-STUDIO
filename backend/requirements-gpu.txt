@@ -1,0 +1,11 @@
+# PR010.0 — install this profile on every process that can execute local inference.
+# Choose the Torch wheel matching the host CUDA runtime (see pytorch.org).
+torch>=2.4
+# FLUX.1-dev and Wan2.2 Diffusers pipelines.
+diffusers>=0.31
+transformers>=4.45
+accelerate>=1.0
+safetensors>=0.4
+# MP4 encoding for Wan frame output.
+imageio>=2.36
+imageio-ffmpeg>=0.5

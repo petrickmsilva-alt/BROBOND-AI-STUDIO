@@ -42,9 +42,34 @@ def prompt_budget_for_provider(
 def _public_health_payload(report: ProviderHealth) -> dict[str, object]:
     payload = report.to_dict()
     payload["reason"] = _redact_reason(report.reason)
-    # PR009: the frontend shows availability as a first-class fact, derived
-    # here (one definition) rather than re-derived in every consumer.
-    payload["available"] = report.status == STATUS_READY
+
+    # PR010: the sidebar must not call a CUDA-capable but unloaded model
+    # "online".  The universal registry remains the public provider contract;
+    # the local runtime singleton is the authority for the two concrete model
+    # loaded flags.  Imports stay lazy so discovery is still safe on API-only
+    # machines.
+    if report.id == "flux-dev":
+        from .runtime import get_flux_runtime
+
+        runtime = get_flux_runtime().status()
+        payload["loaded"] = runtime["loaded"]
+        payload["available"] = bool(runtime["loaded"])
+        payload["status"] = STATUS_READY if runtime["loaded"] else "unavailable"
+        if not runtime["loaded"]:
+            payload["reason"] = "model not loaded"
+    elif report.id == "wan-2.1-t2v":
+        from .runtime import get_wan_runtime
+
+        runtime = get_wan_runtime().status()
+        payload["loaded"] = runtime["loaded"]
+        payload["available"] = bool(runtime["loaded"])
+        payload["status"] = STATUS_READY if runtime["loaded"] else "unavailable"
+        if not runtime["loaded"]:
+            payload["reason"] = "model not loaded"
+    else:
+        # PR009: the frontend shows availability as a first-class fact,
+        # derived here (one definition) rather than in every consumer.
+        payload["available"] = report.status == STATUS_READY
     return payload
 
 

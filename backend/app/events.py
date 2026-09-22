@@ -79,6 +79,7 @@ def job_event(
     event: str,
     output_url: str | None = None,
     error: str | None = None,
+    state: str | None = None,
 ) -> dict:
     """Build a job event payload.
 
@@ -101,6 +102,10 @@ def job_event(
         payload["output_url"] = output_url
     if error is not None:
         payload["error"] = error
+    # PR010 runtime stages are additive metadata on the existing progress
+    # event. Old clients that do not send a stage keep the exact old payload.
+    if state is not None:
+        payload["state"] = state
     return payload
 
 

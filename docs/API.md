@@ -13,7 +13,7 @@ mudar e o documento não for regenerado, a suíte falha.
 
 ## Resumo
 
-- **116** rotas HTTP sob `/api/v1`
+- **118** rotas HTTP sob `/api/v1`
 - **32** delas são `/api/v1/core/*` — a camada de decisão
 - **3** WebSockets
 - **19** tags
@@ -153,13 +153,15 @@ PR006 Storyboard Cinematic Engine não adiciona rotas de render: a UI edita um `
 | --- | --- | --- |
 | `GET` | `/api/v1/knowledge` | Search the knowledge base (PR002: identity required). |
 
-## `models` — 3
+## `models` — 5
 
 | Método | Rota | Descrição |
 | --- | --- | --- |
 | `GET` | `/api/v1/models/conditioning` | conditioning_models |
-| `GET` | `/api/v1/models/image` | image_models |
-| `GET` | `/api/v1/models/video` | video_models |
+| `GET` | `/api/v1/models/image` | Existing catalogue shape plus truthful local runtime state. |
+| `POST` | `/api/v1/models/image/generate` | Run FLUX on the local CUDA worker and create a library Asset. |
+| `GET` | `/api/v1/models/video` | Existing catalogue shape plus truthful Wan 2.2 runtime state. |
+| `POST` | `/api/v1/models/video/generate` | Run Wan 2.2 text-to-video and create a library Asset. |
 
 ## `personas` — 10
 

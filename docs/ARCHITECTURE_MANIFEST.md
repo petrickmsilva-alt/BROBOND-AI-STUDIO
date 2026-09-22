@@ -69,6 +69,7 @@ tabela é a tradução — é ela que o guard usa para classificar cada arquivo:
 | Persistence | `app.db`, `app.models` |
 | Security | `app.auth`, `app.audit` |
 | Runtime Config | `app.core.config`, `app.system`, `app.readiness` |
+| Model Runtime | `app.runtime` |
 | Application Boundary | `app.main`, `app.schemas`, `app.provider_capabilities` |
 | Dead Cluster | `app.api`, `app.services`, `app.core.security` |
 | Package Root | `app`, `app.core` |
@@ -320,6 +321,7 @@ Quality Engine       -> Contracts, Persistence
 Persona Engine       -> Contracts, Persistence
 Database Guard       -> Runtime Config
 Asset Library        -> Persistence, Storage                 (PR013)
+Model Runtime        -> Runtime Config, Asset Library, Persistence, Storage (PR010)
 AI Core              -> (não existe)
 ```
 

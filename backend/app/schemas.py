@@ -54,6 +54,37 @@ class ImageGenerationRequest(BaseModel):
     wardrobe: list[str] | None = None
 
 
+class RuntimeImageGenerationRequest(BaseModel):
+    """The concrete PR010 FLUX runtime contract.
+
+    The legacy generation request remains untouched below; this small contract
+    is intentionally limited to the knobs the local runtime can execute.
+    """
+
+    prompt: str = Field(min_length=1, max_length=2000)
+    negative_prompt: str = Field(default="", max_length=2000)
+    width: int = Field(default=1024, ge=64, le=4096)
+    height: int = Field(default=1024, ge=64, le=4096)
+    steps: int = Field(default=28, ge=1, le=100)
+    seed: int | None = Field(default=None, ge=0)
+
+
+class RuntimeVideoGenerationRequest(BaseModel):
+    """The concrete PR010 Wan 2.2 text-to-video runtime contract."""
+
+    prompt: str = Field(min_length=1, max_length=2000)
+    duration: float = Field(default=5, gt=0, le=120)
+    fps: int = Field(default=24, ge=1, le=60)
+    aspect: Literal["16:9", "9:16", "1:1", "4:3", "3:4"] = "16:9"
+    seed: int | None = Field(default=None, ge=0)
+
+
+class RuntimeGenerationResponse(BaseModel):
+    id: str
+    url: str
+    model: str
+
+
 class VideoGenerationRequest(BaseModel):
     prompt: str = Field(min_length=1, max_length=2000)
     mode: Literal["text-to-video", "image-to-video", "start-end-frame"] = "text-to-video"
