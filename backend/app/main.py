@@ -2,6 +2,7 @@
 import asyncio
 from datetime import datetime
 import json
+import logging
 from pathlib import Path
 import sys
 import time
@@ -26,7 +27,7 @@ from .assets import (
 )
 from .assets.library_schemas import build_entry_response
 from .audit import audit
-from .auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse, auth_rate_limiter, current_user, login, optional_user, register, ws_identity
+from .auth import LoginRequest, RegisterRequest, TokenResponse, UserResponse, auth_rate_limiter, current_user, google_user, login, optional_user, register, ws_identity
 from .conditioning import catalog
 from .core.contracts import GenerationKind, GenerationSpec, GraphContext
 from .core.director import CameraDirector, DirectorAgent as ProductionDirectorAgent
@@ -243,6 +244,8 @@ from .jobs import to_api_job, to_core_job
 #: in-process and the worker runs synchronously, so the route polls rather than
 #: blocking on a push it may never receive.
 QUEUE_EVENT_POLL_SECONDS = 0.05
+
+logger = logging.getLogger(__name__)
 
 
 app = FastAPI(
@@ -700,9 +703,20 @@ async def google_callback(request: Request, db: Session = Depends(get_db)):
         raise
     except Exception as exc:
         raise HTTPException(status_code=401, detail="Google authentication failed") from exc
-    result = google_user(db, email=claims["email"], name=claims.get("name", "Google user"))
+    try:
+        result = google_user(
+            db,
+            email=claims["email"],
+            name=claims.get("name", "Google user"),
+        )
+    except Exception as exc:
+        logger.exception("Google OAuth callback failed")
+        raise HTTPException(
+            status_code=500,
+            detail="Falha ao finalizar autenticação Google",
+        ) from exc
     target = settings.google_studio_url or str(request.base_url).rstrip("/")
-    return RedirectResponse(f"{target}/?oauth_token={result.access_token}")
+    return RedirectResponse(f"{target}/?oauth_token={result.access_token}", status_code=302)
 
 
 @app.post("/api/v1/auth/register", response_model=TokenResponse, status_code=201, tags=["auth"])
