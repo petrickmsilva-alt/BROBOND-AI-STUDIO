@@ -3,14 +3,14 @@
   "snapshot_version": "1.0",
   "generator": "scripts/gen_api_snapshot.py",
   "summary": {
-    "http_routes": 116,
+    "http_routes": 117,
     "core_routes": 32,
     "websockets": 3,
     "models": 139,
     "tags": 19,
     "auth_required": 73,
     "auth_optional": 3,
-    "auth_public": 40
+    "auth_public": 41
   },
   "http": [
     {
@@ -1193,6 +1193,16 @@
       "auth": "public",
       "status_code": 200,
       "response_model": "object"
+    },
+    {
+      "path": "/api/v1/system/oauth",
+      "methods": [
+        "GET"
+      ],
+      "tag": "system",
+      "auth": "public",
+      "status_code": 200,
+      "response_model": "object<boolean>"
     },
     {
       "path": "/api/v1/system/readiness",
