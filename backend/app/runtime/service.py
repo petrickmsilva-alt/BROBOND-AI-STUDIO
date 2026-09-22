@@ -64,7 +64,7 @@ def persist_runtime_asset(
     content_type = "image/png" if kind == "image" else "video/mp4"
     object_key, url = storage.save_path(str(source), workspace_id, content_type)
     data = source.read_bytes()
-    tags = [f"model:{model}", f"prompt:{prompt[:1000]}"]
+    tags = [f"model:{model}", f"prompt:{prompt}"]
     if fps is not None:
         tags.append(f"fps:{fps}")
 
