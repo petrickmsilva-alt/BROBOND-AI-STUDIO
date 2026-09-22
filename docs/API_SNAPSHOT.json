@@ -2820,8 +2820,10 @@
     "ProviderHealthResponse": {
       "fields": {
         "available": "boolean",
+        "gpu": "boolean",
         "id": "string",
         "loaded": "boolean",
+        "model": "string",
         "model_id": "string",
         "reason": "string|null"
       },
@@ -3593,11 +3595,13 @@
       "fields": {
         "available": "boolean",
         "capabilities": "ProviderCapabilitiesResponse",
+        "gpu": "boolean",
         "id": "string",
         "label": "string",
         "last_health_at": "string|null",
         "latency_ms": "number",
         "loaded": "boolean",
+        "model": "string",
         "reason": "string|null",
         "status": "string",
         "version": "string"

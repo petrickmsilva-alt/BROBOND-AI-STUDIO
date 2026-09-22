@@ -809,7 +809,9 @@ class ProviderHealthResponse(BaseModel):
     available: bool
     reason: str | None = None
     model_id: str = ""
+    model: str = ""
     loaded: bool = False
+    gpu: bool = False
 
 
 class ProviderCatalogueResponse(BaseModel):
@@ -838,7 +840,9 @@ class UniversalProviderResponse(BaseModel):
     version: str
     capabilities: ProviderCapabilitiesResponse
     reason: str | None = None
+    model: str = ""
     loaded: bool = False
+    gpu: bool = False
     #: PR009: when the health report was produced (UTC ISO-8601).
     last_health_at: str | None = None
     #: PR009: explicit availability flag (status == "ready").

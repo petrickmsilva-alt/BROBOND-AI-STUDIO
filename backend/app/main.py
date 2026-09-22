@@ -2584,13 +2584,21 @@ def check_provider_health() -> list[ProviderHealthResponse]:
             continue
         adapter = provider_registry.adapter_class(entry)()
         report = adapter.health()
+        local_runtime = None
+        if provider_id == "flux-dev":
+            local_runtime = get_flux_runtime()
+        elif provider_id == "wan-2.1-t2v":
+            local_runtime = get_wan_runtime()
+        runtime_status = local_runtime.status() if local_runtime is not None else None
         reports.append(
             ProviderHealthResponse(
                 id=provider_id,
-                available=bool(report.get("available")),
-                reason=report.get("reason"),
-                model_id=str(report.get("model_id", "")),
-                loaded=bool(report.get("loaded", False)),
+                available=bool(runtime_status["loaded"]) if runtime_status else bool(report.get("available")),
+                reason=(None if runtime_status and runtime_status["loaded"] else "model not loaded") if runtime_status else report.get("reason"),
+                model_id=str(local_runtime.model_id) if local_runtime is not None else str(report.get("model_id", "")),
+                model=str(runtime_status["model"]) if runtime_status else "",
+                loaded=bool(runtime_status["loaded"]) if runtime_status else bool(report.get("loaded", False)),
+                gpu=bool(runtime_status["gpu"]) if runtime_status else False,
             )
         )
     return reports
