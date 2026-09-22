@@ -93,7 +93,7 @@ def detect_gpu() -> dict[str, Any]:
         output = subprocess.check_output(_QUERY, text=True, stderr=subprocess.STDOUT, timeout=3)
     except FileNotFoundError:
         return _unavailable("nvidia-smi not found")
-    except (OSError, subprocess.SubprocessError):
+    except (OSError, subprocess.SubprocessError, ValueError):
         return _unavailable("nvidia-smi failed")
 
     if not output.strip():

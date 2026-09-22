@@ -164,7 +164,7 @@ def test_the_authentication_split_matches_the_documented_one(committed) -> None:
     summary = committed["summary"]
     assert summary["auth_required"] == 75
     assert summary["auth_optional"] == 3
-    assert summary["auth_public"] == 40
+    assert summary["auth_public"] == 41
     assert summary["auth_required"] + summary["auth_optional"] + summary["auth_public"] == summary["http_routes"]
 
 

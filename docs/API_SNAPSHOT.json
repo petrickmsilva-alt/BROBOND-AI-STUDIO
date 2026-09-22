@@ -3,14 +3,14 @@
   "snapshot_version": "1.0",
   "generator": "scripts/gen_api_snapshot.py",
   "summary": {
-    "http_routes": 118,
+    "http_routes": 119,
     "core_routes": 32,
     "websockets": 3,
     "models": 142,
     "tags": 19,
     "auth_required": 75,
     "auth_optional": 3,
-    "auth_public": 40
+    "auth_public": 41
   },
   "http": [
     {
@@ -884,7 +884,7 @@
       "tag": "models",
       "auth": "public",
       "status_code": 200,
-      "response_model": "array<object<string>>"
+      "response_model": "array<object>"
     },
     {
       "path": "/api/v1/models/image/generate",
@@ -905,7 +905,7 @@
       "tag": "models",
       "auth": "public",
       "status_code": 200,
-      "response_model": "array<object<string>>"
+      "response_model": "array<object>"
     },
     {
       "path": "/api/v1/models/video/generate",
@@ -1215,6 +1215,16 @@
       "auth": "public",
       "status_code": 200,
       "response_model": "object"
+    },
+    {
+      "path": "/api/v1/system/oauth",
+      "methods": [
+        "GET"
+      ],
+      "tag": "system",
+      "auth": "public",
+      "status_code": 200,
+      "response_model": "object<boolean>"
     },
     {
       "path": "/api/v1/system/readiness",

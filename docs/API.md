@@ -13,7 +13,7 @@ mudar e o documento não for regenerado, a suíte falha.
 
 ## Resumo
 
-- **118** rotas HTTP sob `/api/v1`
+- **119** rotas HTTP sob `/api/v1`
 - **32** delas são `/api/v1/core/*` — a camada de decisão
 - **3** WebSockets
 - **19** tags
@@ -226,13 +226,14 @@ PR006 Storyboard Cinematic Engine não adiciona rotas de render: a UI edita um `
 | --- | --- | --- |
 | `POST` | `/api/v1/storyboards/expand` | Expand a brief into connected, independently renderable scene prompts. |
 
-## `system` — 4
+## `system` — 5
 
 | Método | Rota | Descrição |
 | --- | --- | --- |
 | `GET` | `/api/v1/health` | Liveness with a real database probe (PR009.4.1). |
 | `GET` | `/api/v1/system/gpu` | system_gpu |
 | `GET` | `/api/v1/system/media` | system_media |
+| `GET` | `/api/v1/system/oauth` | Expose OAuth configuration health without exposing credentials. |
 | `GET` | `/api/v1/system/readiness` | GPU preflight plus the PR009.4.1 deploy gates. |
 
 ## WebSockets
