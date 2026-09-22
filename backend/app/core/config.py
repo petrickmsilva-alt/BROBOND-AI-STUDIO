@@ -45,10 +45,24 @@ class Settings(BaseSettings):
     jwt_secret: str = "brobond-local-development-secret-0123456789-abcdefghijklmnopqrstuvwxyz"
     jwt_algorithm: str = "HS256"
     access_token_minutes: int = 60
-    google_client_id: str = ""
-    google_client_secret: str = ""
-    google_redirect_uri: str = ""
-    google_studio_url: str = ""
+    # Google OAuth is deliberately optional at startup.  Use the provider's
+    # canonical Render variable names (the AliasChoices keep older local
+    # BROBOND_* deployments working without exposing secrets in source).
+    google_client_id: str = Field(
+        default="", validation_alias=AliasChoices("GOOGLE_CLIENT_ID", "BROBOND_GOOGLE_CLIENT_ID")
+    )
+    google_client_secret: str = Field(
+        default="", validation_alias=AliasChoices("GOOGLE_CLIENT_SECRET", "BROBOND_GOOGLE_CLIENT_SECRET")
+    )
+    google_callback_url: str = Field(
+        default="", validation_alias=AliasChoices("GOOGLE_CALLBACK_URL", "BROBOND_GOOGLE_CALLBACK_URL", "BROBOND_GOOGLE_REDIRECT_URI")
+    )
+    # Backwards-compatible name used by the existing route code.
+    @property
+    def google_redirect_uri(self) -> str:
+        return self.google_callback_url
+
+    google_studio_url: str = "https://brobond-studio-web.onrender.com"
     #: PR002: auth endpoints (login/register) accept at most this many attempts
     #: per client IP per minute, per process. Set to 0 to disable the limiter.
     rate_limit_auth_per_minute: int = 20
