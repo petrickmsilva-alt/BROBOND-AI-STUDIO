@@ -52,7 +52,9 @@ def _public_health_payload(report: ProviderHealth) -> dict[str, object]:
         from .runtime import get_flux_runtime
 
         runtime = get_flux_runtime().status()
+        payload["model"] = runtime["model"]
         payload["loaded"] = runtime["loaded"]
+        payload["gpu"] = runtime["gpu"]
         payload["available"] = bool(runtime["loaded"])
         payload["status"] = STATUS_READY if runtime["loaded"] else "unavailable"
         if not runtime["loaded"]:
@@ -61,7 +63,9 @@ def _public_health_payload(report: ProviderHealth) -> dict[str, object]:
         from .runtime import get_wan_runtime
 
         runtime = get_wan_runtime().status()
+        payload["model"] = runtime["model"]
         payload["loaded"] = runtime["loaded"]
+        payload["gpu"] = runtime["gpu"]
         payload["available"] = bool(runtime["loaded"])
         payload["status"] = STATUS_READY if runtime["loaded"] else "unavailable"
         if not runtime["loaded"]:
