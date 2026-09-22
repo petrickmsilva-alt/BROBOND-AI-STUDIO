@@ -649,15 +649,46 @@ def video_models() -> list[dict[str, str]]:
 async def google_login(request: Request):
     if request.url.scheme != "https" and request.client and request.client.host not in {"127.0.0.1", "localhost", "testclient"}:
         raise HTTPException(status_code=400, detail="HTTPS is required for Google authentication")
-    if not settings.google_client_id or not settings.google_client_secret or not settings.google_redirect_uri:
-        raise HTTPException(status_code=503, detail="Google authentication is not configured")
+    if not settings.google_client_id or not settings.google_client_secret:
+        raise HTTPException(status_code=503, detail="Google OAuth not configured")
+
+    # SessionMiddleware stores this in a signed, HttpOnly cookie.  The state
+    # is checked again in the callback before exchanging the authorization
+    # code, preventing login CSRF and authorization-code injection.
+    state = secrets.token_urlsafe(32)
     nonce = secrets.token_urlsafe(32)
+    request.session["google_state"] = state
     request.session["google_nonce"] = nonce
-    return await oauth.google.authorize_redirect(request, settings.google_redirect_uri, nonce=nonce)
+    return await oauth.google.authorize_redirect(
+        request,
+        settings.google_callback_url,
+        state=state,
+        nonce=nonce,
+        scope="email profile openid",
+        access_type="offline",
+        prompt="select_account",
+    )
+
+
+@app.get("/api/v1/system/oauth", tags=["system"])
+def oauth_diagnostics() -> dict[str, bool]:
+    """Expose OAuth configuration health without exposing credentials."""
+    return {
+        "google": bool(settings.google_client_id and settings.google_client_secret),
+        "callback": bool(settings.google_callback_url),
+        "client_id_loaded": bool(settings.google_client_id),
+        "secret_loaded": bool(settings.google_client_secret),
+    }
 
 
 @app.get("/api/v1/auth/google/callback", tags=["auth"])
 async def google_callback(request: Request, db: Session = Depends(get_db)):
+    # Validate state before contacting Google.  SessionMiddleware's cookie is
+    # signed and HttpOnly; pop it to make the value single-use.
+    expected_state = request.session.pop("google_state", "")
+    received_state = request.query_params.get("state", "")
+    if not expected_state or not received_state or not secrets.compare_digest(received_state, expected_state):
+        raise HTTPException(status_code=400, detail="Invalid OAuth state")
     try:
         token = await oauth.google.authorize_access_token(request)
         claims = token.get("userinfo") or await oauth.google.parse_id_token(request, token)
